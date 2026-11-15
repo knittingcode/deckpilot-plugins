@@ -1,0 +1,21 @@
+name: Bug report
+description: A problem with this repository's tooling, workflows or documentation.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: Include the command or workflow run (link) and the error output. Never paste keys or passwords.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Commit of this repository

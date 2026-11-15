@@ -6,10 +6,11 @@
 Reads both trees with git; never runs anything from the pull request.
 
 * Path guard: a contributor who is not a maintainer may change only
-  registry/publishers/<their login>.json, and registry/plugins/<ns>.*/** and
+  registry/publishers/<their login>.json, registry/plugins/<ns>.*/** and
   plugins/<ns>.*/** for namespaces their publisher record owns (at the base,
-  or added by this pull request). Everything else (workflows, tools, schemas,
-  keys/, revocations, other publishers) is maintainer-only.
+  or added by this pull request), and documentation (docs/*.md, README
+  files). Everything else (workflows, tools, schemas, keys/, revocations,
+  other publishers, policy documents) is maintainer-only.
 * Publisher records: github_id and login must be the pull request author's;
   a contributor cannot set "verified": true or take an existing namespace.
 * Versions are append-only: a recorded registry/plugins/<id>/versions/<v>.json
@@ -30,6 +31,9 @@ import subprocess
 import sys
 
 MAINTAINERS = {"knittingcode"}
+# Documentation anyone may propose (still code-owner reviewed). The policy
+# documents (SECURITY.md, CONTRIBUTING.md, CODE_OF_CONDUCT.md) are not here.
+DOC_PATHS = {"README.md", "plugins/README.md", "registry/README.md"}
 SEMVER_CORE = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$")
 VERSION_PATH = re.compile(r"^registry/plugins/([^/]+)/versions/([^/]+)\.json$")
 
@@ -111,6 +115,8 @@ def main():
             continue
         m = re.match(r"^(registry/plugins|plugins)/([a-z0-9-]+)\.[^/]+/", path)
         if path == f"registry/publishers/{args.author}.json":
+            continue
+        if path in DOC_PATHS or (path.startswith("docs/") and path.endswith(".md")):
             continue
         if m and m.group(2) in own:
             continue

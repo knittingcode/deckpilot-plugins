@@ -1,0 +1,55 @@
+name: Plugin submission
+description: Announce or ask about a plugin you plan to submit by pull request.
+title: "[submission] <publisher>.<name>"
+labels: ["submission"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Submissions themselves are pull requests (see CONTRIBUTING.md). Use this form to
+        reserve a namespace, ask about a permission before you build, or track a submission.
+        The registry is not open for publication yet.
+  - type: input
+    id: id
+    attributes:
+      label: Plugin id
+      description: "`<namespace>.<name>`, lowercase"
+      placeholder: acme.github-prs
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Source repository
+      placeholder: https://github.com/acme/deckpilot-github-prs
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What the plugin does
+    validations:
+      required: true
+  - type: textarea
+    id: permissions
+    attributes:
+      label: Permissions and why
+      description: Every permission the manifest requests, with network hosts and credential slots.
+    validations:
+      required: true
+  - type: input
+    id: license
+    attributes:
+      label: License (SPDX)
+      placeholder: Apache-2.0
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Confirmation
+      options:
+        - label: The plugin is my own work or I have the right to distribute it under the license above.
+          required: true
+        - label: I understand that merging a submission does not publish it, and that contributors never get publish rights.
+          required: true
