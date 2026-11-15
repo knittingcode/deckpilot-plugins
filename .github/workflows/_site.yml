@@ -1,0 +1,136 @@
+# Reusable: builds and deploys the Pages site. Called by pages.yml (push to
+# main) and refresh-timestamp.yml (daily). Concurrency is set by the callers
+# (group registry-pages, shared with publish.yml).
+#
+# The site is the landing page plus /v1/:
+# - no live signed registry yet: /v1/README.txt only ("no signed registry
+#   published yet"). Nothing signed with throwaway keys is ever deployed.
+# - a live registry: the live /v1/ mirrored and verified with the committed
+#   roots (so a landing page change never removes the registry), or, with
+#   refresh-timestamp, the same registry with a newly signed timestamp.
+#
+# The timestamp job is the only one with a secret. It runs only when the
+# repository variable REGISTRY_TIMESTAMP_ENABLED is 'true' (set by the owner
+# after creating the registry-timestamp environment and its secret), so
+# until then it is skipped and never creates the environment. It builds no
+# plugin code.
+name: Site
+
+on:
+  workflow_call:
+    inputs:
+      refresh-timestamp:
+        description: Re-sign timestamp.json of the live registry before deploying
+        type: boolean
+        default: false
+
+permissions: {}
+
+env:
+  REGISTRY_URL: https://knittingcode.github.io/deckpilot-plugins
+
+jobs:
+  build:
+    name: Build site
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      live: ${{ steps.mirror.outputs.live }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Landing page
+        run: tools/build-landing.sh "$RUNNER_TEMP/site"
+      - name: Mirror the live registry, if there is one
+        id: mirror
+        run: |
+          state=$(tools/mirror-site.sh "$REGISTRY_URL" "$RUNNER_TEMP/live")
+          echo "live=$([ "$state" = live ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "Live registry: $state" >> "$GITHUB_STEP_SUMMARY"
+      - name: Build the pinned deckpilot-registry
+        if: steps.mirror.outputs.live == 'true'
+        run: tools/build-cli.sh
+      - name: Verify the mirrored registry with the committed roots
+        if: steps.mirror.outputs.live == 'true'
+        run: |
+          .work/bin/deckpilot-registry verify-site --dir "$RUNNER_TEMP/live" --roots keys/roots.json
+          rm -rf "$RUNNER_TEMP/site/v1"
+          cp -R "$RUNNER_TEMP/live/site/v1" "$RUNNER_TEMP/site/v1"
+      - name: Warn when a requested refresh cannot run
+        if: inputs.refresh-timestamp && steps.mirror.outputs.live == 'true' && vars.REGISTRY_TIMESTAMP_ENABLED != 'true'
+        run: |
+          echo "::warning::REGISTRY_TIMESTAMP_ENABLED is not 'true'; the live timestamp is redeployed unchanged and will expire"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: site
+          path: ${{ runner.temp }}/site
+          retention-days: 1
+          if-no-files-found: error
+
+  timestamp:
+    name: Re-sign timestamp
+    needs: build
+    if: inputs.refresh-timestamp && needs.build.outputs.live == 'true' && vars.REGISTRY_TIMESTAMP_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: registry-timestamp
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build the pinned deckpilot-registry
+        run: tools/build-cli.sh
+      - name: Sign timestamp.json (timestamp key only) and verify as an existing client
+        env:
+          REGISTRY_TIMESTAMP_KEY: ${{ secrets.REGISTRY_TIMESTAMP_KEY }}
+          REGISTRY_TIMESTAMP_KEY_PASSWORD: ${{ secrets.REGISTRY_TIMESTAMP_KEY_PASSWORD }}
+        run: tools/publish-site.sh timestamp --out "$RUNNER_TEMP/ws" --base-url "$REGISTRY_URL"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: registry-v1
+          path: ${{ runner.temp }}/ws/site/v1
+          retention-days: 1
+          if-no-files-found: error
+
+  deploy:
+    name: Deploy site
+    needs: [build, timestamp]
+    if: always() && needs.build.result == 'success' && (needs.timestamp.result == 'success' || needs.timestamp.result == 'skipped')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: site
+          path: ${{ runner.temp }}/site
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.timestamp.result == 'success'
+        with:
+          name: registry-v1
+          path: ${{ runner.temp }}/registry-v1
+      - name: Assemble
+        env:
+          SIGNED: ${{ needs.timestamp.result == 'success' }}
+        run: |
+          if [ "$SIGNED" = true ]; then
+            rm -rf "$RUNNER_TEMP/site/v1"
+            mv "$RUNNER_TEMP/registry-v1" "$RUNNER_TEMP/site/v1"
+          fi
+          find "$RUNNER_TEMP/site" -type f | sort
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: ${{ runner.temp }}/site
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

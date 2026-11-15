@@ -1,0 +1,7 @@
+# zizmor configuration (tools/lint-workflows.sh).
+rules:
+  # `uses: ./.github/workflows/_site.yml` is kept over the newer `$/...`
+  # self-repository syntax so actionlint and older runners parse it too.
+  # Both resolve to this repository at the same commit.
+  self-repository:
+    disable: true
