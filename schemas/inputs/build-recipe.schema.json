@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/knittingcode/deckpilot-plugins/schemas/inputs/build-recipe.schema.json",
+  "title": "plugins/<id>/build.json: how the registry builds a plugin's plugin.wasm",
+  "description": "This repository's own format (not a DeckPilot schema). The source (repository, tag, commit, path) of each version is in registry/plugins/<id>/versions/<version>.json.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "toolchain", "workspace", "package", "profile", "artifact"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "id": {
+      "$ref": "https://knittingcode.github.io/deckpilot-plugins/v1/schemas/registry-plugin.schema.json#/$defs/pluginId"
+    },
+    "toolchain": {
+      "description": "Exact Rust toolchain, installed with rustup.",
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "workspace": {
+      "description": "Directory of the Cargo workspace (with Cargo.lock), relative to the source repository root; \".\" for the root.",
+      "type": "string",
+      "pattern": "^(\\.|[A-Za-z0-9_-][A-Za-z0-9._-]*(/[A-Za-z0-9_-][A-Za-z0-9._-]*)*)$",
+      "maxLength": 200
+    },
+    "package": {
+      "description": "Cargo package that builds the module (cargo build -p).",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+    },
+    "profile": {
+      "description": "Cargo profile, e.g. release or guest.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,32}$"
+    },
+    "artifact": {
+      "description": "File name of the module under target/wasm32-unknown-unknown/<profile>/.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,64}\\.wasm$"
+    }
+  }
+}

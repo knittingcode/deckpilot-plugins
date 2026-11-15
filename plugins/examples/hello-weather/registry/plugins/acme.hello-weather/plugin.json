@@ -1,0 +1,10 @@
+{
+  "id": "acme.hello-weather",
+  "name": "Hello Weather",
+  "summary": "Example plugin: a greeting and the current temperature of a city.",
+  "description": "DeckPilot's sample plugin, built from the DeckPilot repository. It is a CI fixture of this registry and is never published.",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/knittingcode/deckpilot/tree/main/plugins/examples/hello-weather",
+  "source_repository": "knittingcode/deckpilot",
+  "categories": ["other"]
+}

@@ -1,0 +1,100 @@
+# Untrusted: runs on every pull request, including forks, and on main.
+# No secrets, no environment, a read-only token, no caches. It may build
+# contributor plugin code (cargo build scripts run here), so nothing it
+# produces is ever used by a publishing workflow: publish.yml rebuilds
+# everything from the reviewed commit itself.
+#
+# Because pull_request runs the workflow file of the pull request's merge
+# ref, a pull request can change these checks; their result is advisory for
+# changes to .github/, tools/ and schemas/, which need code-owner review.
+name: Validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: validate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  hygiene:
+    name: Repository hygiene
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: No private keys, key files or generated output
+        run: python3 -I tools/check-hygiene.py
+
+  submission:
+    name: Submission rules
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Path guard, publisher identity, append-only versions, permission diff
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          AUTHOR_ID: ${{ github.event.pull_request.user.id }}
+        run: |
+          python3 -I tools/check-submission.py --base "$BASE_SHA" --head "$HEAD_SHA" \
+            --author "$AUTHOR" --author-id "$AUTHOR_ID"
+
+  schemas:
+    name: Schemas match DeckPilot
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: schemas/ and rust-toolchain.toml equal the pinned DeckPilot commit
+        run: tools/check-schemas.sh
+
+  registry:
+    name: Validate registry
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build the pinned deckpilot-registry and schema-check
+        run: tools/build-cli.sh
+      - name: Inputs, rebuilt packages, throwaway-key signed registry, verify-site
+        run: tools/validate.sh registry
+
+  examples:
+    name: Build examples
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build the pinned deckpilot-registry and schema-check
+        run: tools/build-cli.sh
+      - name: Build each example and verify it in a throwaway-key registry
+        run: tools/validate.sh examples
