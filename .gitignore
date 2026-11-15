@@ -1,0 +1,6 @@
+# Local tool output (tools/*.sh). Never commit generated registry output.
+/.work/
+/site/
+/releases/
+target/
+*.key

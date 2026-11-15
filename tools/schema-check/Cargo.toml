@@ -1,0 +1,13 @@
+[package]
+name = "schema-check"
+description = "Validates registry inputs and plugin manifests against the pinned DeckPilot JSON Schemas"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+# Without default features: no HTTP or file reference resolution; every
+# schema is served from schemas/ by $id.
+jsonschema = { version = "0.61", default-features = false }
+serde_json = "1"

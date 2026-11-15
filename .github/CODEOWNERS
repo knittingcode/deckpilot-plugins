@@ -1,0 +1,19 @@
+# Every change needs the owner's review; the ruleset on main enforces it.
+*                       @knittingcode
+
+# Called out explicitly: trust configuration, publishing, policy.
+/.github/               @knittingcode
+/.github/CODEOWNERS     @knittingcode
+/.github/workflows/     @knittingcode
+/keys/                  @knittingcode
+/registry/              @knittingcode
+/registry/publishers/   @knittingcode
+/registry/revocations.json @knittingcode
+/schemas/               @knittingcode
+/tools/                 @knittingcode
+/rust-toolchain.toml    @knittingcode
+/SECURITY.md            @knittingcode
+/CONTRIBUTING.md        @knittingcode
+/CODE_OF_CONDUCT.md     @knittingcode
+/LICENSE                @knittingcode
+/docs/                  @knittingcode

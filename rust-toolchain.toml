@@ -1,0 +1,5 @@
+[toolchain]
+# Must equal rust-toolchain.toml of DeckPilot at tools/deckpilot.env's commit
+# (checked by tools/check-schemas.sh). rustup installs and verifies it.
+channel = "1.99.1"
+profile = "minimal"

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/knittingcode/deckpilot-plugins/schemas/inputs/plugin-info.schema.json",
+  "title": "registry/plugins/<id>/plugin.json: the listing deckpilot-registry reads with --plugin-detail",
+  "description": "Mirrors PluginInfo in DeckPilot crates/deckpilot-plugin-registry/src/publish/catalog.rs (deny_unknown_fields). Every constraint comes from the pinned registry schemas.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "name", "summary", "description", "license"],
+  "properties": {
+    "id": { "$ref": "https://knittingcode.github.io/deckpilot-plugins/v1/schemas/registry-plugin.schema.json#/properties/id" },
+    "name": { "$ref": "https://knittingcode.github.io/deckpilot-plugins/v1/schemas/registry-plugin.schema.json#/properties/name" },
+    "summary": { "$ref": "https://knittingcode.github.io/deckpilot-plugins/v1/schemas/registry-index.schema.json#/properties/plugins/items/properties/summary" },
+    "description": { "$ref": "https://knittingcode.github.io/deckpilot-plugins/v1/schemas/registry-plugin.schema.json#/properties/description" },
+    "license": { "$ref": "https://knittingcode.github.io/deckpilot-plugins/v1/schemas/registry-plugin.schema.json#/properties/license" },
+    "homepage": { "$ref": "https://knittingcode.github.io/deckpilot-plugins/v1/schemas/registry-plugin.schema.json#/properties/homepage" },
+    "source_repository": { "$ref": "https://knittingcode.github.io/deckpilot-plugins/v1/schemas/registry-plugin.schema.json#/properties/source_repository" },
+    "categories": { "$ref": "https://knittingcode.github.io/deckpilot-plugins/v1/schemas/registry-index.schema.json#/properties/plugins/items/properties/categories" },
+    "deprecated": { "$ref": "https://knittingcode.github.io/deckpilot-plugins/v1/schemas/registry-index.schema.json#/properties/plugins/items/properties/deprecated" }
+  }
+}
