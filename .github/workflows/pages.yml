@@ -1,0 +1,35 @@
+# Deploys the Pages site from main: the landing page, and /v1/ as described
+# in _site.yml (README only until a signed registry exists; never a registry
+# signed with throwaway keys). The timestamp re-signing step lives in
+# _site.yml and is a no-op here unless dispatched with refresh-timestamp
+# and the registry-timestamp environment is enabled.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      refresh-timestamp:
+        description: Also re-sign the live registry's timestamp
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: registry-pages
+  cancel-in-progress: false
+
+jobs:
+  site:
+    name: Site
+    uses: ./.github/workflows/_site.yml
+    with:
+      refresh-timestamp: ${{ inputs.refresh-timestamp == true }}
+    # The maximum the called jobs may use; only its deploy job takes pages
+    # and id-token, the others contents: read.
+    permissions:
+      contents: read
+      pages: write
+      id-token: write

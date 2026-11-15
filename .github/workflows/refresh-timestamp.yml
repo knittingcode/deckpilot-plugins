@@ -1,0 +1,27 @@
+# Re-signs timestamp.json of the live registry before it expires (7 days,
+# re-signed daily) with the timestamp key only, then redeploys. The index
+# is unchanged byte for byte. A no-op (landing page redeploy only) until a
+# signed registry is live and REGISTRY_TIMESTAMP_ENABLED is 'true'.
+name: Refresh timestamp
+
+on:
+  schedule:
+    - cron: "23 4 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: registry-pages
+  cancel-in-progress: false
+
+jobs:
+  site:
+    name: Site
+    uses: ./.github/workflows/_site.yml
+    with:
+      refresh-timestamp: true
+    permissions:
+      contents: read
+      pages: write
+      id-token: write

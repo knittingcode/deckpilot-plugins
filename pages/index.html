@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DeckPilot plugin registry</title>
+  <meta name="description" content="The signed static plugin registry of DeckPilot. No signed registry is published yet.">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <style>
+    :root { --bg: #ffffff; --fg: #07112f; --muted: #4a5578; --line: #d9deea; --accent: #2f5bea; --panel: #f4f6fb; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #07112f; --fg: #eef1f8; --muted: #a9b2cc; --line: #26325a; --accent: #8aa6ff; --panel: #0e1a40; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    main { max-width: 44rem; margin: 0 auto; padding: 3rem 1rem 4rem; }
+    header { display: flex; align-items: center; gap: 1rem; margin-bottom: 2rem; }
+    header img { width: 56px; height: 56px; }
+    h1 { font-size: 1.6rem; line-height: 1.2; margin: 0; }
+    h2 { font-size: 1.1rem; margin: 2rem 0 .5rem; }
+    .status { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.25rem; }
+    .status strong { display: block; margin-bottom: .25rem; }
+    p, li { color: var(--muted); }
+    a { color: var(--accent); }
+    code { font: .9em ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+    footer { margin-top: 3rem; font-size: .875rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <img src="icon.svg" alt="" width="56" height="56">
+    <h1>DeckPilot plugin registry</h1>
+  </header>
+
+  <div class="status" role="status">
+    <strong>No signed registry is published yet.</strong>
+    The registry is being set up. There are no production signing keys and
+    no published plugins, so <code>/v1/</code> holds no registry documents
+    and DeckPilot reports the registry as unavailable.
+  </div>
+
+  <h2>What this is</h2>
+  <p>
+    The community plugin registry of
+    <a href="https://github.com/knittingcode/deckpilot">DeckPilot</a>, served
+    as static files. DeckPilot trusts these files only through signatures it
+    checks itself: a root-signed key set, an index signed by the index key,
+    and a timestamp re-signed at least weekly. Packages are downloaded from
+    the repository's GitHub Releases and must match the sha256 and size the
+    signed index pins.
+  </p>
+
+  <h2>Contributing a plugin</h2>
+  <p>
+    Plugins are submitted by pull request to
+    <a href="https://github.com/knittingcode/deckpilot-plugins">knittingcode/deckpilot-plugins</a>;
+    see <a href="https://github.com/knittingcode/deckpilot-plugins/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a>.
+    To report a malicious plugin or a registry vulnerability, see
+    <a href="https://github.com/knittingcode/deckpilot-plugins/blob/main/SECURITY.md">SECURITY.md</a>.
+  </p>
+
+  <footer>DeckPilot is open source under the Apache-2.0 license. Each plugin carries its own license.</footer>
+</main>
+</body>
+</html>

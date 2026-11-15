@@ -95,7 +95,11 @@ validate_registry() {
     "$CLI" add-version "${args[@]}"
     local derived=$derive/registry/plugins/$id/versions/$version.json
     if ! diff -u <(jq -S 'del(.yanked)' "$derived") <(jq -S 'del(.yanked)' "$record") >&2; then
-      summary "| \`$id\` | $version | built \`$(jq -r .package.sha256 "$derived")\` | $(jq -r .package.size "$derived") | **does not match the record** |"
+      summary "| \`$id\` | $version | built \`$(jq -r .package.sha256 "$derived")\` | $(jq -r .package.size "$derived") | **does not match the record** |" "" \
+        "The record derived from the package this run built (the reference build) is below. If your local build differs, commit this one as \`registry/plugins/$id/versions/$version.json\`:" "" \
+        '```json' "$(cat "$derived")" '```'
+      echo "derived record (reference build):" >&2
+      cat "$derived" >&2
       die "$record does not match the package built from its source (diff above: - built, + recorded)"
     fi
     summary "| \`$id\` | $version | \`$(jq -r .package.sha256 "$record")\` | $(jq -r .package.size "$record") | $(jq -c '[.permissions[] | .kind + (if .hosts then ":" + (.hosts | join(",")) else "" end)]' "$record") |"
