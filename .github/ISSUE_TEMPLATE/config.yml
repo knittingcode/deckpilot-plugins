@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a malicious plugin or a vulnerability (private)
+    url: https://github.com/knittingcode/deckpilot-plugins/security/advisories/new
+    about: Never in a public issue. See SECURITY.md.
+  - name: DeckPilot app, agent or plugin SDK issues
+    url: https://github.com/knittingcode/deckpilot/issues/new/choose
+    about: Problems with DeckPilot itself belong in the DeckPilot repository.

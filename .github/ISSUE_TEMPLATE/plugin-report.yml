@@ -1,0 +1,40 @@
+name: Plugin report
+description: Report a listed plugin that is broken, misleading or abusive (not a vulnerability).
+title: "[report] <plugin id> <version>"
+labels: ["plugin-report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Malicious plugins and vulnerabilities must be reported privately**, not here:
+        https://github.com/knittingcode/deckpilot-plugins/security/advisories/new (see SECURITY.md).
+  - type: input
+    id: id
+    attributes:
+      label: Plugin id and version
+      placeholder: acme.github-prs 1.2.0
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind of problem
+      options:
+        - Broken or crashing
+        - Misleading listing or description
+        - Permission used for something other than its justification
+        - License or attribution problem
+        - Spam, impersonation or abuse
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: What you observed
+    validations:
+      required: true
+  - type: input
+    id: deckpilot
+    attributes:
+      label: DeckPilot version and OS
