@@ -23,13 +23,20 @@ get() {
   [[ $path =~ ^(timestamp\.json|keys/[1-9][0-9]*\.json|index/[1-9][0-9]*\.json|plugins/[a-z][a-z0-9.-]{3,56}/[0-9a-f]{64}\.json)(\.minisig)?$ ]] ||
     die "refusing to mirror $path"
   mkdir -p "$(dirname "$site/$path")"
-  code=$(curl -sS --proto "$proto" --max-filesize 4194304 -o "$site/$path" -w '%{http_code}' \
-    "$base/v1/$path") || die "fetching $path failed"
-  case $code in
-    200) return 0 ;;
-    404) rm -f "$site/$path"; [ "${2:-}" = optional ] && return 1; die "$path is missing on the live site" ;;
-    *) rm -f "$site/$path"; die "fetching $path: HTTP $code" ;;
-  esac
+  local attempt
+  for attempt in 1 2 3 4 5 6; do
+    code=$(curl -sS --proto "$proto" --max-filesize 4194304 -o "$site/$path" -w '%{http_code}' \
+      "$base/v1/$path") || code=000
+    case $code in
+      200) return 0 ;;
+      404) rm -f "$site/$path"; [ "${2:-}" = optional ] && return 1; die "$path is missing on the live site" ;;
+      # Transient (Pages answers 503 while a deployment propagates, 429 when
+      # rate limiting): retry with backoff; anything else fails closed.
+      000 | 429 | 5??) rm -f "$site/$path"; note "fetching $path: HTTP $code, retrying"; sleep $((attempt * 10)) ;;
+      *) rm -f "$site/$path"; die "fetching $path: HTTP $code" ;;
+    esac
+  done
+  die "fetching $path: HTTP $code after 6 attempts"
 }
 
 if ! get timestamp.json optional; then
