@@ -21,7 +21,9 @@ The reviewer checks, with the job summary of *Validate registry* and
    anything, vendored binaries.
 3. **Permissions.** Each permission has a justification that matches what
    the plugin does; network hosts belong to the service the plugin claims;
-   credential slots match those hosts. Any new permission in an update is
+   credential slots match those hosts; `openUrl` hosts are the pages the
+   plugin's actions open for the user (the plugin's own service, its
+   documentation), never a broad wildcard. Any new permission in an update is
    an escalation: it is reviewed as carefully as a new plugin, and users
    are asked again before it applies.
 4. **Build.** The recipe uses an exact toolchain, a locked Cargo workspace
