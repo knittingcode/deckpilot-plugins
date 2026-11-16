@@ -4,8 +4,8 @@ This is what the owner has to do, in order, before the first production
 publication of the registry. Only the owner (the `knittingcode` account) can
 do any of it. Nothing on this list has been done yet. Today the repository
 has no keys, no secrets, no `registry-*` environments, no repository
-variables, no tags and no releases. Pages serves only the status page
-(`/v1/README.txt`).
+variables, no tags and no releases. Pages serves the Marketplace website
+and, as its whole registry, the status file `/v1/README.txt`.
 
 The list was checked against this repository's workflows (`publish.yml`,
 `_site.yml`, `pages.yml`, `refresh-timestamp.yml`) and `tools/`. It was
@@ -168,8 +168,8 @@ tools/build-cli.sh && tools/validate.sh registry   # step 4 walks the committed 
 Open the pull request and wait for all six required checks. *Validate
 registry* runs "the committed key set chain verifies". Then merge.
 
-After the merge, `pages.yml` still deploys only the status page: no live
-registry exists yet.
+After the merge, `pages.yml` still deploys the website with only
+`/v1/README.txt` as the registry: no live registry exists yet.
 
 ## 3. Environments and secrets [GitHub]
 
