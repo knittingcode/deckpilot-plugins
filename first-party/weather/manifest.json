@@ -1,0 +1,716 @@
+{
+  "$schema": "https://knittingcode.github.io/deckpilot-plugins/v1/schemas/plugin-manifest.schema.json",
+  "manifestVersion": 1,
+  "id": "deckpilot.weather",
+  "name": "Weather",
+  "version": "0.1.0",
+  "publisher": {
+    "id": "deckpilot",
+    "name": "DeckPilot",
+    "url": "https://github.com/knittingcode/deckpilot"
+  },
+  "description": "Current weather and a forecast of up to 7 days for one place, as messages, workflow outputs and variables. Weather data by Open-Meteo.com (CC BY 4.0), for non-commercial use.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/knittingcode/deckpilot-plugins",
+    "directory": "first-party/weather"
+  },
+  "license": "Apache-2.0",
+  "keywords": [
+    "weather",
+    "forecast",
+    "open-meteo"
+  ],
+  "categories": [
+    "monitoring"
+  ],
+  "engines": {
+    "deckpilot": ">=0.6.0 <1.0.0",
+    "pluginApi": "^1.0",
+    "sdk": "0.1.0"
+  },
+  "runtime": {
+    "kind": "wasm",
+    "abi": 1
+  },
+  "entry": "src/lib.rs",
+  "icons": {
+    "128": "assets/icon-128.png"
+  },
+  "assets": {
+    "readme": "README.md"
+  },
+  "permissions": [
+    {
+      "kind": "network",
+      "hosts": [
+        "api.open-meteo.com",
+        "geocoding-api.open-meteo.com"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "justification": "Sends your place's coordinates (rounded to about 1 km) to Open-Meteo to read its weather, and the place names you search to Open-Meteo's geocoding service."
+    }
+  ],
+  "contributes": {
+    "actions": [
+      {
+        "id": "current",
+        "name": "Current weather",
+        "description": "Reports the conditions, temperature, feels-like temperature, wind and humidity of your place, and says so when the data is not current.",
+        "category": "Weather",
+        "parameters": [
+          {
+            "key": "at",
+            "label": "Run time",
+            "description": "Optional. In a scheduled workflow, the trigger's firing time (YYYY-MM-DD HH:MM): it lets the plugin use its cache instead of asking again.",
+            "required": false,
+            "kind": {
+              "type": "text",
+              "maxLength": 16
+            }
+          }
+        ],
+        "node": {
+          "version": 1,
+          "icon": "cloud-sun",
+          "outputs": [
+            {
+              "key": "summary",
+              "label": "Summary",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "condition",
+              "label": "Condition",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "conditionName",
+              "label": "Condition name",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "weatherCode",
+              "label": "WMO weather code",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "isDay",
+              "label": "Daytime",
+              "kind": "boolean",
+              "always": true
+            },
+            {
+              "key": "temperature",
+              "label": "Temperature",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "feelsLike",
+              "label": "Feels like",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "temperatureUnit",
+              "label": "Temperature unit",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "windSpeed",
+              "label": "Wind speed",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "windUnit",
+              "label": "Wind speed unit",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "windDirection",
+              "label": "Wind direction (degrees)",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "windCompass",
+              "label": "Wind direction (compass)",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "humidity",
+              "label": "Humidity (%)",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "units",
+              "label": "Units",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "location",
+              "label": "Location",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "observedAt",
+              "label": "Time of the values (local)",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "stale",
+              "label": "Stale",
+              "kind": "boolean",
+              "always": true
+            },
+            {
+              "key": "source",
+              "label": "Source",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "attribution",
+              "label": "Attribution",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "fetchedAt",
+              "label": "Fetched at (UTC)",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "ageMinutes",
+              "label": "Age in minutes",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "problem",
+              "label": "Problem",
+              "kind": "text",
+              "always": false
+            }
+          ],
+          "timeoutMs": 25000,
+          "retrySafe": true,
+          "idempotent": true,
+          "effect": "readOnly"
+        }
+      },
+      {
+        "id": "forecast",
+        "name": "Forecast",
+        "description": "Reports the next days of your place: lowest and highest temperature, condition and precipitation chance for each day.",
+        "category": "Weather",
+        "parameters": [
+          {
+            "key": "days",
+            "label": "Days",
+            "description": "How many days to report, starting with today at the place.",
+            "required": false,
+            "kind": {
+              "type": "integer",
+              "min": 1,
+              "max": 7
+            },
+            "default": {
+              "type": "integer",
+              "value": 3
+            }
+          },
+          {
+            "key": "at",
+            "label": "Run time",
+            "description": "Optional. In a scheduled workflow, the trigger's firing time (YYYY-MM-DD HH:MM): it lets the plugin use its cache instead of asking again.",
+            "required": false,
+            "kind": {
+              "type": "text",
+              "maxLength": 16
+            }
+          }
+        ],
+        "node": {
+          "version": 1,
+          "icon": "calendar-days",
+          "outputs": [
+            {
+              "key": "summary",
+              "label": "Summary (one line per day)",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "json",
+              "label": "Days as JSON",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "days",
+              "label": "Number of days",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "temperatureUnit",
+              "label": "Temperature unit",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "units",
+              "label": "Units",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "location",
+              "label": "Location",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "day1Date",
+              "label": "Day 1: date",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "day1Min",
+              "label": "Day 1: lowest temperature",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "day1Max",
+              "label": "Day 1: highest temperature",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "day1Condition",
+              "label": "Day 1: condition",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "day1ConditionName",
+              "label": "Day 1: condition name",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "day1Precipitation",
+              "label": "Day 1: precipitation chance (%)",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "day2Date",
+              "label": "Day 2: date",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "day2Min",
+              "label": "Day 2: lowest temperature",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "day2Max",
+              "label": "Day 2: highest temperature",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "day2Condition",
+              "label": "Day 2: condition",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "day2ConditionName",
+              "label": "Day 2: condition name",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "day2Precipitation",
+              "label": "Day 2: precipitation chance (%)",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "day3Date",
+              "label": "Day 3: date",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "day3Min",
+              "label": "Day 3: lowest temperature",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "day3Max",
+              "label": "Day 3: highest temperature",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "day3Condition",
+              "label": "Day 3: condition",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "day3ConditionName",
+              "label": "Day 3: condition name",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "day3Precipitation",
+              "label": "Day 3: precipitation chance (%)",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "stale",
+              "label": "Stale",
+              "kind": "boolean",
+              "always": true
+            },
+            {
+              "key": "source",
+              "label": "Source",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "attribution",
+              "label": "Attribution",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "fetchedAt",
+              "label": "Fetched at (UTC)",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "ageMinutes",
+              "label": "Age in minutes",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "problem",
+              "label": "Problem",
+              "kind": "text",
+              "always": false
+            }
+          ],
+          "timeoutMs": 25000,
+          "retrySafe": true,
+          "idempotent": true,
+          "effect": "readOnly"
+        }
+      },
+      {
+        "id": "find-location",
+        "name": "Find location",
+        "description": "Searches places by name. With Select at 0 it lists the matches; with the number of a match it stores that place as the one the weather is for.",
+        "category": "Weather",
+        "parameters": [
+          {
+            "key": "query",
+            "label": "Place name",
+            "description": "A town or a postal code, at least two characters; add a country after a comma to narrow it (Springfield, US).",
+            "required": true,
+            "kind": {
+              "type": "text",
+              "maxLength": 80
+            }
+          },
+          {
+            "key": "select",
+            "label": "Select",
+            "description": "0 lists the matches; 1-5 stores the match with that number.",
+            "required": false,
+            "kind": {
+              "type": "integer",
+              "min": 0,
+              "max": 5
+            },
+            "default": {
+              "type": "integer",
+              "value": 0
+            }
+          }
+        ],
+        "node": {
+          "version": 1,
+          "icon": "map-pin",
+          "outputs": [
+            {
+              "key": "count",
+              "label": "Number of matches",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "matches",
+              "label": "Matches (one per line)",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "source",
+              "label": "Source",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "attribution",
+              "label": "Attribution",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "selected",
+              "label": "Stored place",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "timezone",
+              "label": "Time zone of the stored place",
+              "kind": "text",
+              "always": false
+            }
+          ],
+          "timeoutMs": 25000,
+          "retrySafe": false,
+          "idempotent": true,
+          "effect": "modifies"
+        }
+      },
+      {
+        "id": "forget-location",
+        "name": "Forget location",
+        "description": "Deletes the stored place, the cached weather and the cached place searches, and clears the plugin's variables. Settings are not changed.",
+        "category": "Weather",
+        "parameters": [],
+        "node": {
+          "version": 1,
+          "icon": "trash-2",
+          "outputs": [],
+          "timeoutMs": 10000,
+          "retrySafe": false,
+          "idempotent": true,
+          "effect": "modifies"
+        }
+      }
+    ],
+    "variables": [
+      {
+        "id": "temperature",
+        "name": "Temperature",
+        "description": "Temperature at the last run of Current weather, in the unit of the settings.",
+        "valueType": {
+          "type": "integer"
+        },
+        "scope": "machine"
+      },
+      {
+        "id": "feelsLike",
+        "name": "Feels like",
+        "description": "Feels-like temperature at the last run of Current weather.",
+        "valueType": {
+          "type": "integer"
+        },
+        "scope": "machine"
+      },
+      {
+        "id": "condition",
+        "name": "Condition",
+        "description": "The condition as a short text in the language of the settings.",
+        "valueType": {
+          "type": "string"
+        },
+        "scope": "machine"
+      },
+      {
+        "id": "conditionName",
+        "name": "Condition name",
+        "description": "The condition as a fixed name such as partly-cloudy or rain.",
+        "valueType": {
+          "type": "string"
+        },
+        "scope": "machine"
+      },
+      {
+        "id": "summary",
+        "name": "Summary",
+        "description": "One sentence about the current weather; it starts with [stale] when the data is not known to be current.",
+        "valueType": {
+          "type": "string"
+        },
+        "scope": "machine"
+      },
+      {
+        "id": "stale",
+        "name": "Stale",
+        "description": "True when the last run of Current weather failed or could only report saved data.",
+        "valueType": {
+          "type": "boolean"
+        },
+        "scope": "machine"
+      },
+      {
+        "id": "forecast",
+        "name": "Forecast",
+        "description": "The days of the last run of Forecast: date, min, max, weatherCode, condition, conditionName, precipitationProbability.",
+        "valueType": {
+          "type": "json"
+        },
+        "scope": "machine"
+      },
+      {
+        "id": "forecastSummary",
+        "name": "Forecast summary",
+        "description": "The forecast as one line per day; it starts with [stale] when the data is not known to be current.",
+        "valueType": {
+          "type": "string"
+        },
+        "scope": "machine"
+      },
+      {
+        "id": "forecastStale",
+        "name": "Forecast is stale",
+        "description": "True when the last run of Forecast failed or could only report saved data.",
+        "valueType": {
+          "type": "boolean"
+        },
+        "scope": "machine"
+      }
+    ],
+    "settings": {
+      "portabilityVersion": 1,
+      "fields": [
+        {
+          "key": "units",
+          "label": "Units",
+          "description": "metric: °C and km/h. imperial: °F and mph.",
+          "required": false,
+          "kind": {
+            "type": "choice",
+            "options": [
+              "metric",
+              "imperial"
+            ]
+          },
+          "default": {
+            "type": "choice",
+            "value": "metric"
+          },
+          "portability": "portable"
+        },
+        {
+          "key": "language",
+          "label": "Language of the texts",
+          "description": "The language of conditions and messages: en (English) or pl (Polish).",
+          "required": false,
+          "kind": {
+            "type": "choice",
+            "options": [
+              "en",
+              "pl"
+            ]
+          },
+          "default": {
+            "type": "choice",
+            "value": "en"
+          },
+          "portability": "portable"
+        },
+        {
+          "key": "latitude",
+          "label": "Latitude",
+          "description": "Decimal degrees, -90 to 90 (52.23). Leave it and Longitude empty to use the place stored by Find location; when both are set they take precedence.",
+          "required": false,
+          "kind": {
+            "type": "text",
+            "maxLength": 12
+          },
+          "portability": "machineSpecific"
+        },
+        {
+          "key": "longitude",
+          "label": "Longitude",
+          "description": "Decimal degrees, -180 to 180 (21.01).",
+          "required": false,
+          "kind": {
+            "type": "text",
+            "maxLength": 13
+          },
+          "portability": "machineSpecific"
+        },
+        {
+          "key": "locationName",
+          "label": "Location name",
+          "description": "The name shown for the latitude and longitude above.",
+          "required": false,
+          "kind": {
+            "type": "text",
+            "maxLength": 80
+          },
+          "portability": "machineSpecific"
+        },
+        {
+          "key": "timezone",
+          "label": "Time zone",
+          "description": "A tz database name such as Europe/Warsaw for the latitude and longitude above. Empty: the place's own time zone.",
+          "required": false,
+          "kind": {
+            "type": "text",
+            "maxLength": 64
+          },
+          "portability": "machineSpecific"
+        }
+      ]
+    },
+    "errorCodes": {
+      "no-location": "No place is set: run Find location, or enter a latitude and longitude in the settings.",
+      "invalid-location": "The latitude, longitude or time zone in the settings cannot be used.",
+      "location-not-found": "The search found no place with that name.",
+      "invalid-selection": "Select is larger than the number of places the search found.",
+      "provider-error": "Open-Meteo answered with an error, and no saved data could be shown instead.",
+      "invalid-response": "Open-Meteo's answer could not be read, and no saved data could be shown instead.",
+      "response-too-large": "Open-Meteo's answer was larger than the plugin accepts.",
+      "timed-out": "Open-Meteo did not answer in time, and no saved data could be shown instead."
+    }
+  }
+}

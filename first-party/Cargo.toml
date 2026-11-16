@@ -10,6 +10,7 @@ resolver = "3"
 members = [
     "break-reminder",
     "template",
+    "weather",
 ]
 
 [workspace.package]
