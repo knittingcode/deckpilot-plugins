@@ -22,6 +22,8 @@ local-first Stream Deck controller and automation app.
 > and tested with throwaway keys, but no production keys exist, no plugin
 > has been published, and the public site serves no signed registry.
 > DeckPilot's plugin support is itself experimental and off by default.
+> What remains before the first publication:
+> [docs/production-readiness.md](docs/production-readiness.md).
 
 ## What this is
 
@@ -61,7 +63,7 @@ from one pinned DeckPilot commit (`tools/deckpilot.env`).
 | [`keys/`](keys/) | Public trust material after the key ceremony (empty for now) |
 | [`schemas/`](schemas/) | DeckPilot's JSON schemas, pinned to the DeckPilot commit |
 | [`tools/`](tools/) | Build, validation and publishing scripts used by CI |
-| [`docs/`](docs/) | [Architecture](docs/architecture.md), [publishing](docs/publishing.md), [trust model](docs/trust-model.md), [review policy](docs/review-policy.md), [separation from app releases](docs/separation.md) |
+| [`docs/`](docs/) | [Architecture](docs/architecture.md), [publishing](docs/publishing.md), [production readiness](docs/production-readiness.md), [trust model](docs/trust-model.md), [review policy](docs/review-policy.md), [separation from app releases](docs/separation.md) |
 
 The generated site (`site/v1/`) is never committed; CI builds it.
 
