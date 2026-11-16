@@ -144,6 +144,8 @@ key set with `seq_floor_reset` ([trust-model.md](trust-model.md)).
 
 None of this exists yet; the workflows are no-ops or refuse to run until it
 does.
+The exact, ordered steps with their commands, and the decisions still open,
+are in [production-readiness.md](production-readiness.md).
 
 1. **Key ceremony** (offline, PUBLISHING.md in DeckPilot, U-10): root keys,
    index key, timestamp key; `keyset init` and `keyset sign`; commit
