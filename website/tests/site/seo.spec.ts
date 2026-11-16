@@ -77,12 +77,14 @@ test('the root and 404 pages are kept out of indexes', async ({ request }) => {
   }
 });
 
-test('assets load from under the base path', async ({ page }) => {
+test('assets load from under the base path, and nothing from another host', async ({ page }) => {
   const outside: string[] = [];
   const failed: string[] = [];
   page.on('request', (request) => {
     const url = new URL(request.url());
-    if (url.hostname === '127.0.0.1' && !url.pathname.startsWith('/deckpilot-plugins/')) outside.push(url.pathname);
+    const own = url.hostname === '127.0.0.1' || url.hostname === 'knittingcode.github.io';
+    if (own && !url.pathname.startsWith('/deckpilot-plugins/')) outside.push(url.pathname);
+    if (!own) outside.push(url.href);
   });
   page.on('response', (response) => {
     if (response.status() >= 400) failed.push(`${response.status()} ${response.url()}`);
