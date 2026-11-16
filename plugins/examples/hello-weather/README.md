@@ -1,7 +1,7 @@
 # Example: hello-weather (never published)
 
 DeckPilot's sample plugin, built from
-[`plugins/examples/hello-weather`](https://github.com/knittingcode/deckpilot/tree/aa7abf087744ff2963d6bc04edb5c1b6c446c0d2/plugins/examples/hello-weather)
+[`plugins/examples/hello-weather`](https://github.com/knittingcode/deckpilot/tree/dc1a8a2ee190df080377ab372c33eafb3c1f55a0/plugins/examples/hello-weather)
 at the DeckPilot commit pinned in `source.json`.
 
 `validate.yml` (job *Build examples*) builds it with `tools/build-plugin.sh`

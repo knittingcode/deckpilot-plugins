@@ -111,7 +111,7 @@ The user can also roll back to the previous version. Plan stored data so that an
 
 ## Registry tooling and the DeckPilot pin
 
-The registry repository builds its tools and copies its schemas from one pinned DeckPilot commit. Manifest features added to DeckPilot after that commit, such as user-entered origins, do not validate in the registry until the pin is moved.
+The registry repository builds its tools and copies its schemas from one pinned DeckPilot commit. Manifest features added to DeckPilot after that commit do not validate in the registry until the pin is moved.
 
 ## Canonical reference
 

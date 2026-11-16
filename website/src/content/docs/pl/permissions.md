@@ -163,8 +163,6 @@ Zgoda przebiega etapami:
 
 Broker dopasowuje każde żądanie do dozwolonego serwera dokładnie, według schematu, hosta, portu i prefiksu ścieżki, i w ten sam sposób sprawdza każde przekierowanie.
 
-> **Uwaga:** Repozytorium rejestru buduje swoje narzędzia ze starszego, przypiętego commita DeckPilota, którego schemat manifestu nie zawiera jeszcze `userOrigins`. Dopóki to przypięcie się nie zmieni, zgłoszenie, które go używa, nie przechodzi walidacji rejestru.
-
 ## Dokumentacja źródłowa
 
 [docs/marketplace/sdk/permissions.md](https://github.com/knittingcode/deckpilot/blob/main/docs/marketplace/sdk/permissions.md) zawiera wyczerpujące reguły, w tym pełną listę odrzucanych nagłówków. Kod źródłowy brokera znajduje się w [plugins/runtime/crates/broker](https://github.com/knittingcode/deckpilot/blob/main/plugins/runtime/crates/broker/src/lib.rs).
