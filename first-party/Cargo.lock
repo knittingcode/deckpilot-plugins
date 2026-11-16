@@ -27,6 +27,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "deckpilot-markets"
+version = "0.1.0"
+dependencies = [
+ "deckpilot-plugin-sdk",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "deckpilot-plugin-abi"
 version = "0.1.0"
 source = "git+https://github.com/knittingcode/deckpilot?rev=dc1a8a2ee190df080377ab372c33eafb3c1f55a0#dc1a8a2ee190df080377ab372c33eafb3c1f55a0"

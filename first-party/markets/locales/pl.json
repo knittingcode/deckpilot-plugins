@@ -1,0 +1,216 @@
+{
+  "name": "Rynki",
+  "description": "Dzienne kursy referencyjne euro EBC przez Frankfurter, nigdy bieżące ceny: przeliczenia, zmiany, zakres ostatnich kursów i alerty progowe jako komunikaty, wyjścia i zmienne. Informacja, nie porada finansowa.",
+  "permissions": {
+    "network": "Pyta Frankfurter o kursy referencyjne EBC wybranych par walut. Wysyłane są tylko dwa kody walut i data początkowa.",
+    "notifications": "Sprawdź alert powiadamia raz, gdy kurs przekroczy Twój próg, na pulpicie lub na pasku stanu, zgodnie z ustawieniami wtyczki."
+  },
+  "actions": {
+    "rate": {
+      "name": "Kurs wymiany",
+      "description": "Podaje najnowszy kurs referencyjny EBC dla pary z jego datą, opcjonalne przeliczenie, zmianę od poprzedniego kursu i zakres zapisanych kursów. Kurs dzienny, nie bieżący.",
+      "category": "Rynki",
+      "parameters": {
+        "base": {
+          "label": "Waluta bazowa",
+          "description": "Waluta jednej jednostki jako kod ISO 4217 (EUR, USD, PLN). Domyślnie EUR."
+        },
+        "quote": {
+          "label": "Waluta kwotowana",
+          "description": "Waluta, w której podany jest kurs, jako kod ISO 4217 (USD, PLN, CHF)."
+        },
+        "amount": {
+          "label": "Kwota",
+          "description": "Opcjonalne. Kwota w walucie bazowej do przeliczenia, np. 100 albo 99,50."
+        },
+        "at": {
+          "label": "Czas uruchomienia",
+          "description": "Opcjonalne. W przepływie uruchamianym według harmonogramu: czas wyzwolenia (RRRR-MM-DD GG:MM). Dzięki niemu wtyczka używa zapisanych kursów zamiast pytać ponownie."
+        }
+      },
+      "outputs": {
+        "summary": "Podsumowanie",
+        "base": "Waluta bazowa",
+        "quote": "Waluta kwotowana",
+        "asOf": "Stan na",
+        "pair": "Para",
+        "rate": "Kurs (tekst dziesiętny)",
+        "rateDate": "Data kursu referencyjnego",
+        "amount": "Kwota",
+        "converted": "Kwota po przeliczeniu",
+        "previousRate": "Poprzedni kurs",
+        "previousDate": "Data poprzedniego kursu",
+        "change": "Zmiana od poprzedniego kursu",
+        "changePercent": "Zmiana w procentach",
+        "direction": "Kierunek (up, down, flat)",
+        "min": "Najniższy zapisany kurs",
+        "max": "Najwyższy zapisany kurs",
+        "trend": "Trend zapisanych kursów",
+        "historyCount": "Liczba zapisanych kursów",
+        "historyFrom": "Data najstarszego zapisanego kursu",
+        "cross": "Kurs krzyżowy (wyliczony z kursów euro)",
+        "delayed": "Opóźnione (kurs dzienny, nie bieżący)",
+        "stale": "Nieaktualne",
+        "source": "Źródło",
+        "attribution": "Źródło danych",
+        "fetchedAt": "Pobrano (UTC)",
+        "ageMinutes": "Wiek w minutach",
+        "problem": "Problem"
+      }
+    },
+    "change": {
+      "name": "Zmiana kursu",
+      "description": "Podaje, jak zmienił się kurs referencyjny EBC dla pary w ciągu ostatnich 1-20 dni roboczych EBC, w jednostkach i w procentach.",
+      "category": "Rynki",
+      "parameters": {
+        "base": {
+          "label": "Waluta bazowa",
+          "description": "Waluta jednej jednostki jako kod ISO 4217 (EUR, USD, PLN). Domyślnie EUR."
+        },
+        "quote": {
+          "label": "Waluta kwotowana",
+          "description": "Waluta, w której podany jest kurs, jako kod ISO 4217 (USD, PLN, CHF)."
+        },
+        "days": {
+          "label": "Dni robocze",
+          "description": "Z iloma dniami roboczymi EBC wstecz porównać, 1-20."
+        },
+        "at": {
+          "label": "Czas uruchomienia",
+          "description": "Opcjonalne. W przepływie uruchamianym według harmonogramu: czas wyzwolenia (RRRR-MM-DD GG:MM). Dzięki niemu wtyczka używa zapisanych kursów zamiast pytać ponownie."
+        }
+      },
+      "outputs": {
+        "summary": "Podsumowanie",
+        "pair": "Para",
+        "rate": "Kurs (tekst dziesiętny)",
+        "rateDate": "Data kursu referencyjnego",
+        "fromRate": "Kurs na początku",
+        "fromDate": "Data na początku",
+        "days": "Dni robocze",
+        "change": "Zmiana",
+        "changePercent": "Zmiana w procentach",
+        "direction": "Kierunek (up, down, flat)",
+        "cross": "Kurs krzyżowy (wyliczony z kursów euro)",
+        "delayed": "Opóźnione (kurs dzienny, nie bieżący)",
+        "stale": "Nieaktualne",
+        "source": "Źródło",
+        "attribution": "Źródło danych",
+        "fetchedAt": "Pobrano (UTC)",
+        "ageMinutes": "Wiek w minutach",
+        "problem": "Problem"
+      }
+    },
+    "check-alert": {
+      "name": "Sprawdź alert",
+      "description": "Porównuje kurs referencyjny EBC dla pary z Twoim progiem i powiadamia raz za każdym razem, gdy kurs go przekroczy. Nieaktualne kursy nie są porównywane.",
+      "category": "Rynki",
+      "parameters": {
+        "base": {
+          "label": "Waluta bazowa",
+          "description": "Waluta jednej jednostki jako kod ISO 4217 (EUR, USD, PLN). Domyślnie EUR."
+        },
+        "quote": {
+          "label": "Waluta kwotowana",
+          "description": "Waluta, w której podany jest kurs, jako kod ISO 4217 (USD, PLN, CHF)."
+        },
+        "condition": {
+          "label": "Warunek",
+          "description": "above: powiadom, gdy kurs jest równy progowi lub wyższy. below: gdy jest równy lub niższy."
+        },
+        "threshold": {
+          "label": "Próg",
+          "description": "Kurs, z którym porównać, np. 1.10 albo 4,35."
+        },
+        "at": {
+          "label": "Czas uruchomienia",
+          "description": "Opcjonalne. W przepływie uruchamianym według harmonogramu: czas wyzwolenia (RRRR-MM-DD GG:MM). Dzięki niemu wtyczka używa zapisanych kursów zamiast pytać ponownie."
+        }
+      },
+      "outputs": {
+        "summary": "Podsumowanie",
+        "pair": "Para",
+        "rate": "Kurs (tekst dziesiętny)",
+        "rateDate": "Data kursu referencyjnego",
+        "condition": "Warunek",
+        "threshold": "Próg",
+        "triggered": "Warunek spełniony",
+        "crossed": "Przekroczony teraz",
+        "notified": "Powiadomiono",
+        "evaluated": "Sprawdzono",
+        "notification": "Problem z powiadomieniem",
+        "cross": "Kurs krzyżowy (wyliczony z kursów euro)",
+        "delayed": "Opóźnione (kurs dzienny, nie bieżący)",
+        "stale": "Nieaktualne",
+        "source": "Źródło",
+        "attribution": "Źródło danych",
+        "fetchedAt": "Pobrano (UTC)",
+        "ageMinutes": "Wiek w minutach",
+        "problem": "Problem"
+      }
+    },
+    "forget": {
+      "name": "Zapomnij zapisane dane",
+      "description": "Usuwa zapisane kursy i stan wszystkich alertów oraz czyści zmienne wtyczki. Ustawienia się nie zmieniają.",
+      "category": "Rynki"
+    }
+  },
+  "variables": {
+    "pair": {
+      "name": "Para",
+      "description": "Para z ostatniego uruchomienia Kursu wymiany, np. EUR/USD."
+    },
+    "rate": {
+      "name": "Kurs",
+      "description": "Kurs referencyjny EBC z ostatniego uruchomienia Kursu wymiany jako tekst dziesiętny."
+    },
+    "rateDate": {
+      "name": "Data kursu",
+      "description": "Dzień, którego dotyczy ten kurs (RRRR-MM-DD)."
+    },
+    "changePercent": {
+      "name": "Zmiana w procentach",
+      "description": "Zmiana od poprzedniego kursu EBC w procentach, np. -0.34; pusta bez poprzedniego kursu."
+    },
+    "summary": {
+      "name": "Podsumowanie",
+      "description": "Jedno zdanie o kursie; zaczyna się od [nieaktualne] (po angielsku [stale]), gdy kurs nie jest na pewno aktualny."
+    },
+    "stale": {
+      "name": "Nieaktualne",
+      "description": "Prawda, gdy ostatnie uruchomienie akcji kursowej się nie powiodło albo mogło podać tylko zapisane kursy, które nie są na pewno aktualne."
+    },
+    "history": {
+      "name": "Historia",
+      "description": "Zapisane kursy pary z ostatniego uruchomienia Kursu wymiany, od najstarszego: data i kurs, najwyżej 32."
+    },
+    "alertTriggered": {
+      "name": "Warunek alertu spełniony",
+      "description": "Czy warunek ostatnio sprawdzonego alertu był spełniony."
+    }
+  },
+  "settings": {
+    "language": {
+      "label": "Język tekstów",
+      "description": "Język komunikatów i powiadomień: en (angielski) lub pl (polski)."
+    },
+    "desktop": {
+      "label": "Powiadomienia na pulpicie",
+      "description": "Pokazuje alert jako powiadomienie systemu operacyjnego. macOS i Windows mogą zapytać o zgodę."
+    },
+    "statusBar": {
+      "label": "Pasek stanu",
+      "description": "Pokazuje alerty także na pasku stanu, gdy DeckPilot jest otwarty."
+    }
+  },
+  "errorCodes": {
+    "unknown-currency": "EBC nie publikuje kursu referencyjnego tej waluty albo Frankfurter jej nie zna.",
+    "invalid-amount": "Kwota nie jest liczbą dodatnią.",
+    "invalid-threshold": "Próg nie jest liczbą dodatnią.",
+    "not-enough-history": "Zapisanych kursów jest mniej niż żądanych dni roboczych.",
+    "provider-error": "Frankfurter odpowiedział błędem i nie można było pokazać zapisanych kursów.",
+    "invalid-response": "Nie można odczytać odpowiedzi Frankfurtera i nie można było pokazać zapisanych kursów.",
+    "response-too-large": "Odpowiedź Frankfurtera była większa, niż wtyczka przyjmuje.",
+    "timed-out": "Frankfurter nie odpowiedział na czas i nie można było pokazać zapisanych kursów."
+  }
+}
