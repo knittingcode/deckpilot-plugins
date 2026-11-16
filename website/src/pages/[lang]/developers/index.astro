@@ -1,0 +1,125 @@
+---
+import { ArrowRight, Boxes, FlaskConical, FileCode } from '@lucide/astro';
+import Button from '@/components/Button.astro';
+import Card from '@/components/Card.astro';
+import CodeBlock from '@/components/CodeBlock.astro';
+import GitHubMark from '@/components/GitHubMark.astro';
+import Notice from '@/components/Notice.astro';
+import Section from '@/components/Section.astro';
+import { LINKS } from '@/data/site';
+import { langPaths, t, type Lang } from '@/i18n';
+import Base from '@/layouts/Base.astro';
+import { docsOf, grouped, slugOf } from '@/lib/docs';
+import { page } from '@/lib/paths';
+import { HELLO_WORLD_RS } from '@/lib/sample';
+
+export const getStaticPaths = langPaths;
+const lang = Astro.params.lang as Lang;
+const dict = t(lang);
+const d = dict.developers;
+const docs = await docsOf(lang);
+const factIcons = [Boxes, FileCode, FlaskConical];
+---
+
+<Base lang={lang} title={d.metaTitle} description={d.description}>
+  <section class="hero" aria-labelledby="dev-title">
+    <div class="container grid items-center gap-12 py-16 md:py-20 lg:grid-cols-2">
+      <div>
+        <span class="eyebrow">{dict.nav.developers}</span>
+        <h1 class="section-title !text-[length:var(--text-4xl)]" id="dev-title">{d.title}</h1>
+        <p class="section-lead">{d.lead}</p>
+        <div class="mt-8 flex flex-wrap gap-3">
+          <Button href={page(lang, 'docs/getting-started')}>{d.primary}<ArrowRight aria-hidden="true" /></Button>
+          <Button href={LINKS.appExamples} variant="secondary" external><GitHubMark />{d.secondary}</Button>
+        </div>
+      </div>
+      <div class="min-w-0">
+        <CodeBlock code={HELLO_WORLD_RS} lang="rust" title={dict.home.build.codeTitle} locale={lang} class="!my-0 shadow-lg" />
+      </div>
+    </div>
+  </section>
+
+  <Section id="status" narrow class="!pb-0">
+    <Notice>
+      <strong>{dict.docs.statusTitle}.</strong>{' '}
+      {dict.docs.status}
+    </Notice>
+  </Section>
+
+  <Section id="basics">
+    <ul class="grid list-none gap-5 p-0 md:grid-cols-3">
+      {
+        d.facts.map((fact, i) => {
+          const Icon = factIcons[i]!;
+          return (
+            <Card as="li" title={fact.title} headingLevel={2}>
+              <span slot="icon" class="icon-tile" aria-hidden="true"><Icon /></span>
+              <p class="card-text">{fact.text}</p>
+            </Card>
+          );
+        })
+      }
+    </ul>
+    <div class="card mt-5">
+      <h2 class="card-title">{d.obtainTitle}</h2>
+      <p class="card-text max-w-3xl">{d.obtain}</p>
+      <p class="mt-4">
+        <a class="link-arrow" href={page(lang, 'docs/getting-started')}>{d.obtainLink}<ArrowRight aria-hidden="true" /></a>
+      </p>
+    </div>
+  </Section>
+
+  <Section id="path" title={d.pathTitle} lead={d.pathLead} alt>
+    <ol class="steps !grid-cols-1 sm:!grid-cols-2 lg:!grid-cols-5">
+      {
+        d.path.map((step) => (
+          <li class="card card-link step">
+            <h3 class="card-title">
+              <a class="card-cover" href={page(lang, `docs/${step.doc}`)}>{step.title}</a>
+            </h3>
+            <p class="card-text text-sm">{step.text}</p>
+          </li>
+        ))
+      }
+    </ol>
+  </Section>
+
+  <Section id="topics" title={d.topicsTitle} lead={d.topicsLead}>
+    <div class="grid gap-10 md:grid-cols-2 lg:grid-cols-3">
+      {
+        grouped(docs).map(({ group, docs: pages }) => (
+          <div>
+            <h3 class="text-lg">{dict.docs.groups[group]}</h3>
+            <ul class="mt-3 grid list-none gap-3 p-0">
+              {pages.map((doc) => (
+                <li>
+                  <a class="font-semibold" href={page(lang, `docs/${slugOf(doc)}`)}>{doc.data.title}</a>
+                  <p class="mt-0.5 text-sm text-muted">{doc.data.description}</p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))
+      }
+    </div>
+  </Section>
+
+  <Section id="examples" title={d.examplesTitle} lead={d.examplesLead} alt>
+    <ul class="grid list-none gap-5 p-0 md:grid-cols-3">
+      {
+        d.examples.map((example) => (
+          <Card as="li" title={example.name} href={`${LINKS.appExamples}/${example.name}`} external class="[&_.card-title]:font-mono">
+            <p class="card-text text-sm">{example.text}</p>
+          </Card>
+        ))
+      }
+    </ul>
+  </Section>
+
+  <Section id="help" title={d.helpTitle} lead={d.help} narrow>
+    <div class="flex flex-wrap gap-3">
+      <Button href={LINKS.issues} variant="secondary" external><GitHubMark />{d.helpIssues}</Button>
+      <Button href={page(lang, 'community#reporting')} variant="ghost">{d.helpSecurity}<ArrowRight aria-hidden="true" /></Button>
+    </div>
+  </Section>
+</Base>
