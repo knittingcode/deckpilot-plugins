@@ -8,6 +8,8 @@ export const REPO_APP = 'https://github.com/knittingcode/deckpilot';
 
 export const LINKS = {
   app: REPO_APP,
+  /** The product website; append the language (`en/`, `pl/`). */
+  appSite: 'https://knittingcode.github.io/deckpilot/',
   appReleases: `${REPO_APP}/releases`,
   appSecurity: `${REPO_APP}/security/advisories/new`,
   appSdkDocs: `${REPO_APP}/tree/main/docs/marketplace/sdk`,

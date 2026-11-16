@@ -32,6 +32,7 @@ const idsOf = (file) => {
 };
 const decode = (text) => text.replace(/&amp;/g, '&').replace(/&#38;/g, '&').replace(/&#x26;/g, '&');
 
+const SIBLING_SITES = ['/deckpilot/'];
 const problems = [];
 const externals = new Map();
 let checked = 0;
@@ -49,6 +50,14 @@ for (const file of pages) {
     const url = new URL(ref, pageUrl);
     if (url.origin !== ORIGIN) {
       if (url.protocol !== 'https:') problems.push(`${rel}: ${ref} is not https`);
+      const list = externals.get(url.href.split('#')[0]) ?? [];
+      list.push(rel);
+      externals.set(url.href.split('#')[0], list);
+      continue;
+    }
+    // The product website is a sibling Pages site on the same origin; it
+    // is linked like an external site and not checked against this build.
+    if (SIBLING_SITES.some((base) => url.pathname.startsWith(base))) {
       const list = externals.get(url.href.split('#')[0]) ?? [];
       list.push(rel);
       externals.set(url.href.split('#')[0], list);

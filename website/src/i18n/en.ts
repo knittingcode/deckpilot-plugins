@@ -56,6 +56,7 @@ export const en = {
     docs: 'Documentation',
     gettingStarted: 'Getting started',
     submit: 'Submit a plugin',
+    website: 'DeckPilot website',
     deckpilot: 'DeckPilot on GitHub',
     registryRepo: 'Registry repository',
     contributing: 'Contributing guide',
