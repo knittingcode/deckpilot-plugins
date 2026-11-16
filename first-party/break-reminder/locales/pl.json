@@ -1,0 +1,196 @@
+{
+  "name": "Przerwy i nawodnienie",
+  "description": "Przypomina o przerwach i piciu wody, z odkładaniem, pomijaniem, wstrzymywaniem i godzinami ciszy. Nie ma własnego zegara: dodany przez Ciebie przepływ pracy uruchamia akcję Takt co minutę.",
+  "permissions": {
+    "notifications": "Pokazuje przypomnienia o przerwie i o wodzie, na pulpicie lub na pasku stanu, zgodnie z ustawieniami tej wtyczki."
+  },
+  "actions": {
+    "tick": {
+      "name": "Takt",
+      "description": "Przesuwa odliczanie do podanego czasu i pokazuje przypomnienia, na które przyszła pora. Uruchamiaj z przepływu pracy z harmonogramem „co minutę”; to jedyny zegar wtyczki.",
+      "category": "Przerwy i nawodnienie",
+      "parameters": {
+        "firedAt": {
+          "label": "Data i godzina",
+          "description": "„Data i godzina” wyzwalacza harmonogramu (RRRR-MM-DD GG:MM), przekazana przez wejście przepływu pracy."
+        }
+      },
+      "outputs": {
+        "state": "Stan",
+        "breakRemaining": "Minuty do przerwy",
+        "hydrationRemaining": "Minuty do wody",
+        "reminder": "Przypomnienie do pokazania",
+        "notified": "Pokazano powiadomienie",
+        "reason": "Dlaczego nie pokazano"
+      }
+    },
+    "snooze": {
+      "name": "Odłóż",
+      "description": "Pokazuje przypomnienie ponownie za podaną liczbę minut, liczoną od następnego taktu.",
+      "category": "Przerwy i nawodnienie",
+      "parameters": {
+        "minutes": {
+          "label": "Minuty",
+          "description": "Jak długo czekać."
+        },
+        "reminder": {
+          "label": "Przypomnienie",
+          "description": "Które przypomnienie; „last” to pokazane ostatnio."
+        }
+      },
+      "outputs": {
+        "state": "Stan",
+        "breakRemaining": "Minuty do przerwy",
+        "hydrationRemaining": "Minuty do wody"
+      }
+    },
+    "skip": {
+      "name": "Pomiń następne",
+      "description": "Pomija następne przypomnienie: gdy przyjdzie na nie pora, nic się nie pokaże, a odliczanie zacznie się od nowa.",
+      "category": "Przerwy i nawodnienie",
+      "parameters": {
+        "reminder": {
+          "label": "Przypomnienie",
+          "description": "Które przypomnienie pominąć jeden raz."
+        }
+      },
+      "outputs": {
+        "state": "Stan",
+        "breakRemaining": "Minuty do przerwy",
+        "hydrationRemaining": "Minuty do wody"
+      }
+    },
+    "restart": {
+      "name": "Zacznij odliczanie od nowa",
+      "description": "Zaczyna odliczanie od pełnego odstępu, na przykład po przerwie zrobionej z własnej inicjatywy.",
+      "category": "Przerwy i nawodnienie",
+      "parameters": {
+        "reminder": {
+          "label": "Przypomnienie",
+          "description": "Które odliczanie zacząć od nowa."
+        }
+      },
+      "outputs": {
+        "state": "Stan",
+        "breakRemaining": "Minuty do przerwy",
+        "hydrationRemaining": "Minuty do wody"
+      }
+    },
+    "pause": {
+      "name": "Wstrzymaj",
+      "description": "Zatrzymuje odliczanie i przypomnienia do wznowienia albo na podaną liczbę minut.",
+      "category": "Przerwy i nawodnienie",
+      "parameters": {
+        "minutes": {
+          "label": "Minuty",
+          "description": "0 wstrzymuje do wznowienia; w innym wypadku przypomnienia wznowią się same."
+        }
+      },
+      "outputs": {
+        "state": "Stan",
+        "breakRemaining": "Minuty do przerwy",
+        "hydrationRemaining": "Minuty do wody",
+        "paused": "Wstrzymane"
+      }
+    },
+    "resume": {
+      "name": "Wznów",
+      "description": "Kontynuuje odliczanie od miejsca, w którym się zatrzymało.",
+      "category": "Przerwy i nawodnienie",
+      "outputs": {
+        "state": "Stan",
+        "breakRemaining": "Minuty do przerwy",
+        "hydrationRemaining": "Minuty do wody",
+        "paused": "Wstrzymane"
+      }
+    },
+    "toggle-pause": {
+      "name": "Wstrzymaj lub wznów",
+      "description": "Wstrzymuje przypomnienia albo wznawia je, gdy są wstrzymane: jeden klawisz do obu.",
+      "category": "Przerwy i nawodnienie",
+      "outputs": {
+        "state": "Stan",
+        "breakRemaining": "Minuty do przerwy",
+        "hydrationRemaining": "Minuty do wody",
+        "paused": "Wstrzymane"
+      }
+    },
+    "status": {
+      "name": "Stan",
+      "description": "Podaje minuty do następnego przypomnienia o przerwie i o wodzie oraz to, czy przypomnienia są wstrzymane lub trwają godziny ciszy, według ostatniego taktu.",
+      "category": "Przerwy i nawodnienie",
+      "outputs": {
+        "state": "Stan",
+        "breakRemaining": "Minuty do przerwy",
+        "hydrationRemaining": "Minuty do wody",
+        "paused": "Wstrzymane",
+        "quietHours": "Godziny ciszy",
+        "pauseRemaining": "Pozostało minut wstrzymania",
+        "breaksToday": "Przypomnienia o przerwie dzisiaj",
+        "hydrationToday": "Przypomnienia o wodzie dzisiaj",
+        "lastTick": "Ostatni takt"
+      }
+    }
+  },
+  "variables": {
+    "state": {
+      "name": "Stan",
+      "description": "waiting (jeszcze bez taktu), running, paused albo quiet, po ostatniej akcji wtyczki."
+    },
+    "breakRemaining": {
+      "name": "Minuty do przerwy",
+      "description": "Minuty do następnego przypomnienia o przerwie; bez wartości, gdy przypomnienia o przerwie są wyłączone."
+    },
+    "hydrationRemaining": {
+      "name": "Minuty do wody",
+      "description": "Minuty do następnego przypomnienia o wodzie; bez wartości, gdy przypomnienia o wodzie są wyłączone."
+    }
+  },
+  "settings": {
+    "breakEnabled": {
+      "label": "Przypomnienia o przerwie",
+      "description": "Przypomina o zrobieniu przerwy."
+    },
+    "breakMinutes": {
+      "label": "Minuty między przerwami",
+      "description": "Jak długo pracujesz do przypomnienia o przerwie."
+    },
+    "hydrationEnabled": {
+      "label": "Przypomnienia o wodzie",
+      "description": "Przypomina o piciu wody."
+    },
+    "hydrationMinutes": {
+      "label": "Minuty między przypomnieniami o wodzie",
+      "description": "Ile czasu mija między dwoma przypomnieniami o piciu wody."
+    },
+    "quietStart": {
+      "label": "Godziny ciszy od",
+      "description": "Godzina, na przykład 22:00. Od niej do „Godziny ciszy do” nic się nie pokazuje, a odliczanie czeka. Puste: bez godzin ciszy."
+    },
+    "quietEnd": {
+      "label": "Godziny ciszy do",
+      "description": "Godzina, na przykład 07:00; może być następnego dnia."
+    },
+    "awayMinutes": {
+      "label": "Nieobecność po (minuty)",
+      "description": "Tak długa pauza między dwoma taktami (komputer spał, DeckPilot był zablokowany) liczy się jako przerwa: oba odliczania zaczynają się od nowa i nic nie jest pokazywane za pominięty czas."
+    },
+    "language": {
+      "label": "Język przypomnień",
+      "description": "Język powiadomień."
+    },
+    "desktop": {
+      "label": "Powiadomienia na pulpicie",
+      "description": "Pokazuje przypomnienia jako powiadomienia systemu operacyjnego. macOS i Windows mogą zapytać o zgodę."
+    },
+    "statusBar": {
+      "label": "Pasek stanu",
+      "description": "Wymienia przypomnienia także na pasku stanu, gdy DeckPilot jest otwarty."
+    }
+  },
+  "errorCodes": {
+    "invalid-fired-at": "Czas przekazany do akcji Takt nie jest datą i godziną wyzwalacza harmonogramu (RRRR-MM-DD GG:MM).",
+    "invalid-settings": "Godziny ciszy w ustawieniach wtyczki nie są godzinami takimi jak 22:00 albo ustawiono tylko jedną z dwóch.",
+    "storage-unavailable": "Nie udało się odczytać lub zapisać stanu przypomnień; akcję można uruchomić ponownie."
+  }
+}

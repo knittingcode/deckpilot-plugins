@@ -9,6 +9,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
+name = "deckpilot-break-reminder"
+version = "0.1.0"
+dependencies = [
+ "deckpilot-plugin-sdk",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "deckpilot-plugin-abi"
 version = "0.1.0"
 source = "git+https://github.com/knittingcode/deckpilot?rev=dc1a8a2ee190df080377ab372c33eafb3c1f55a0#dc1a8a2ee190df080377ab372c33eafb3c1f55a0"
