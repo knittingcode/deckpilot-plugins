@@ -1,0 +1,950 @@
+{
+  "$schema": "https://knittingcode.github.io/deckpilot-plugins/v1/schemas/plugin-manifest.schema.json",
+  "manifestVersion": 1,
+  "id": "deckpilot.pomodoro",
+  "name": "Pomodoro",
+  "version": "0.1.0",
+  "publisher": {
+    "id": "deckpilot",
+    "name": "DeckPilot",
+    "url": "https://github.com/knittingcode/deckpilot"
+  },
+  "description": "A focus timer with short and long breaks, notifications at the end of each phase and session statistics. It has no timer of its own: a workflow you add runs its Tick action every minute. A key cannot show the countdown yet.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/knittingcode/deckpilot-plugins",
+    "directory": "first-party/pomodoro"
+  },
+  "license": "Apache-2.0",
+  "keywords": [
+    "pomodoro",
+    "focus",
+    "timer",
+    "break",
+    "productivity"
+  ],
+  "categories": [
+    "productivity"
+  ],
+  "engines": {
+    "deckpilot": ">=0.6.0 <1.0.0",
+    "pluginApi": "^1.0",
+    "sdk": "0.1.0"
+  },
+  "runtime": {
+    "kind": "wasm",
+    "abi": 1
+  },
+  "entry": "src/lib.rs",
+  "icons": {
+    "128": "assets/icon-128.png"
+  },
+  "assets": {
+    "readme": "README.md"
+  },
+  "permissions": [
+    {
+      "kind": "notifications",
+      "routing": {
+        "desktop": "desktop",
+        "statusBar": "statusBar"
+      },
+      "justification": "Shows a notification when a focus session or a break ends, on the desktop or in the status bar as you choose in this plugin's settings."
+    }
+  ],
+  "contributes": {
+    "actions": [
+      {
+        "id": "tick",
+        "name": "Tick",
+        "description": "Advances the countdown to the given time and, when a phase ends, shows a notification and goes on to the next phase. Run it from a workflow with an every-minute schedule; it is the plugin's only clock.",
+        "category": "Pomodoro",
+        "parameters": [
+          {
+            "key": "firedAt",
+            "label": "Date and time",
+            "description": "The schedule trigger's “Date and time” (YYYY-MM-DD HH:MM), passed through a workflow input.",
+            "required": true,
+            "kind": {
+              "type": "text",
+              "multiline": false,
+              "maxLength": 32
+            }
+          }
+        ],
+        "node": {
+          "version": 1,
+          "icon": "timer",
+          "outputs": [
+            {
+              "key": "state",
+              "label": "Timer state",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "phase",
+              "label": "Phase",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "remaining",
+              "label": "Minutes left",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "session",
+              "label": "Focus session in the cycle",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "completedToday",
+              "label": "Focus sessions today",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "focusMinutesToday",
+              "label": "Focus minutes today",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "completedTotal",
+              "label": "Focus sessions in total",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "focusMinutesTotal",
+              "label": "Focus minutes in total",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "ended",
+              "label": "Phase that ended",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "notified",
+              "label": "Notification shown",
+              "kind": "boolean",
+              "always": true
+            },
+            {
+              "key": "away",
+              "label": "Paused by a long pause between ticks",
+              "kind": "boolean",
+              "always": true
+            },
+            {
+              "key": "reason",
+              "label": "Why not shown",
+              "kind": "text",
+              "always": false
+            }
+          ],
+          "timeoutMs": 10000,
+          "retrySafe": false,
+          "idempotent": false,
+          "effect": "modifies"
+        }
+      },
+      {
+        "id": "start",
+        "name": "Start",
+        "description": "Starts the countdown of the current phase, or continues a paused one. The minutes are counted by the ticks that follow.",
+        "category": "Pomodoro",
+        "parameters": [],
+        "node": {
+          "version": 1,
+          "icon": "play",
+          "outputs": [
+            {
+              "key": "state",
+              "label": "Timer state",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "phase",
+              "label": "Phase",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "remaining",
+              "label": "Minutes left",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "session",
+              "label": "Focus session in the cycle",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "completedToday",
+              "label": "Focus sessions today",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "focusMinutesToday",
+              "label": "Focus minutes today",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "completedTotal",
+              "label": "Focus sessions in total",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "focusMinutesTotal",
+              "label": "Focus minutes in total",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "changed",
+              "label": "Changed something",
+              "kind": "boolean",
+              "always": true
+            }
+          ],
+          "timeoutMs": 10000,
+          "retrySafe": false,
+          "idempotent": true,
+          "effect": "modifies"
+        }
+      },
+      {
+        "id": "pause",
+        "name": "Pause",
+        "description": "Stops the countdown where it is until you resume or start it.",
+        "category": "Pomodoro",
+        "parameters": [],
+        "node": {
+          "version": 1,
+          "icon": "pause",
+          "outputs": [
+            {
+              "key": "state",
+              "label": "Timer state",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "phase",
+              "label": "Phase",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "remaining",
+              "label": "Minutes left",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "session",
+              "label": "Focus session in the cycle",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "completedToday",
+              "label": "Focus sessions today",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "focusMinutesToday",
+              "label": "Focus minutes today",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "completedTotal",
+              "label": "Focus sessions in total",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "focusMinutesTotal",
+              "label": "Focus minutes in total",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "changed",
+              "label": "Changed something",
+              "kind": "boolean",
+              "always": true
+            }
+          ],
+          "timeoutMs": 10000,
+          "retrySafe": false,
+          "idempotent": true,
+          "effect": "modifies"
+        }
+      },
+      {
+        "id": "resume",
+        "name": "Resume",
+        "description": "Continues a paused countdown. Does nothing when the timer is not paused.",
+        "category": "Pomodoro",
+        "parameters": [],
+        "node": {
+          "version": 1,
+          "icon": "step-forward",
+          "outputs": [
+            {
+              "key": "state",
+              "label": "Timer state",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "phase",
+              "label": "Phase",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "remaining",
+              "label": "Minutes left",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "session",
+              "label": "Focus session in the cycle",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "completedToday",
+              "label": "Focus sessions today",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "focusMinutesToday",
+              "label": "Focus minutes today",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "completedTotal",
+              "label": "Focus sessions in total",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "focusMinutesTotal",
+              "label": "Focus minutes in total",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "changed",
+              "label": "Changed something",
+              "kind": "boolean",
+              "always": true
+            }
+          ],
+          "timeoutMs": 10000,
+          "retrySafe": false,
+          "idempotent": true,
+          "effect": "modifies"
+        }
+      },
+      {
+        "id": "toggle",
+        "name": "Start, pause or resume",
+        "description": "One key for the timer: starts a phase that has not started, pauses a running countdown, resumes a paused one.",
+        "category": "Pomodoro",
+        "parameters": [],
+        "node": {
+          "version": 1,
+          "icon": "circle-play",
+          "outputs": [
+            {
+              "key": "state",
+              "label": "Timer state",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "phase",
+              "label": "Phase",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "remaining",
+              "label": "Minutes left",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "session",
+              "label": "Focus session in the cycle",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "completedToday",
+              "label": "Focus sessions today",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "focusMinutesToday",
+              "label": "Focus minutes today",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "completedTotal",
+              "label": "Focus sessions in total",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "focusMinutesTotal",
+              "label": "Focus minutes in total",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "changed",
+              "label": "Changed something",
+              "kind": "boolean",
+              "always": true
+            }
+          ],
+          "timeoutMs": 10000,
+          "retrySafe": false,
+          "idempotent": false,
+          "effect": "modifies"
+        }
+      },
+      {
+        "id": "skip",
+        "name": "Skip phase",
+        "description": "Ends the current phase now and goes on to the next one, which runs if the timer was running. A skipped focus session is not counted in the statistics.",
+        "category": "Pomodoro",
+        "parameters": [],
+        "node": {
+          "version": 1,
+          "icon": "skip-forward",
+          "outputs": [
+            {
+              "key": "state",
+              "label": "Timer state",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "phase",
+              "label": "Phase",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "remaining",
+              "label": "Minutes left",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "session",
+              "label": "Focus session in the cycle",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "completedToday",
+              "label": "Focus sessions today",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "focusMinutesToday",
+              "label": "Focus minutes today",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "completedTotal",
+              "label": "Focus sessions in total",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "focusMinutesTotal",
+              "label": "Focus minutes in total",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "skipped",
+              "label": "Phase that was skipped",
+              "kind": "text",
+              "always": true
+            }
+          ],
+          "timeoutMs": 10000,
+          "retrySafe": false,
+          "idempotent": false,
+          "effect": "modifies"
+        }
+      },
+      {
+        "id": "reset",
+        "name": "Reset",
+        "description": "Stops the timer and puts the current phase back to its full length, or goes back to the first focus session, or clears the statistics.",
+        "category": "Pomodoro",
+        "parameters": [
+          {
+            "key": "scope",
+            "label": "What to reset",
+            "description": "“phase”: the current phase; “cycle”: back to the first focus session; “statistics”: the counters; “all”: the cycle and the statistics.",
+            "required": false,
+            "kind": {
+              "type": "choice",
+              "options": [
+                "phase",
+                "cycle",
+                "statistics",
+                "all"
+              ]
+            },
+            "default": {
+              "type": "choice",
+              "value": "phase"
+            }
+          }
+        ],
+        "node": {
+          "version": 1,
+          "icon": "rotate-ccw",
+          "outputs": [
+            {
+              "key": "state",
+              "label": "Timer state",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "phase",
+              "label": "Phase",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "remaining",
+              "label": "Minutes left",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "session",
+              "label": "Focus session in the cycle",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "completedToday",
+              "label": "Focus sessions today",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "focusMinutesToday",
+              "label": "Focus minutes today",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "completedTotal",
+              "label": "Focus sessions in total",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "focusMinutesTotal",
+              "label": "Focus minutes in total",
+              "kind": "integer",
+              "always": true
+            }
+          ],
+          "timeoutMs": 10000,
+          "retrySafe": false,
+          "idempotent": true,
+          "effect": "modifies"
+        }
+      },
+      {
+        "id": "status",
+        "name": "Status",
+        "description": "Reports the phase, the minutes left, the focus session and the statistics as of the last tick, and what a key would show. Changes nothing.",
+        "category": "Pomodoro",
+        "parameters": [],
+        "node": {
+          "version": 1,
+          "icon": "info",
+          "outputs": [
+            {
+              "key": "state",
+              "label": "Timer state",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "phase",
+              "label": "Phase",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "remaining",
+              "label": "Minutes left",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "session",
+              "label": "Focus session in the cycle",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "completedToday",
+              "label": "Focus sessions today",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "focusMinutesToday",
+              "label": "Focus minutes today",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "completedTotal",
+              "label": "Focus sessions in total",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "focusMinutesTotal",
+              "label": "Focus minutes in total",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "away",
+              "label": "Paused by a long pause between ticks",
+              "kind": "boolean",
+              "always": true
+            },
+            {
+              "key": "sessionsPerCycle",
+              "label": "Focus sessions in a cycle",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "phaseMinutes",
+              "label": "Length of the phase in minutes",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "progress",
+              "label": "Progress of the phase (0-100)",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "keyLabel",
+              "label": "Key title",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "keyDetail",
+              "label": "Key second line",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "statisticsDate",
+              "label": "Date of today's statistics",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "lastTick",
+              "label": "Last tick",
+              "kind": "text",
+              "always": false
+            }
+          ],
+          "timeoutMs": 10000,
+          "retrySafe": true,
+          "idempotent": true,
+          "effect": "readOnly"
+        }
+      }
+    ],
+    "variables": [
+      {
+        "id": "state",
+        "name": "Timer state",
+        "description": "idle (the phase has not started), running or paused, after the plugin's last action.",
+        "valueType": {
+          "type": "string"
+        },
+        "scope": "machine"
+      },
+      {
+        "id": "phase",
+        "name": "Phase",
+        "description": "focus, shortBreak or longBreak.",
+        "valueType": {
+          "type": "string"
+        },
+        "scope": "machine"
+      },
+      {
+        "id": "remaining",
+        "name": "Minutes left",
+        "description": "Minutes left of the current phase, as of the last tick.",
+        "valueType": {
+          "type": "integer"
+        },
+        "scope": "machine"
+      },
+      {
+        "id": "session",
+        "name": "Focus session in the cycle",
+        "description": "The number of the focus session in the cycle, from 1.",
+        "valueType": {
+          "type": "integer"
+        },
+        "scope": "machine"
+      },
+      {
+        "id": "completedToday",
+        "name": "Focus sessions today",
+        "description": "Focus sessions completed on the date of the last tick. Published by Tick, Status and Reset.",
+        "valueType": {
+          "type": "integer"
+        },
+        "scope": "machine"
+      },
+      {
+        "id": "focusMinutesToday",
+        "name": "Focus minutes today",
+        "description": "Minutes of the focus sessions completed on the date of the last tick.",
+        "valueType": {
+          "type": "integer"
+        },
+        "scope": "machine"
+      },
+      {
+        "id": "completedTotal",
+        "name": "Focus sessions in total",
+        "description": "Focus sessions completed since the plugin was installed or its statistics were reset.",
+        "valueType": {
+          "type": "integer"
+        },
+        "scope": "machine"
+      },
+      {
+        "id": "focusMinutesTotal",
+        "name": "Focus minutes in total",
+        "description": "Minutes of all completed focus sessions.",
+        "valueType": {
+          "type": "integer"
+        },
+        "scope": "machine"
+      }
+    ],
+    "settings": {
+      "portabilityVersion": 1,
+      "fields": [
+        {
+          "key": "focusMinutes",
+          "label": "Focus session (minutes)",
+          "description": "The length of one focus session.",
+          "required": true,
+          "kind": {
+            "type": "integer",
+            "min": 1,
+            "max": 180
+          },
+          "default": {
+            "type": "integer",
+            "value": 25
+          },
+          "portability": "portable"
+        },
+        {
+          "key": "shortBreakMinutes",
+          "label": "Short break (minutes)",
+          "description": "The length of the break after a focus session.",
+          "required": true,
+          "kind": {
+            "type": "integer",
+            "min": 1,
+            "max": 60
+          },
+          "default": {
+            "type": "integer",
+            "value": 5
+          },
+          "portability": "portable"
+        },
+        {
+          "key": "longBreakMinutes",
+          "label": "Long break (minutes)",
+          "description": "The length of the break that ends a cycle.",
+          "required": true,
+          "kind": {
+            "type": "integer",
+            "min": 1,
+            "max": 120
+          },
+          "default": {
+            "type": "integer",
+            "value": 15
+          },
+          "portability": "portable"
+        },
+        {
+          "key": "sessionsBeforeLongBreak",
+          "label": "Focus sessions before a long break",
+          "description": "The break after this many focus sessions is the long one; then the cycle starts again.",
+          "required": true,
+          "kind": {
+            "type": "integer",
+            "min": 1,
+            "max": 12
+          },
+          "default": {
+            "type": "integer",
+            "value": 4
+          },
+          "portability": "portable"
+        },
+        {
+          "key": "autoStartBreaks",
+          "label": "Start breaks automatically",
+          "description": "A break starts counting when the focus session ends. Off: it waits for Start.",
+          "required": true,
+          "kind": {
+            "type": "boolean"
+          },
+          "default": {
+            "type": "boolean",
+            "value": true
+          },
+          "portability": "portable"
+        },
+        {
+          "key": "autoStartFocus",
+          "label": "Start focus sessions automatically",
+          "description": "The next focus session starts counting when the break ends. Off: it waits for Start.",
+          "required": true,
+          "kind": {
+            "type": "boolean"
+          },
+          "default": {
+            "type": "boolean",
+            "value": false
+          },
+          "portability": "portable"
+        },
+        {
+          "key": "awayMinutes",
+          "label": "Away after (minutes)",
+          "description": "A pause this long between two ticks (the computer slept, DeckPilot was locked) is not counted: a running timer is paused where it was instead of finishing phases nobody saw.",
+          "required": true,
+          "kind": {
+            "type": "integer",
+            "min": 3,
+            "max": 120
+          },
+          "default": {
+            "type": "integer",
+            "value": 5
+          },
+          "portability": "portable"
+        },
+        {
+          "key": "language",
+          "label": "Language of notifications",
+          "description": "The language of the notifications.",
+          "required": true,
+          "kind": {
+            "type": "choice",
+            "options": [
+              "en",
+              "pl"
+            ]
+          },
+          "default": {
+            "type": "choice",
+            "value": "en"
+          },
+          "portability": "portable"
+        },
+        {
+          "key": "desktop",
+          "label": "Desktop notifications",
+          "description": "Shows the end of a phase as a notification of the operating system. macOS and Windows may ask whether to allow them.",
+          "required": true,
+          "kind": {
+            "type": "boolean"
+          },
+          "default": {
+            "type": "boolean",
+            "value": true
+          },
+          "portability": "portable"
+        },
+        {
+          "key": "statusBar",
+          "label": "Status bar",
+          "description": "Also lists the notifications in the status bar while DeckPilot is open.",
+          "required": true,
+          "kind": {
+            "type": "boolean"
+          },
+          "default": {
+            "type": "boolean",
+            "value": true
+          },
+          "portability": "portable"
+        }
+      ]
+    },
+    "errorCodes": {
+      "invalid-fired-at": "The time passed to Tick is not the schedule trigger's date and time (YYYY-MM-DD HH:MM).",
+      "storage-unavailable": "The timer state could not be read or saved; the action can be run again."
+    }
+  }
+}

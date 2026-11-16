@@ -48,6 +48,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "deckpilot-pomodoro"
+version = "0.1.0"
+dependencies = [
+ "deckpilot-plugin-sdk",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "deckpilot-template"
 version = "0.1.0"
 dependencies = [

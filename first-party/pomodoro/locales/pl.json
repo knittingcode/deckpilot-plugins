@@ -1,0 +1,238 @@
+{
+  "name": "Pomodoro",
+  "description": "Minutnik skupienia z krótkimi i długimi przerwami, powiadomieniami na koniec każdej fazy i statystykami sesji. Nie ma własnego zegara: dodany przez Ciebie przepływ pracy uruchamia akcję Takt co minutę. Klawisz nie pokazuje jeszcze odliczania.",
+  "permissions": {
+    "notifications": "Pokazuje powiadomienie, gdy kończy się sesja skupienia lub przerwa, na pulpicie lub na pasku stanu, zgodnie z ustawieniami tej wtyczki."
+  },
+  "actions": {
+    "tick": {
+      "name": "Takt",
+      "description": "Przesuwa odliczanie do podanego czasu, a gdy faza się kończy, pokazuje powiadomienie i przechodzi do następnej. Uruchamiaj z przepływu pracy z harmonogramem „co minutę”; to jedyny zegar wtyczki.",
+      "category": "Pomodoro",
+      "parameters": {
+        "firedAt": {
+          "label": "Data i godzina",
+          "description": "„Data i godzina” wyzwalacza harmonogramu (RRRR-MM-DD GG:MM), przekazana przez wejście przepływu pracy."
+        }
+      },
+      "outputs": {
+        "state": "Stan minutnika",
+        "phase": "Faza",
+        "remaining": "Pozostałe minuty",
+        "session": "Sesja skupienia w cyklu",
+        "completedToday": "Sesje skupienia dzisiaj",
+        "focusMinutesToday": "Minuty skupienia dzisiaj",
+        "completedTotal": "Sesje skupienia łącznie",
+        "focusMinutesTotal": "Minuty skupienia łącznie",
+        "ended": "Zakończona faza",
+        "notified": "Pokazano powiadomienie",
+        "away": "Wstrzymany przez długą przerwę między taktami",
+        "reason": "Dlaczego nie pokazano"
+      }
+    },
+    "start": {
+      "name": "Start",
+      "description": "Uruchamia odliczanie bieżącej fazy albo wznawia wstrzymane. Minuty odliczają kolejne takty.",
+      "category": "Pomodoro",
+      "outputs": {
+        "state": "Stan minutnika",
+        "phase": "Faza",
+        "remaining": "Pozostałe minuty",
+        "session": "Sesja skupienia w cyklu",
+        "completedToday": "Sesje skupienia dzisiaj",
+        "focusMinutesToday": "Minuty skupienia dzisiaj",
+        "completedTotal": "Sesje skupienia łącznie",
+        "focusMinutesTotal": "Minuty skupienia łącznie",
+        "changed": "Coś zmieniono"
+      }
+    },
+    "pause": {
+      "name": "Wstrzymaj",
+      "description": "Zatrzymuje odliczanie w miejscu, dopóki go nie wznowisz lub nie uruchomisz.",
+      "category": "Pomodoro",
+      "outputs": {
+        "state": "Stan minutnika",
+        "phase": "Faza",
+        "remaining": "Pozostałe minuty",
+        "session": "Sesja skupienia w cyklu",
+        "completedToday": "Sesje skupienia dzisiaj",
+        "focusMinutesToday": "Minuty skupienia dzisiaj",
+        "completedTotal": "Sesje skupienia łącznie",
+        "focusMinutesTotal": "Minuty skupienia łącznie",
+        "changed": "Coś zmieniono"
+      }
+    },
+    "resume": {
+      "name": "Wznów",
+      "description": "Wznawia wstrzymane odliczanie. Nic nie robi, gdy minutnik nie jest wstrzymany.",
+      "category": "Pomodoro",
+      "outputs": {
+        "state": "Stan minutnika",
+        "phase": "Faza",
+        "remaining": "Pozostałe minuty",
+        "session": "Sesja skupienia w cyklu",
+        "completedToday": "Sesje skupienia dzisiaj",
+        "focusMinutesToday": "Minuty skupienia dzisiaj",
+        "completedTotal": "Sesje skupienia łącznie",
+        "focusMinutesTotal": "Minuty skupienia łącznie",
+        "changed": "Coś zmieniono"
+      }
+    },
+    "toggle": {
+      "name": "Start, pauza lub wznowienie",
+      "description": "Jeden klawisz dla minutnika: uruchamia nierozpoczętą fazę, wstrzymuje trwające odliczanie, wznawia wstrzymane.",
+      "category": "Pomodoro",
+      "outputs": {
+        "state": "Stan minutnika",
+        "phase": "Faza",
+        "remaining": "Pozostałe minuty",
+        "session": "Sesja skupienia w cyklu",
+        "completedToday": "Sesje skupienia dzisiaj",
+        "focusMinutesToday": "Minuty skupienia dzisiaj",
+        "completedTotal": "Sesje skupienia łącznie",
+        "focusMinutesTotal": "Minuty skupienia łącznie",
+        "changed": "Coś zmieniono"
+      }
+    },
+    "skip": {
+      "name": "Pomiń fazę",
+      "description": "Kończy bieżącą fazę od razu i przechodzi do następnej, która biegnie, jeśli minutnik biegł. Pominięta sesja skupienia nie liczy się do statystyk.",
+      "category": "Pomodoro",
+      "outputs": {
+        "state": "Stan minutnika",
+        "phase": "Faza",
+        "remaining": "Pozostałe minuty",
+        "session": "Sesja skupienia w cyklu",
+        "completedToday": "Sesje skupienia dzisiaj",
+        "focusMinutesToday": "Minuty skupienia dzisiaj",
+        "completedTotal": "Sesje skupienia łącznie",
+        "focusMinutesTotal": "Minuty skupienia łącznie",
+        "skipped": "Pominięta faza"
+      }
+    },
+    "reset": {
+      "name": "Wyzeruj",
+      "description": "Zatrzymuje minutnik i przywraca bieżącej fazie pełną długość albo wraca do pierwszej sesji skupienia, albo czyści statystyki.",
+      "category": "Pomodoro",
+      "parameters": {
+        "scope": {
+          "label": "Co wyzerować",
+          "description": "„phase”: bieżąca faza; „cycle”: powrót do pierwszej sesji skupienia; „statistics”: liczniki; „all”: cykl i statystyki."
+        }
+      },
+      "outputs": {
+        "state": "Stan minutnika",
+        "phase": "Faza",
+        "remaining": "Pozostałe minuty",
+        "session": "Sesja skupienia w cyklu",
+        "completedToday": "Sesje skupienia dzisiaj",
+        "focusMinutesToday": "Minuty skupienia dzisiaj",
+        "completedTotal": "Sesje skupienia łącznie",
+        "focusMinutesTotal": "Minuty skupienia łącznie"
+      }
+    },
+    "status": {
+      "name": "Stan",
+      "description": "Podaje fazę, pozostałe minuty, sesję skupienia i statystyki według ostatniego taktu oraz to, co pokazałby klawisz. Niczego nie zmienia.",
+      "category": "Pomodoro",
+      "outputs": {
+        "state": "Stan minutnika",
+        "phase": "Faza",
+        "remaining": "Pozostałe minuty",
+        "session": "Sesja skupienia w cyklu",
+        "completedToday": "Sesje skupienia dzisiaj",
+        "focusMinutesToday": "Minuty skupienia dzisiaj",
+        "completedTotal": "Sesje skupienia łącznie",
+        "focusMinutesTotal": "Minuty skupienia łącznie",
+        "away": "Wstrzymany przez długą przerwę między taktami",
+        "sessionsPerCycle": "Sesje skupienia w cyklu",
+        "phaseMinutes": "Długość fazy w minutach",
+        "progress": "Postęp fazy (0-100)",
+        "keyLabel": "Tytuł klawisza",
+        "keyDetail": "Drugi wiersz klawisza",
+        "statisticsDate": "Data dzisiejszych statystyk",
+        "lastTick": "Ostatni takt"
+      }
+    }
+  },
+  "variables": {
+    "state": {
+      "name": "Stan minutnika",
+      "description": "idle (faza nierozpoczęta), running (biegnie) lub paused (wstrzymany), po ostatniej akcji wtyczki."
+    },
+    "phase": {
+      "name": "Faza",
+      "description": "focus (skupienie), shortBreak (krótka przerwa) lub longBreak (długa przerwa)."
+    },
+    "remaining": {
+      "name": "Pozostałe minuty",
+      "description": "Minuty pozostałe do końca bieżącej fazy według ostatniego taktu."
+    },
+    "session": {
+      "name": "Sesja skupienia w cyklu",
+      "description": "Numer sesji skupienia w cyklu, od 1."
+    },
+    "completedToday": {
+      "name": "Sesje skupienia dzisiaj",
+      "description": "Sesje skupienia ukończone w dniu ostatniego taktu. Publikują ją akcje Takt, Stan i Wyzeruj."
+    },
+    "focusMinutesToday": {
+      "name": "Minuty skupienia dzisiaj",
+      "description": "Minuty sesji skupienia ukończonych w dniu ostatniego taktu."
+    },
+    "completedTotal": {
+      "name": "Sesje skupienia łącznie",
+      "description": "Sesje skupienia ukończone od instalacji wtyczki lub wyzerowania statystyk."
+    },
+    "focusMinutesTotal": {
+      "name": "Minuty skupienia łącznie",
+      "description": "Minuty wszystkich ukończonych sesji skupienia."
+    }
+  },
+  "settings": {
+    "focusMinutes": {
+      "label": "Sesja skupienia (minuty)",
+      "description": "Długość jednej sesji skupienia."
+    },
+    "shortBreakMinutes": {
+      "label": "Krótka przerwa (minuty)",
+      "description": "Długość przerwy po sesji skupienia."
+    },
+    "longBreakMinutes": {
+      "label": "Długa przerwa (minuty)",
+      "description": "Długość przerwy kończącej cykl."
+    },
+    "sessionsBeforeLongBreak": {
+      "label": "Sesje skupienia przed długą przerwą",
+      "description": "Przerwa po tylu sesjach skupienia jest długa; potem cykl zaczyna się od nowa."
+    },
+    "autoStartBreaks": {
+      "label": "Automatycznie uruchamiaj przerwy",
+      "description": "Przerwa zaczyna się odliczać, gdy kończy się sesja skupienia. Wyłączone: czeka na Start."
+    },
+    "autoStartFocus": {
+      "label": "Automatycznie uruchamiaj sesje skupienia",
+      "description": "Następna sesja skupienia zaczyna się odliczać, gdy kończy się przerwa. Wyłączone: czeka na Start."
+    },
+    "awayMinutes": {
+      "label": "Nieobecność po (minuty)",
+      "description": "Tak długa przerwa między dwoma taktami (komputer spał, DeckPilot był zablokowany) nie jest liczona: biegnący minutnik zostaje wstrzymany tam, gdzie był, zamiast kończyć fazy, których nikt nie widział."
+    },
+    "language": {
+      "label": "Język powiadomień",
+      "description": "Język powiadomień."
+    },
+    "desktop": {
+      "label": "Powiadomienia na pulpicie",
+      "description": "Pokazuje koniec fazy jako powiadomienie systemu operacyjnego. macOS i Windows mogą zapytać o zgodę."
+    },
+    "statusBar": {
+      "label": "Pasek stanu",
+      "description": "Dodatkowo pokazuje powiadomienia na pasku stanu, gdy DeckPilot jest otwarty."
+    }
+  },
+  "errorCodes": {
+    "invalid-fired-at": "Czas przekazany akcji Takt nie jest datą i godziną wyzwalacza harmonogramu (RRRR-MM-DD GG:MM).",
+    "storage-unavailable": "Nie udało się odczytać lub zapisać stanu minutnika; akcję można uruchomić ponownie."
+  }
+}
