@@ -4,3 +4,6 @@
 /releases/
 target/
 *.key
+# Python bytecode (tools/tests import tools/check-submission.py).
+__pycache__/
+*.pyc

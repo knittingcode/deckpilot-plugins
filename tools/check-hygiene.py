@@ -5,7 +5,8 @@
   also base64-wrapped as the Tauri tooling writes them), PEM/OpenSSH private
   keys, and any *.key file.
 * Generated output: site/ (the Pages tree is built by CI, never committed),
-  releases/ and *.dpplugin packages (release assets live in GitHub Releases).
+  releases/ and *.dpplugin packages (release assets live in GitHub Releases),
+  Python bytecode (__pycache__/, *.pyc).
 * keys/ may hold only public trust material: roots.json, <n>.json,
   <n>.json.minisig and README.md.
 
@@ -51,6 +52,8 @@ def main():
             problems.append(f"{path}: key files are never committed")
         if parts and parts[0] in {"site", "releases"}:
             problems.append(f"{path}: generated output ({parts[0]}/) is never committed; CI builds it")
+        if p.suffix == ".pyc" or "__pycache__" in parts:
+            problems.append(f"{path}: Python bytecode is generated, never committed")
         if p.suffix == ".dpplugin":
             problems.append(f"{path}: packages are release assets, never committed")
         if parts and parts[0] == "keys" and not KEYS_ALLOWED.match(path):
