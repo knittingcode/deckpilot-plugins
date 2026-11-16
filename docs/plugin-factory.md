@@ -161,8 +161,9 @@ Checked by running the tool, not only by reading:
 So today a catalog plugin can be **built, tested and packaged under a test
 publisher** (step 3 above copies the manifest with `id` and `publisher.id`
 changed to `deckpilot-test`; the module is the one built from the committed
-source), and **run in a real agent only that way**, from a local test
-registry (`docs/marketplace/local-testing.md`). It cannot reach a user as
+source). Such a package is also the only way to try one in a real agent,
+from a local test registry (`docs/marketplace/local-testing.md`); that was
+not run for this audit. It cannot reach a user as
 `deckpilot.<name>`. `tools/first-party.sh` fails as soon as the pinned tool
 accepts the real manifest, so the workaround cannot outlive the blocker.
 
