@@ -1,0 +1,263 @@
+---
+import { ArrowRight, Check, FileCheck, FingerprintPattern, GitPullRequest, KeyRound, LifeBuoy, Plus, ShieldCheck, SquareDashed } from '@lucide/astro';
+import Button from '@/components/Button.astro';
+import Card from '@/components/Card.astro';
+import CodeBlock from '@/components/CodeBlock.astro';
+import EmptyState from '@/components/EmptyState.astro';
+import GitHubMark from '@/components/GitHubMark.astro';
+import Notice from '@/components/Notice.astro';
+import PluginCard from '@/components/PluginCard.astro';
+import SearchField from '@/components/SearchField.astro';
+import Section from '@/components/Section.astro';
+import Deck from '@/components/home/Deck.astro';
+import { CATEGORIES } from '@/data/categories';
+import { LINKS } from '@/data/site';
+import { langPaths, plural, t, type Lang } from '@/i18n';
+import Base from '@/layouts/Base.astro';
+import { page } from '@/lib/paths';
+import { getCatalog } from '@/lib/registry';
+import { HELLO_WORLD_RS } from '@/lib/sample';
+
+export const getStaticPaths = langPaths;
+
+const lang = Astro.params.lang as Lang;
+const dict = t(lang);
+const h = dict.home;
+const catalog = getCatalog();
+const featured = catalog.plugins.slice(0, 6);
+const empty = catalog.plugins.length === 0;
+const counts = new Map<string, number>();
+for (const plugin of catalog.plugins) {
+  for (const category of plugin.categories) counts.set(category, (counts.get(category) ?? 0) + 1);
+}
+const securityIcons = [SquareDashed, ShieldCheck, KeyRound, FingerprintPattern];
+const communityCards = [
+  { icon: GitPullRequest, href: page(lang, 'community') },
+  { icon: FileCheck, href: LINKS.contributing, external: true },
+  { icon: LifeBuoy, href: LINKS.security, external: true },
+];
+---
+
+<Base lang={lang} title={h.title} description={h.description}>
+  <!-- Hero -->
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="container grid items-center gap-14 py-16 md:py-24 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16 lg:py-28">
+      <div>
+        <p class="mb-6">
+          <a class="badge badge-accent no-underline" href="#status">
+            <span class="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true"></span>
+            {dict.status.badge}
+          </a>
+        </p>
+        <h1 class="hero-title" id="hero-title">{h.hero.headline}</h1>
+        <p class="hero-lead">{h.hero.lead}</p>
+        <div class="mt-9 flex flex-wrap gap-3">
+          <Button href={page(lang, 'plugins')}>{h.hero.explore}<ArrowRight aria-hidden="true" /></Button>
+          <Button href={page(lang, 'developers')} variant="secondary">{h.hero.build}</Button>
+        </div>
+        <p class="mt-6">
+          <a class="link-arrow text-sm text-muted" href={LINKS.app} rel="noopener">
+            <GitHubMark />
+            {h.hero.github}
+          </a>
+        </p>
+      </div>
+      <div class="mx-auto w-full max-w-[34rem] lg:max-w-none">
+        <Deck />
+      </div>
+    </div>
+  </section>
+
+  <!-- Search -->
+  <Section id="search" title={h.search.title} lead={h.search.lead} centered narrow>
+    <form class="flex flex-col gap-3 sm:flex-row" action={page(lang, 'plugins')} method="get" role="search">
+      <div class="flex-1">
+        <SearchField id="home-search" label={h.search.label} placeholder={h.search.placeholder} size="lg" labelHidden />
+      </div>
+      <button class="btn btn-primary sm:min-h-14 sm:px-7" type="submit">{h.search.submit}</button>
+    </form>
+    {empty && <p class="mt-4 text-center text-sm text-subtle">{h.search.emptyHint}</p>}
+    <div id="status" class="mt-10 scroll-mt-24">
+      <Notice role="note">
+        <strong>{dict.status.badge}.</strong>{' '}
+        {dict.status.short}
+      </Notice>
+    </div>
+  </Section>
+
+  <!-- Featured integrations -->
+  <Section id="featured" eyebrow={h.featured.eyebrow} title={h.featured.title} lead={empty ? undefined : h.featured.lead} alt>
+    {
+      empty ? (
+        <EmptyState title={h.featured.emptyTitle}>
+          {h.featured.emptyText}
+          <Fragment slot="actions">
+            <Button href={page(lang, 'developers')}>{h.featured.emptyPrimary}</Button>
+            <Button href={LINKS.plugins} variant="secondary" external>
+              <GitHubMark />
+              {h.featured.emptySecondary}
+            </Button>
+          </Fragment>
+        </EmptyState>
+      ) : (
+        <>
+          <ul class="grid list-none gap-5 p-0 sm:grid-cols-2 lg:grid-cols-3">
+            {featured.map((plugin) => (
+              <li>
+                <PluginCard plugin={plugin} lang={lang} />
+              </li>
+            ))}
+          </ul>
+          <p class="mt-8">
+            <a class="link-arrow" href={page(lang, 'plugins')}>
+              {h.featured.viewAll}
+              <ArrowRight aria-hidden="true" />
+            </a>
+          </p>
+        </>
+      )
+    }
+  </Section>
+
+  <!-- Categories -->
+  <Section id="categories" eyebrow={h.categories.eyebrow} title={h.categories.title} lead={h.categories.lead}>
+    <ul class="grid list-none gap-4 p-0 sm:grid-cols-2 lg:grid-cols-4">
+      {
+        CATEGORIES.map((category) => (
+          <Card as="li" title={dict.categories[category.id].name} href={page(lang, `plugins?category=${category.id}`)}>
+            <span slot="icon" class="icon-tile" aria-hidden="true">
+              <category.icon />
+            </span>
+            <p class="card-text text-sm">{dict.categories[category.id].text}</p>
+            {!empty && (
+              <p class="mt-4 text-sm font-medium text-subtle">
+                {plural(lang, counts.get(category.id) ?? 0, h.categories.count)}
+              </p>
+            )}
+          </Card>
+        ))
+      }
+    </ul>
+  </Section>
+
+  <!-- How it works -->
+  <Section id="how-it-works" eyebrow={h.how.eyebrow} title={h.how.title} lead={h.how.lead} alt>
+    <ol class="steps">
+      {
+        h.how.steps.map((step) => (
+          <li class="card step">
+            <h3 class="card-title">{step.title}</h3>
+            <p class="card-text text-sm">{step.text}</p>
+          </li>
+        ))
+      }
+    </ol>
+    <p class="mt-8">
+      <a class="link-arrow" href={page(lang, 'docs/architecture')}>
+        {h.how.more}
+        <ArrowRight aria-hidden="true" />
+      </a>
+    </p>
+  </Section>
+
+  <!-- Security and permissions -->
+  <Section id="security" eyebrow={h.security.eyebrow} title={h.security.title} lead={h.security.lead}>
+    <ul class="grid list-none gap-5 p-0 md:grid-cols-2">
+      {
+        h.security.points.map((point, i) => {
+          const Icon = securityIcons[i] ?? ShieldCheck;
+          return (
+            <Card as="li" title={point.title}>
+              <span slot="icon" class="icon-tile" aria-hidden="true">
+                <Icon />
+              </span>
+              <p class="card-text">{point.text}</p>
+            </Card>
+          );
+        })
+      }
+    </ul>
+    <Notice class="mt-6" variant="warning">{h.security.caveat}</Notice>
+    <div class="mt-8 flex flex-wrap gap-x-8 gap-y-3">
+      <a class="link-arrow" href={page(lang, 'docs/permissions')}>
+        {h.security.more}
+        <ArrowRight aria-hidden="true" />
+      </a>
+      <a class="link-arrow" href={LINKS.security} rel="noopener">
+        {h.security.report}
+        <ArrowRight aria-hidden="true" />
+      </a>
+    </div>
+  </Section>
+
+  <!-- Build your own plugin -->
+  <section id="build" class="section section-alt" aria-labelledby="build-title">
+    <div class="container grid items-center gap-12 lg:grid-cols-2">
+      <div>
+        <span class="eyebrow">{h.build.eyebrow}</span>
+        <h2 class="section-title" id="build-title">{h.build.title}</h2>
+        <p class="section-lead">{h.build.lead}</p>
+        <ul class="mt-6 grid list-none gap-3 p-0">
+          {
+            h.build.points.map((point) => (
+              <li class="flex gap-3 text-muted">
+                <Check class="mt-1 h-4 w-4 flex-none text-accent-text" aria-hidden="true" />
+                <span>{point}</span>
+              </li>
+            ))
+          }
+        </ul>
+        <p class="mt-6 text-sm text-subtle">{h.build.note}</p>
+        <div class="mt-8 flex flex-wrap gap-3">
+          <Button href={page(lang, 'docs/getting-started')}>{h.build.primary}<ArrowRight aria-hidden="true" /></Button>
+          <Button href={LINKS.appExamples} variant="secondary" external>{h.build.secondary}</Button>
+        </div>
+      </div>
+      <div class="min-w-0">
+        <CodeBlock code={HELLO_WORLD_RS} lang="rust" title={h.build.codeTitle} locale={lang} class="!my-0 shadow-lg" />
+      </div>
+    </div>
+  </section>
+
+  <!-- Open-source community -->
+  <Section id="community" eyebrow={h.community.eyebrow} title={h.community.title} lead={h.community.lead}>
+    <ul class="grid list-none gap-5 p-0 md:grid-cols-3">
+      {
+        h.community.cards.map((card, i) => {
+          const meta = communityCards[i]!;
+          return (
+            <Card as="li" title={card.title} href={meta.href} external={'external' in meta}>
+              <span slot="icon" class="icon-tile" aria-hidden="true">
+                <meta.icon />
+              </span>
+              <p class="card-text flex-1 text-sm">{card.text}</p>
+              <p class="link-arrow mt-5 text-sm text-accent-text" aria-hidden="true">
+                {card.link}
+                <ArrowRight />
+              </p>
+            </Card>
+          );
+        })
+      }
+    </ul>
+  </Section>
+
+  <!-- FAQ -->
+  <Section id="faq" eyebrow={h.faq.eyebrow} title={h.faq.title} alt narrow>
+    <div class="faq">
+      {
+        h.faq.items.map((item) => (
+          <details>
+            <summary>
+              {item.q}
+              <Plus aria-hidden="true" />
+            </summary>
+            <div class="faq-answer">
+              <p>{item.a}</p>
+            </div>
+          </details>
+        ))
+      }
+    </div>
+  </Section>
+</Base>

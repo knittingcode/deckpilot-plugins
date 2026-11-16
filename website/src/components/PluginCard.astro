@@ -1,0 +1,44 @@
+---
+/** PluginCard: one plugin in a grid; the whole card links to its page. */
+import { BadgeCheck } from '@lucide/astro';
+import { t, type Lang } from '@/i18n';
+import { page } from '@/lib/paths';
+import type { CatalogPlugin } from '@/lib/registry';
+import Badge from './Badge.astro';
+import PluginIcon from './PluginIcon.astro';
+
+type Props = { plugin: CatalogPlugin; lang: Lang; headingLevel?: 2 | 3 };
+const { plugin, lang, headingLevel = 3 } = Astro.props;
+const dict = t(lang);
+const Heading = `h${headingLevel}` as 'h3';
+const categories = dict.categories as Record<string, { name: string } | undefined>;
+---
+
+<article class="card card-link h-full" data-plugin={plugin.id}>
+  <div class="flex items-start gap-4">
+    <PluginIcon id={plugin.id} name={plugin.name} />
+    <div class="min-w-0">
+      <Heading class="card-title truncate">
+        <a class="card-cover" href={page(lang, `plugins/${plugin.id}`)}>{plugin.name}</a>
+      </Heading>
+      <p class="mt-0.5 flex items-center gap-1 text-sm text-subtle">
+        <span class="truncate">{plugin.publisher.displayName}</span>
+        {
+          plugin.publisher.verified && (
+            <>
+              <BadgeCheck class="h-4 w-4 flex-none text-accent-text" aria-hidden="true" />
+              <span class="sr-only">{dict.plugin.verifiedPublisher}</span>
+            </>
+          )
+        }
+      </p>
+    </div>
+  </div>
+  <p class="card-text line-clamp-3 flex-1 text-sm">{plugin.summary}</p>
+  <div class="mt-5 flex flex-wrap items-center gap-2">
+    <Badge mono>v{plugin.latest.version}</Badge>
+    {plugin.latestIsPrerelease && <Badge variant="warning">{dict.plugin.prerelease}</Badge>}
+    {plugin.deprecated && <Badge variant="warning">{dict.plugin.deprecated}</Badge>}
+    {plugin.categories.map((category) => <Badge>{categories[category]?.name ?? category}</Badge>)}
+  </div>
+</article>

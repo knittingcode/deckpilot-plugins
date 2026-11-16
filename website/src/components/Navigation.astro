@@ -1,0 +1,27 @@
+---
+/** Navigation: the main links, marking the current section. */
+import { NAV } from '@/data/nav';
+import { t, type Lang } from '@/i18n';
+import { page, routeOf } from '@/lib/paths';
+
+type Props = { lang: Lang };
+const { lang } = Astro.props;
+const dict = t(lang);
+const route = routeOf(Astro.url.pathname);
+---
+
+<ul class="nav-list">
+  {
+    NAV.map((item) => (
+      <li>
+        <a
+          class="nav-link"
+          href={page(lang, item.route)}
+          aria-current={route === item.route || route.startsWith(`${item.route}/`) ? 'page' : undefined}
+        >
+          {dict.nav[item.key]}
+        </a>
+      </li>
+    ))
+  }
+</ul>

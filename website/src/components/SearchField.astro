@@ -1,0 +1,33 @@
+---
+/** SearchField: a labelled search input with a leading icon. */
+import { Search } from '@lucide/astro';
+
+type Props = {
+  id: string;
+  label: string;
+  placeholder?: string;
+  name?: string;
+  size?: 'md' | 'lg';
+  labelHidden?: boolean;
+  value?: string;
+};
+const { id, label, placeholder, name = 'q', size = 'md', labelHidden = false, value } = Astro.props;
+---
+
+<div>
+  <label for={id} class:list={[labelHidden ? 'sr-only' : 'label']}>{label}</label>
+  <div class="field">
+    <Search aria-hidden="true" />
+    <input
+      class:list={['input', size === 'lg' && 'input-lg']}
+      type="search"
+      id={id}
+      name={name}
+      placeholder={placeholder}
+      value={value}
+      autocomplete="off"
+      spellcheck="false"
+      enterkeyhint="search"
+    />
+  </div>
+</div>

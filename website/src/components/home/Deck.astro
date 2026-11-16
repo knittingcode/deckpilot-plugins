@@ -1,0 +1,38 @@
+---
+/**
+ * Deck: the hero illustration, a 5 by 3 key grid like the Stream Deck MK.2
+ * DeckPilot supports. Decorative: the glyphs are generic action icons, not
+ * plugins that exist.
+ */
+import { Activity, Bell, Cloud, GitPullRequest, Lightbulb, MessagesSquare, Mic, Play, Plus, Terminal, Timer, Volume2, Zap } from '@lucide/astro';
+
+const keys = [
+  { icon: GitPullRequest, state: 'soft' },
+  { icon: Terminal },
+  { icon: Activity },
+  { icon: Bell },
+  { icon: Timer },
+  { icon: MessagesSquare },
+  { icon: Zap, state: 'lit' },
+  { icon: Cloud },
+  { icon: Play, state: 'soft' },
+  { icon: Volume2 },
+  { icon: Lightbulb },
+  { icon: Mic },
+  { icon: Plus, state: 'empty' },
+  { icon: Plus, state: 'empty' },
+  { icon: Plus, state: 'empty' },
+] as const;
+---
+
+<div class="deck" aria-hidden="true">
+  <div class="deck-grid">
+    {
+      keys.map((key) => (
+        <div class:list={['deck-key', 'state' in key && `is-${key.state}`]}>
+          <key.icon />
+        </div>
+      ))
+    }
+  </div>
+</div>

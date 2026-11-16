@@ -7,3 +7,11 @@ target/
 # Python bytecode (tools/tests import tools/check-submission.py).
 __pycache__/
 *.pyc
+# The marketplace website (website/): dependencies and build output.
+/website/node_modules/
+/website/dist/
+/website/dist-fixture/
+/website/.astro/
+/website/test-results/
+/website/playwright-report/
+/website/.fixture/

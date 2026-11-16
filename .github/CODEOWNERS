@@ -11,6 +11,7 @@
 /registry/revocations.json @knittingcode
 /schemas/               @knittingcode
 /tools/                 @knittingcode
+/website/               @knittingcode
 /rust-toolchain.toml    @knittingcode
 /SECURITY.md            @knittingcode
 /CONTRIBUTING.md        @knittingcode
