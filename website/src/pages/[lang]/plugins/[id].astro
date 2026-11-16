@@ -1,0 +1,371 @@
+---
+import { BadgeCheck } from '@lucide/astro';
+import Badge from '@/components/Badge.astro';
+import Notice from '@/components/Notice.astro';
+import PermissionList from '@/components/PermissionList.astro';
+import PluginIcon from '@/components/PluginIcon.astro';
+import { DECKPILOT_VERSIONS, REPO_PLUGINS } from '@/data/site';
+import { fill, LANGS, t, type Lang } from '@/i18n';
+import Base from '@/layouts/Base.astro';
+import { formatDate, formatSize, isoDate } from '@/lib/format';
+import { page } from '@/lib/paths';
+import { getCatalog, platformsOf, satisfies, type CatalogPlugin } from '@/lib/registry';
+
+export function getStaticPaths() {
+  const catalog = getCatalog();
+  return LANGS.flatMap((lang) =>
+    [...catalog.plugins, ...catalog.revoked].map((plugin) => ({ params: { lang, id: plugin.id }, props: { plugin } })),
+  );
+}
+
+type Props = { plugin: CatalogPlugin };
+const { plugin } = Astro.props;
+const lang = Astro.params.lang as Lang;
+const dict = t(lang);
+const p = dict.plugin;
+const latest = plugin.latest;
+const current = DECKPILOT_VERSIONS[0];
+const compatible = satisfies(current.version, latest.engines.deckpilot);
+const platforms = platformsOf(latest);
+const categoryNames = dict.categories as Record<string, { name: string } | undefined>;
+const github = (repository: string) => `https://github.com/${repository}`;
+const fullRevocation = plugin.revocations.find((r) => r.versions === '*');
+const partialRevocations = plugin.revocations.filter((r) => r.versions !== '*');
+// Publisher-provided text is English; mark it so assistive technology
+// pronounces it correctly on the Polish page.
+const foreign = lang === 'en' ? undefined : 'en';
+const paragraphs = plugin.description.split(/\n{2,}/).map((text) => text.trim()).filter(Boolean);
+---
+
+<Base
+  lang={lang}
+  title={fill(p.metaTitle, { name: plugin.name })}
+  description={plugin.summary}
+  ogType="article"
+>
+  <div class="container py-10 md:py-14">
+    <nav class="breadcrumb" aria-label={dict.a11y.breadcrumb}>
+      <ol>
+        <li><a href={page(lang, 'plugins')}>{p.allPlugins}</a></li>
+        <li aria-current="page">{plugin.name}</li>
+      </ol>
+    </nav>
+
+    <header class="mt-6 flex flex-col gap-5 sm:flex-row sm:items-center">
+      <PluginIcon id={plugin.id} name={plugin.name} size="lg" />
+      <div class="min-w-0">
+        <h1 class="section-title" lang={foreign}>{plugin.name}</h1>
+        <p class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-muted">
+          <span>{fill(p.by, { publisher: plugin.publisher.displayName })}</span>
+          {
+            plugin.publisher.verified && (
+              <Badge variant="accent">
+                <BadgeCheck aria-hidden="true" />
+                {p.verifiedPublisher}
+              </Badge>
+            )
+          }
+        </p>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <Badge mono>v{latest.version}</Badge>
+          {plugin.latestIsPrerelease && <Badge variant="warning">{p.prerelease}</Badge>}
+          {fullRevocation && <Badge variant="danger">{p.revoked}</Badge>}
+          {plugin.deprecated && <Badge variant="warning">{p.deprecated}</Badge>}
+          {plugin.categories.map((category) => <Badge>{categoryNames[category]?.name ?? category}</Badge>)}
+        </div>
+      </div>
+    </header>
+
+    <p class="mt-6 max-w-3xl text-lg text-muted" lang={foreign}>{plugin.summary}</p>
+
+    <div class="mt-6 grid max-w-3xl gap-3">
+      {
+        fullRevocation && (
+          <Notice variant="danger" role="note">
+            <strong>{p.revokedTitle}.</strong>{' '}
+            {fullRevocation.action === 'disable' ? p.revokedDisable : p.revokedYank}
+            <span class="mt-2 block">
+              {p.reason} <span lang={foreign}>{fullRevocation.reason}</span>
+            </span>
+            {fullRevocation.advisory && (
+              <a class="mt-2 inline-block" href={fullRevocation.advisory} rel="noopener">
+                {p.advisory}
+              </a>
+            )}
+          </Notice>
+        )
+      }
+      {
+        partialRevocations.map((revocation) => (
+          <Notice variant="warning" role="note">
+            <strong>{fill(p.revokedVersions, { versions: (revocation.versions as string[]).join(', ') })}</strong>{' '}
+            {revocation.action === 'disable' ? p.revokedDisable : p.revokedYank}
+            <span class="mt-2 block">
+              {p.reason} <span lang={foreign}>{revocation.reason}</span>
+            </span>
+            {revocation.advisory && (
+              <a class="mt-2 inline-block" href={revocation.advisory} rel="noopener">
+                {p.advisory}
+              </a>
+            )}
+          </Notice>
+        ))
+      }
+      {
+        plugin.deprecated && (
+          <Notice variant="warning" role="note">
+            <strong>{p.deprecatedTitle}.</strong>{' '}
+            <span lang={foreign}>{plugin.deprecated.reason}</span>
+            {plugin.deprecated.replacement && (
+              <span class="mt-2 block">
+                {p.replacement}{' '}
+                <a href={page(lang, `plugins/${plugin.deprecated.replacement}`)}>
+                  <code>{plugin.deprecated.replacement}</code>
+                </a>
+              </span>
+            )}
+          </Notice>
+        )
+      }
+    </div>
+
+    <div class="mt-12 grid gap-12 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      <div class="grid min-w-0 gap-14">
+        <section aria-labelledby="about-title">
+          <h2 class="text-2xl" id="about-title">{p.about}</h2>
+          <div class="prose mt-4" lang={foreign}>
+            {paragraphs.map((text) => <p class="whitespace-pre-line">{text}</p>)}
+          </div>
+          {foreign && <p class="mt-3 text-sm text-subtle">{p.untranslatedNote}</p>}
+        </section>
+
+        <section aria-labelledby="actions-title">
+          <h2 class="text-2xl" id="actions-title">{p.actions}</h2>
+          {
+            plugin.actions === null ? (
+              <p class="mt-3 text-muted">{p.actionsUnavailable}</p>
+            ) : plugin.actions.length === 0 ? (
+              <p class="mt-3 text-muted">{p.noActions}</p>
+            ) : (
+              <>
+                <p class="mt-3 text-muted">{p.actionsLead}</p>
+                <ul class="mt-5 grid list-none gap-4 p-0">
+                  {plugin.actions.map((action) => (
+                    <li class="card" data-action={action.id}>
+                      <h3 class="card-title flex flex-wrap items-center gap-2">
+                        <span lang={foreign}>{action.name}</span>
+                        <code class="badge badge-mono">{action.id}</code>
+                        {action.deprecated && <Badge variant="warning">{p.deprecatedAction}</Badge>}
+                      </h3>
+                      <p class="mt-2 text-muted" lang={foreign}>
+                        {action.description}
+                      </p>
+                      {(action.parameters.length > 0 || action.outputs.length > 0) && (
+                        <dl class="mt-4 grid gap-4 sm:grid-cols-2">
+                          {action.parameters.length > 0 && (
+                            <div>
+                              <dt class="text-xs font-semibold tracking-wider text-subtle uppercase">{p.parameters}</dt>
+                              <dd class="m-0 mt-2">
+                                <ul class="grid list-none gap-1.5 p-0 text-sm">
+                                  {action.parameters.map((parameter) => (
+                                    <li>
+                                      <span class="text-fg" lang={foreign}>{parameter.label}</span>{' '}
+                                      <span class="text-subtle">
+                                        ({parameter.type}, {parameter.required ? p.required : p.optional})
+                                      </span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </dd>
+                            </div>
+                          )}
+                          {action.outputs.length > 0 && (
+                            <div>
+                              <dt class="text-xs font-semibold tracking-wider text-subtle uppercase">{p.outputs}</dt>
+                              <dd class="m-0 mt-2">
+                                <ul class="grid list-none gap-1.5 p-0 text-sm">
+                                  {action.outputs.map((output) => (
+                                    <li class="text-fg" lang={foreign}>{output.label}</li>
+                                  ))}
+                                </ul>
+                              </dd>
+                            </div>
+                          )}
+                        </dl>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )
+          }
+        </section>
+
+        <section aria-labelledby="permissions-title">
+          <h2 class="text-2xl" id="permissions-title">{p.permissions}</h2>
+          {
+            latest.permissions.length === 0 ? (
+              <p class="mt-3 text-muted">{p.noPermissions}</p>
+            ) : (
+              <>
+                <p class="mt-3 mb-5 text-muted">{p.permissionsLead}</p>
+                <PermissionList permissions={latest.permissions} lang={lang} />
+              </>
+            )
+          }
+        </section>
+
+        <section aria-labelledby="install-title">
+          <h2 class="text-2xl" id="install-title">{p.install}</h2>
+          {
+            fullRevocation ? (
+              <p class="mt-3 text-muted">{p.installRevoked}</p>
+            ) : (
+              <>
+                <ol class="mt-4 grid list-decimal gap-3 pl-5 text-muted">
+                  {p.installSteps.map((step) => (
+                    <li>{fill(step, { name: plugin.name })}</li>
+                  ))}
+                </ol>
+                <Notice class="mt-5">{p.installNote}</Notice>
+              </>
+            )
+          }
+        </section>
+
+        <section aria-labelledby="history-title">
+          <h2 class="text-2xl" id="history-title">{p.history}</h2>
+          <p class="mt-3 mb-5 text-muted">{p.historyLead}</p>
+          <div class="table-wrap" tabindex="0" role="region" aria-labelledby="history-title">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th scope="col">{p.version}</th>
+                  <th scope="col">{p.published}</th>
+                  <th scope="col">{p.source}</th>
+                  <th scope="col">{p.changes}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {
+                  plugin.versions.map((version, i) => {
+                    const previous = plugin.versions[i + 1];
+                    const sameRepo = previous && previous.source.repository === version.source.repository;
+                    return (
+                      <tr>
+                        <th scope="row" class="!bg-transparent">
+                          <span class="font-mono">{version.version}</span>
+                          {version.yanked && (
+                            <Badge variant="warning" class="ml-2">
+                              {p.yanked}
+                            </Badge>
+                          )}
+                        </th>
+                        <td>
+                          <time datetime={isoDate(version.publishedAt)}>{formatDate(lang, version.publishedAt)}</time>
+                        </td>
+                        <td>
+                          <a href={`${github(version.source.repository)}/tree/${version.source.commit}${version.source.path ? `/${version.source.path}` : ''}`} rel="noopener">
+                            {fill(p.sourceAt, { tag: version.source.tag, commit: version.source.commit.slice(0, 7) })}
+                          </a>
+                        </td>
+                        <td>
+                          {previous && sameRepo ? (
+                            <a href={`${github(version.source.repository)}/compare/${previous.source.commit}...${version.source.commit}`} rel="noopener">
+                              {fill(p.compare, { version: previous.version })}
+                            </a>
+                          ) : previous ? (
+                            '–'
+                          ) : (
+                            p.firstVersion
+                          )}
+                          {version.yanked && <span class="mt-1 block text-subtle" lang={foreign}>{version.yanked.reason}</span>}
+                        </td>
+                      </tr>
+                    );
+                  })
+                }
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <aside aria-labelledby="details-title">
+        <div class="card lg:sticky lg:top-24">
+          <h2 class="card-title mb-5" id="details-title">{p.details}</h2>
+          <dl class="meta-list">
+            <div>
+              <dt>{p.latestVersion}</dt>
+              <dd>
+                <span class="font-mono">{latest.version}</span>
+                <span class="text-subtle">
+                  {' · '}
+                  <time datetime={isoDate(latest.publishedAt)}>{formatDate(lang, latest.publishedAt)}</time>
+                </span>
+              </dd>
+            </div>
+            <div>
+              <dt>{p.platforms}</dt>
+              <dd>{platforms.length === 3 ? p.allPlatforms : platforms.map((platform) => dict.platforms[platform]).join(', ')}</dd>
+            </div>
+            <div>
+              <dt>{p.compatibility}</dt>
+              <dd>
+                <code>{latest.engines.deckpilot}</code>
+                <span class="mt-1 block text-subtle">
+                  {fill(compatible ? p.compatibleWith : p.notCompatibleWith, { version: `v${current.version}` })}
+                </span>
+              </dd>
+            </div>
+            <div>
+              <dt>{p.pluginApi}</dt>
+              <dd><code>{latest.engines.pluginApi}</code></dd>
+            </div>
+            <div>
+              <dt>{p.license}</dt>
+              <dd>{plugin.license}</dd>
+            </div>
+            <div>
+              <dt>{p.publisher}</dt>
+              <dd>
+                <a href={github(plugin.publisher.login)} rel="noopener">{plugin.publisher.displayName}</a>
+                <span class="text-subtle"> (@{plugin.publisher.login})</span>
+              </dd>
+            </div>
+            {
+              plugin.sourceRepository && (
+                <div>
+                  <dt>{p.sourceRepository}</dt>
+                  <dd><a href={github(plugin.sourceRepository)} rel="noopener">{plugin.sourceRepository}</a></dd>
+                </div>
+              )
+            }
+            {
+              plugin.homepage && (
+                <div>
+                  <dt>{p.homepage}</dt>
+                  <dd><a href={plugin.homepage} rel="noopener nofollow">{new URL(plugin.homepage).host}</a></dd>
+                </div>
+              )
+            }
+            <div>
+              <dt>{p.package}</dt>
+              <dd>
+                {formatSize(lang, latest.package.size)}
+                <code class="mt-1 block text-xs text-subtle">sha256 {latest.package.sha256}</code>
+              </dd>
+            </div>
+            <div>
+              <dt>{p.id}</dt>
+              <dd><code>{plugin.id}</code></dd>
+            </div>
+          </dl>
+          <p class="mt-6 border-t border-line pt-5 text-sm">
+            <a href={`${REPO_PLUGINS}/issues/new/choose`} rel="noopener">{p.report}</a>
+          </p>
+        </div>
+      </aside>
+    </div>
+  </div>
+</Base>

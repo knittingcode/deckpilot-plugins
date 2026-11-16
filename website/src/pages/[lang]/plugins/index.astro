@@ -1,0 +1,158 @@
+---
+import { ArrowRight, SearchX } from '@lucide/astro';
+import Button from '@/components/Button.astro';
+import EmptyState from '@/components/EmptyState.astro';
+import ErrorState from '@/components/ErrorState.astro';
+import PluginCard from '@/components/PluginCard.astro';
+import SearchField from '@/components/SearchField.astro';
+import { CATEGORIES } from '@/data/categories';
+import { DECKPILOT_VERSIONS, LINKS } from '@/data/site';
+import { fill, langPaths, plural, t, type Lang } from '@/i18n';
+import Base from '@/layouts/Base.astro';
+import { formatDate } from '@/lib/format';
+import { page } from '@/lib/paths';
+import { getCatalog, PLATFORMS } from '@/lib/registry';
+
+export const getStaticPaths = langPaths;
+
+const lang = Astro.params.lang as Lang;
+const dict = t(lang);
+const d = dict.directory;
+const catalog = getCatalog();
+const plugins = catalog.plugins;
+const known = new Set<string>(CATEGORIES.map((c) => c.id));
+const extraCategories = [...new Set(plugins.flatMap((p) => p.categories))].filter((c) => !known.has(c)).sort();
+---
+
+<Base lang={lang} title={d.metaTitle} description={d.description}>
+  <div class="container py-12 md:py-16">
+    <header class="max-w-2xl">
+      <h1 class="section-title">{d.title}</h1>
+      <p class="section-lead">{d.lead}</p>
+    </header>
+
+    {
+      plugins.length === 0 ? (
+        <div class="mt-10 grid gap-6">
+          <EmptyState title={d.emptyTitle} headingLevel={2} id="empty-registry">
+            {d.emptyText}
+            <Fragment slot="actions">
+              <Button href={page(lang, 'developers')}>{d.emptyPrimary}</Button>
+              <Button href={page(lang, 'community')} variant="secondary">
+                {d.emptySecondary}
+              </Button>
+            </Fragment>
+          </EmptyState>
+          <section class="card" aria-labelledby="status-title">
+            <h2 class="card-title" id="status-title">
+              {d.emptyStatusTitle}
+            </h2>
+            <ul class="mt-3 grid list-disc gap-2 pl-5 text-muted">
+              {d.emptyStatus.map((line) => (
+                <li>{line}</li>
+              ))}
+            </ul>
+            <p class="mt-5">
+              <a class="link-arrow" href={LINKS.readiness} rel="noopener">
+                {d.emptyStatusLink}
+                <ArrowRight aria-hidden="true" />
+              </a>
+            </p>
+          </section>
+        </div>
+      ) : (
+        <div
+          class="mt-10"
+          data-directory
+          data-index={page(lang, 'plugins') + 'search.json'}
+          data-plural={JSON.stringify(d.results)}
+          data-results-of={d.resultsOf}
+        >
+          <form class="filter-bar" data-filters role="search" aria-label={d.title} hidden>
+            <SearchField id="filter-q" label={d.searchLabel} placeholder={d.searchPlaceholder} />
+            <div>
+              <label class="label" for="filter-category">
+                {d.category}
+              </label>
+              <select class="select" id="filter-category" name="category">
+                <option value="">{d.anyCategory}</option>
+                {CATEGORIES.map((c) => (
+                  <option value={c.id}>{dict.categories[c.id].name}</option>
+                ))}
+                {extraCategories.map((c) => (
+                  <option value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label class="label" for="filter-platform">
+                {d.platform}
+              </label>
+              <select class="select" id="filter-platform" name="platform">
+                <option value="">{d.anyPlatform}</option>
+                {PLATFORMS.map((p) => (
+                  <option value={p}>{dict.platforms[p]}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label class="label" for="filter-deckpilot">
+                {d.compatibility}
+              </label>
+              <select class="select" id="filter-deckpilot" name="deckpilot">
+                <option value="">{d.anyVersion}</option>
+                {DECKPILOT_VERSIONS.map((v) => (
+                  <option value={v.version}>{fill(d.versionOption, { version: v.version })}</option>
+                ))}
+              </select>
+            </div>
+          </form>
+
+          <div data-search-error hidden>
+            <ErrorState title={d.errorTitle} headingLevel={2} live>
+              {d.errorText}
+            </ErrorState>
+          </div>
+
+          <div class="result-bar">
+            <p data-count role="status" aria-live="polite">
+              {plural(lang, plugins.length, d.results)}
+            </p>
+            <button type="button" class="btn btn-ghost btn-sm" data-clear hidden>
+              {d.clear}
+            </button>
+          </div>
+
+          <ul class="grid list-none gap-5 p-0 sm:grid-cols-2 lg:grid-cols-3" data-results aria-label={d.listLabel}>
+            {plugins.map((plugin) => (
+              <li data-plugin-item={plugin.id}>
+                <PluginCard plugin={plugin} lang={lang} headingLevel={2} />
+              </li>
+            ))}
+          </ul>
+
+          <div data-no-results hidden>
+            <EmptyState title={d.noResultsTitle} headingLevel={2}>
+              <SearchX slot="icon" />
+              {d.noResultsText}
+              <Fragment slot="actions">
+                <button type="button" class="btn btn-secondary" data-clear="always">
+                  {d.clear}
+                </button>
+              </Fragment>
+            </EmptyState>
+          </div>
+
+          {catalog.seq !== null && catalog.generatedAt && (
+            <p class="mt-10 text-sm text-subtle">
+              {fill(d.registryInfo, { seq: catalog.seq, date: formatDate(lang, catalog.generatedAt) })}
+            </p>
+          )}
+        </div>
+      )
+    }
+  </div>
+  <script>
+    import '@/scripts/directory';
+  </script>
+</Base>
