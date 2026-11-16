@@ -1,0 +1,43 @@
+# Untrusted, like validate.yml: runs on every pull request, including forks,
+# and on main. No secrets, no environment, a read-only token, no caches.
+# It builds and tests the plugin sources in first-party/ (their build
+# scripts and proc macros run here), packages them and verifies the packages
+# in a registry signed with throwaway keys made in the job. Nothing it
+# produces is published or used by a publishing workflow.
+name: First-party plugins
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: first-party-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  first-party:
+    name: Build, test and package first-party plugins
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Layout, SDK pin and Polish texts
+        run: tools/first-party.sh check
+      - name: The pinned toolchain with rustfmt, clippy and the wasm target
+        run: |
+          channel=$(sed -n 's/^channel *= *"\([0-9.]*\)".*/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal --no-self-update \
+            --component rustfmt --component clippy --target wasm32-unknown-unknown
+      - name: Unit tests, formatting, clippy
+        run: tools/first-party.sh test
+      - name: Build the pinned deckpilot-registry and schema-check
+        run: tools/build-cli.sh
+      - name: Manifests, wasm modules, packages, throwaway-key signed registry, verify-site
+        run: tools/first-party.sh package

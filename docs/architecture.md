@@ -32,13 +32,15 @@ plugins/<id>/              per-plugin submission
   build.json               build recipe (toolchain, workspace, package, profile, module)
   manifest.json            copy of the newest version's manifest (reviewed in the diff)
 plugins/examples/          CI fixtures, never published
+first-party/               sources of DeckPilot's own installable plugins (one Cargo
+                           workspace); built, tested and packaged by CI, not a submission
 keys/                      public trust material after the key ceremony (empty now)
 schemas/                   DeckPilot's schemas, byte-identical at the pin
 schemas/inputs/            this repository's input schemas (build recipe, plugin.json)
 pages/                     static registry files: /v1/README.txt
 website/                   the Marketplace website (Astro), a read-only consumer
 tools/                     scripts used by the workflows (and locally)
-.github/workflows/         validate, workflow lint, website, pages, publish, refresh-timestamp
+.github/workflows/         validate, first-party, workflow lint, website, pages, publish, refresh-timestamp
 ```
 
 Never committed (`tools/check-hygiene.py` refuses them): `site/` (the
@@ -72,6 +74,7 @@ tag of a plugin version is always exactly `<id>--v<version>`.
 | Workflow | Trigger | Secrets | Does |
 | --- | --- | --- | --- |
 | `validate.yml` (*Validate*) | every pull request, push to `main` | none | hygiene, submission rules, schema pin, rebuild and verify every version, throwaway-key signed registry with `verify-site --require-packages`, examples |
+| `first-party.yml` (*First-party plugins*) | every pull request, push to `main` | none | `first-party/`: layout and SDK pin, unit tests, wasm build, packages under a test publisher in a throwaway-key signed registry with `verify-site --require-packages`; publishes nothing ([plugin-factory.md](plugin-factory.md)) |
 | `workflow-lint.yml` (*Workflow lint*) | every pull request, push to `main` | none | actionlint and zizmor |
 | `website.yml` (*Website*) | every pull request | none | builds and tests the website; composes it with the registry tree and checks that no registry path changes; never deploys |
 | `pages.yml` (*Pages*) | push to `main`, dispatch | none (timestamp only if enabled) | `/v1/` README, or the verified live registry; the website around it |

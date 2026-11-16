@@ -1,0 +1,98 @@
+{
+  "$schema": "https://knittingcode.github.io/deckpilot-plugins/v1/schemas/plugin-manifest.schema.json",
+  "manifestVersion": 1,
+  "id": "deckpilot.template",
+  "name": "Template",
+  "version": "0.1.0",
+  "publisher": {
+    "id": "deckpilot",
+    "name": "DeckPilot",
+    "url": "https://github.com/knittingcode/deckpilot"
+  },
+  "description": "Template of a first-party plugin: counts key presses, keeps the count across restarts and publishes it as a variable. Never published.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/knittingcode/deckpilot-plugins",
+    "directory": "first-party/template"
+  },
+  "license": "Apache-2.0",
+  "keywords": ["template", "sample"],
+  "categories": ["other"],
+  "engines": { "deckpilot": ">=0.6.0 <1.0.0", "pluginApi": "^1.0", "sdk": "0.1.0" },
+  "runtime": { "kind": "wasm", "abi": 1 },
+  "entry": "src/lib.rs",
+  "icons": { "128": "assets/icon-128.png" },
+  "assets": { "readme": "README.md" },
+  "permissions": [],
+  "contributes": {
+    "actions": [
+      {
+        "id": "count",
+        "name": "Count",
+        "description": "Adds to the counter and reports the new value.",
+        "category": "Template",
+        "parameters": [
+          {
+            "key": "step",
+            "label": "Step",
+            "description": "How much one run adds.",
+            "required": false,
+            "kind": { "type": "integer", "min": 1, "max": 100 },
+            "default": { "type": "integer", "value": 1 }
+          }
+        ],
+        "node": {
+          "version": 1,
+          "icon": "plus",
+          "outputs": [{ "key": "count", "label": "Count", "kind": "integer", "always": true }],
+          "timeoutMs": 5000,
+          "retrySafe": false,
+          "idempotent": false,
+          "effect": "modifies"
+        }
+      },
+      {
+        "id": "reset",
+        "name": "Reset",
+        "description": "Sets the counter back to zero.",
+        "category": "Template",
+        "parameters": [],
+        "node": {
+          "version": 1,
+          "icon": "rotate-ccw",
+          "outputs": [],
+          "timeoutMs": 5000,
+          "retrySafe": true,
+          "idempotent": true,
+          "effect": "modifies"
+        }
+      }
+    ],
+    "variables": [
+      {
+        "id": "count",
+        "name": "Count",
+        "description": "The counter after the last run.",
+        "valueType": { "type": "integer" },
+        "scope": "machine"
+      }
+    ],
+    "settings": {
+      "portabilityVersion": 1,
+      "fields": [
+        {
+          "key": "label",
+          "label": "Label",
+          "description": "The word in front of the count in the action's message.",
+          "required": false,
+          "kind": { "type": "text", "maxLength": 24 },
+          "default": { "type": "text", "value": "Count" },
+          "portability": "portable"
+        }
+      ]
+    },
+    "errorCodes": {
+      "counter-full": "The counter reached its largest value; reset it."
+    }
+  }
+}
