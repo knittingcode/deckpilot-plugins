@@ -47,11 +47,14 @@ Runs on the pull request with no secrets and a read-only token:
 - *Repository hygiene*: no private keys, key files, `site/`, `releases/`
   or packages.
 - *Submission rules*: the path guard, publisher identity (`github_id` and
-  `login` equal to the pull request author's), append-only versions, and
+  `login` equal to the pull request author's), no publisher id DeckPilot
+  reserves (`deckpilot` is its first-party publisher) for a contributor,
+  append-only versions, and
   the permission diff against the previous version plus a source compare
   link in the job summary.
-- *Schemas match DeckPilot*: `schemas/` and `rust-toolchain.toml` equal
-  the pinned DeckPilot commit.
+- *Schemas match DeckPilot*: `schemas/`, `rust-toolchain.toml` and the
+  reserved publisher ids of `tools/check-submission.py` equal the pinned
+  DeckPilot commit.
 - *Validate registry*: schema and layout checks of all inputs; every
   recorded version rebuilt from its source (the tag must resolve to the
   commit in the named repository); each record re-derived with `add-version`

@@ -13,6 +13,12 @@ Reads both trees with git; never runs anything from the pull request.
   other publishers, policy documents) is maintainer-only.
 * Publisher records: github_id and login must be the pull request author's;
   a contributor cannot set "verified": true or take an existing namespace.
+* Reserved publishers: a contributor can never use a publisher id DeckPilot
+  reserves (RESERVED_PUBLISHERS, mirrored from deckpilot-plugin-manifest):
+  not as a namespace, not in a plugin path, not as a manifest's
+  publisher.id. `deckpilot` is DeckPilot's first-party publisher; whether
+  the registry itself reserves it is an open owner decision (B6), so this
+  blocks community pull requests only.
 * Versions are append-only: a recorded registry/plugins/<id>/versions/<v>.json
   is never changed or deleted (a maintainer may only add "yanked"), and a new
   version must be greater than every recorded one.
@@ -34,6 +40,18 @@ MAINTAINERS = {"knittingcode"}
 # Documentation anyone may propose (still code-owner reviewed). The policy
 # documents (SECURITY.md, CONTRIBUTING.md, CODE_OF_CONDUCT.md) are not here.
 DOC_PATHS = {"README.md", "plugins/README.md", "registry/README.md"}
+# DeckPilot's RESERVED_PUBLISHERS (crates/deckpilot-plugin-manifest/src/
+# identity.rs at the pinned commit): Manifest::validate refuses all of them,
+# and only first-party plugins bundled with the application may use
+# FIRST_PARTY_PUBLISHER. Keep in step when tools/deckpilot.env moves.
+FIRST_PARTY_PUBLISHER = "deckpilot"
+RESERVED_PUBLISHERS = frozenset({
+    "deckpilot", "knittingcode", "core", "system", "plugin", "plugins", "builtin",
+    "dev", "local", "test", "user",
+    # Built-in modules.
+    "general", "projects", "git", "docker", "http", "notifications", "github",
+    "gitlab", "jira", "workspace", "work-session",
+})
 SEMVER_CORE = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$")
 VERSION_PATH = re.compile(r"^registry/plugins/([^/]+)/versions/([^/]+)\.json$")
 
@@ -73,6 +91,13 @@ def semver_key(text):
     if pre is None:
         return (core, 1, ())
     return (core, 0, tuple((0, int(p), "") if p.isdigit() else (1, 0, p) for p in pre.split(".")))
+
+
+def reserved_why(publisher):
+    if publisher == FIRST_PARTY_PUBLISHER:
+        return (f"the publisher {publisher!r} is reserved for DeckPilot's first-party plugins; "
+                "community submissions cannot use it")
+    return f"the publisher {publisher!r} is reserved by DeckPilot (Manifest::validate refuses it)"
 
 
 def summary(*lines):
@@ -140,6 +165,25 @@ def main():
             orec = show(base, other)
             if other != path and isinstance(orec, dict) and orec.get("namespace") == rec.get("namespace"):
                 problem(f"{path}: namespace {rec.get('namespace')!r} belongs to {orec.get('login')}")
+
+    # Reserved publishers: never in a community pull request.
+    if not maintainer:
+        for status, path in changes:
+            if status == "D":
+                continue
+            m = re.match(r"^(?:registry/plugins|plugins)/([^/.]+)\.[^/]+/", path)
+            if m and m.group(1) in RESERVED_PUBLISHERS:
+                problem(f"{path}: {reserved_why(m.group(1))}")
+            if re.match(r"^registry/publishers/[^/]+\.json$", path):
+                rec = show(head, path)
+                if isinstance(rec, dict) and rec.get("namespace") in RESERVED_PUBLISHERS:
+                    problem(f"{path}: {reserved_why(rec.get('namespace'))}")
+            if path.endswith("/manifest.json") and path.startswith("plugins/"):
+                doc = show(head, path)
+                pub = doc.get("publisher") if isinstance(doc, dict) else None
+                pub_id = pub.get("id") if isinstance(pub, dict) else None
+                if pub_id in RESERVED_PUBLISHERS:
+                    problem(f"{path}: {reserved_why(pub_id)}")
 
     # Version history: append-only.
     summary("### Permission changes", "")

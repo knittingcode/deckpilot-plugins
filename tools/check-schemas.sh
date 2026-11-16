@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # schemas/*.json must be byte-identical to DeckPilot's at the pinned commit,
-# and rust-toolchain.toml must name the same channel.
+# rust-toolchain.toml must name the same channel, and the reserved publisher
+# ids of tools/check-submission.py must equal DeckPilot's.
 . "$(dirname "$0")/lib/common.sh"
 fetch_commit "$DECKPILOT_DIR" "$DECKPILOT_REPOSITORY" "$DECKPILOT_COMMIT"
 
@@ -33,6 +34,14 @@ if [ -n "$ours" ] && [ "$ours" = "$theirs" ]; then
   note "ok: rust-toolchain.toml channel $ours"
 else
   echo "error: rust-toolchain.toml channel '$ours', DeckPilot has '$theirs'" >&2
+  status=1
+fi
+if python3 -I "$REPO_ROOT/tools/tests/test_check_submission.py" --deckpilot "$DECKPILOT_DIR" \
+  MirrorsDeckPilot >/dev/null 2>"$WORK/reserved.log"; then
+  note "ok: tools/check-submission.py RESERVED_PUBLISHERS = DeckPilot's"
+else
+  cat "$WORK/reserved.log" >&2
+  echo "error: tools/check-submission.py RESERVED_PUBLISHERS differs from DeckPilot at $DECKPILOT_COMMIT" >&2
   status=1
 fi
 exit $status

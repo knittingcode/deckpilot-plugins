@@ -25,6 +25,13 @@ By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
   source.
 - Your plugin id is `<namespace>.<name>`. The namespace is yours once your
   publisher record is merged, and it is bound to your numeric GitHub user id.
+- The publisher ids DeckPilot reserves cannot be your namespace:
+  `deckpilot` (DeckPilot's own first-party plugins), `knittingcode`, generic
+  names such as `core`, `system`, `plugin(s)`, `builtin`, `dev`, `local`,
+  `test`, `user`, and the built-in module ids (`general`, `projects`, `git`,
+  `docker`, `http`, `notifications`, `github`, `gitlab`, `jira`,
+  `workspace`, `work-session`). *Submission rules* refuses them, and
+  DeckPilot refuses manifests that use them.
 - Choose a license for your plugin and declare it in `manifest.json`
   (`license`, SPDX). Ship the `LICENSE` file in the plugin directory. Your
   plugin keeps its own license; this repository's Apache-2.0 license does
@@ -95,7 +102,7 @@ All checks run without secrets and with a read-only token, also for forks:
 | Check | What |
 | --- | --- |
 | *Repository hygiene* | no private keys, key files, packages or generated `site/` output |
-| *Submission rules* | the path guard above, publisher identity, append-only versions; the permission diff and a source compare link go to the job summary |
+| *Submission rules* | the path guard above, publisher identity, no reserved publisher id, append-only versions; the permission diff and a source compare link go to the job summary |
 | *Schemas match DeckPilot* | `schemas/` equal the pinned DeckPilot commit |
 | *Validate registry* | schemas of every input; your source fetched at the recorded commit (the tag must point at it); `cargo build --locked`; `deckpilot-registry package`; the version record re-derived and compared byte for byte; the registry signed with throwaway keys and accepted by DeckPilot's own client (`verify-site --require-packages`) |
 | *Build examples* | the same for the example plugins |
