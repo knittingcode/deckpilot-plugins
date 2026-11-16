@@ -1,0 +1,88 @@
+---
+/**
+ * PermissionList: the permissions a plugin version declares, each explained
+ * in plain language, with the declared scope and the publisher's own
+ * justification (third-party text, always English).
+ */
+import { Bell, Database, ExternalLink, Globe, KeyRound, Layers, MonitorSmartphone, ShieldQuestionMark, Timer, Variable } from '@lucide/astro';
+import { fill, t, type Lang } from '@/i18n';
+import type { Permission } from '@/lib/registry';
+
+type Props = { permissions: Permission[]; lang: Lang };
+const { permissions, lang } = Astro.props;
+const dict = t(lang);
+const p = dict.permissions;
+
+const KINDS = {
+  network: Globe,
+  credentials: KeyRound,
+  notifications: Bell,
+  storage: Database,
+  openUrl: ExternalLink,
+  profile: Layers,
+  variables: Variable,
+  background: Timer,
+  device: MonitorSmartphone,
+} as const;
+type Kind = keyof typeof KINDS;
+const isKind = (kind: string): kind is Kind => kind in KINDS;
+
+function facts(permission: Permission): { label: string; values: string[] }[] {
+  const out: { label: string; values: string[] }[] = [];
+  if (permission.hosts?.length) out.push({ label: p.hosts, values: permission.hosts });
+  if (permission.methods?.length) out.push({ label: p.methods, values: permission.methods });
+  if (permission.refs?.length) out.push({ label: p.slots, values: permission.refs });
+  if (permission.read?.length) out.push({ label: p.reads, values: permission.read });
+  if (typeof permission.quotaKb === 'number') out.push({ label: p.quota, values: [fill(p.quotaValue, { kb: permission.quotaKb })] });
+  if (typeof permission.minIntervalSeconds === 'number') {
+    out.push({ label: p.interval, values: [fill(p.seconds, { count: permission.minIntervalSeconds })] });
+  }
+  return out;
+}
+---
+
+<ul class="grid list-none gap-4 p-0">
+  {
+    permissions.map((permission) => {
+      const kind = isKind(permission.kind) ? permission.kind : null;
+      const Icon = kind ? KINDS[kind] : ShieldQuestionMark;
+      const copy = kind ? p[kind] : p.unknown;
+      return (
+        <li class="card" data-permission={permission.kind}>
+          <div class="flex gap-4">
+            <span class="icon-tile !mb-0 flex-none" aria-hidden="true">
+              <Icon />
+            </span>
+            <div class="min-w-0 flex-1">
+              <h3 class="card-title">
+                {copy.name}
+                {!kind && <code class="ml-2 text-sm font-normal text-subtle">{permission.kind}</code>}
+              </h3>
+              <p class="mt-1 text-muted">{copy.text}</p>
+              {permission.userOrigins?.length ? <p class="mt-2 text-sm text-muted">{p.userOrigins}</p> : null}
+              {permission.privateNetwork ? <p class="mt-2 text-sm text-muted">{p.privateNetwork}</p> : null}
+              {facts(permission).length > 0 && (
+                <dl class="mt-4 grid gap-3 sm:grid-cols-2">
+                  {facts(permission).map((fact) => (
+                    <div>
+                      <dt class="text-xs font-semibold tracking-wider text-subtle uppercase">{fact.label}</dt>
+                      <dd class="m-0 mt-1 flex flex-wrap gap-1.5">
+                        {fact.values.map((value) => (
+                          <code class="badge badge-mono">{value}</code>
+                        ))}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
+              <p class="mt-4 text-sm text-subtle">{p.justificationLabel}</p>
+              <blockquote class="m-0 mt-1 border-l-2 border-line-strong pl-3 text-sm text-fg" lang="en">
+                {permission.justification}
+              </blockquote>
+            </div>
+          </div>
+        </li>
+      );
+    })
+  }
+</ul>
