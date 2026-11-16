@@ -63,6 +63,7 @@ npm run verify          # everything CI runs: check, both builds, all tests
 | `npm run check` | Type check (`astro check`), including that Polish has every key English has |
 | `npm run test:static` | `tests/check-links.mjs` (every internal link and anchor) and `tests/check-i18n.mjs` (the same routes in both languages, hreflang, canonical, no link into the other language) |
 | `npm run test:browser` | Playwright: navigation, language and theme switching, mobile menu, keyboard use, search and filters, plugin pages, SEO metadata, 404 handling, and axe (WCAG 2.2 AA) on every page type in both themes |
+| `npm run test:live` | The same browser suite against the deployed site (`SITE_URL`, default the production URL): run it after a deployment |
 | `node tests/check-links.mjs dist --external` | Also requests every external link (needs the network; not part of CI) |
 
 The fixture catalog (`tests/make-fixture.mjs`) exists because the real

@@ -16,7 +16,8 @@
     "test:static": "node tests/check-links.mjs dist && node tests/check-i18n.mjs dist && node tests/check-links.mjs dist-fixture && node tests/check-i18n.mjs dist-fixture",
     "test:browser": "playwright test",
     "test": "npm run test:static && npm run test:browser",
-    "verify": "npm run check && npm run build && npm run build:fixture && npm test"
+    "verify": "npm run check && npm run build && npm run build:fixture && npm test",
+    "test:live": "SITE_URL=${SITE_URL:-https://knittingcode.github.io/deckpilot-plugins/} playwright test"
   },
   "dependencies": {
     "@astrojs/check": "0.9.12",

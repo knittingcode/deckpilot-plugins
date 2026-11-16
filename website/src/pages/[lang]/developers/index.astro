@@ -39,14 +39,11 @@ const factIcons = [Boxes, FileCode, FlaskConical];
     </div>
   </section>
 
-  <Section id="status" narrow class="!pb-0">
-    <Notice>
+  <Section id="basics">
+    <Notice class="mb-8">
       <strong>{dict.docs.statusTitle}.</strong>{' '}
       {dict.docs.status}
     </Notice>
-  </Section>
-
-  <Section id="basics">
     <ul class="grid list-none gap-5 p-0 md:grid-cols-3">
       {
         d.facts.map((fact, i) => {
