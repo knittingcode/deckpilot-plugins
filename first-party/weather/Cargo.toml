@@ -1,0 +1,23 @@
+# deckpilot.weather: current conditions and a short forecast from Open-Meteo
+# for one place, with a cache in the plugin's storage. Not published
+# (first-party/README.md, docs/plugin-factory.md).
+[package]
+name = "deckpilot-weather"
+description = "DeckPilot's weather plugin: current conditions and a forecast for one place, from Open-Meteo"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+deckpilot-plugin-sdk.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

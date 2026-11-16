@@ -1,0 +1,193 @@
+{
+  "name": "Pogoda",
+  "description": "Aktualna pogoda i prognoza do 7 dni dla jednego miejsca: komunikaty, wyjścia dla przepływów pracy i zmienne. Dane pogodowe: Open-Meteo.com (CC BY 4.0), do użytku niekomercyjnego.",
+  "permissions": {
+    "network": "Wysyła współrzędne Twojego miejsca (zaokrąglone do ok. 1 km) do Open-Meteo, aby odczytać pogodę, a wyszukiwane nazwy miejsc do usługi geokodowania Open-Meteo."
+  },
+  "actions": {
+    "current": {
+      "name": "Aktualna pogoda",
+      "description": "Podaje warunki, temperaturę, temperaturę odczuwalną, wiatr i wilgotność w Twoim miejscu oraz informuje, gdy dane nie są aktualne.",
+      "category": "Pogoda",
+      "parameters": {
+        "at": {
+          "label": "Czas uruchomienia",
+          "description": "Opcjonalne. W przepływie uruchamianym według harmonogramu: czas wyzwolenia (RRRR-MM-DD GG:MM). Dzięki niemu wtyczka używa pamięci podręcznej zamiast pytać ponownie."
+        }
+      },
+      "outputs": {
+        "summary": "Podsumowanie",
+        "condition": "Warunki",
+        "conditionName": "Nazwa warunków",
+        "weatherCode": "Kod pogody WMO",
+        "isDay": "Dzień",
+        "temperature": "Temperatura",
+        "feelsLike": "Temperatura odczuwalna",
+        "temperatureUnit": "Jednostka temperatury",
+        "windSpeed": "Prędkość wiatru",
+        "windUnit": "Jednostka prędkości wiatru",
+        "windDirection": "Kierunek wiatru (stopnie)",
+        "windCompass": "Kierunek wiatru (róża wiatrów)",
+        "humidity": "Wilgotność (%)",
+        "units": "Jednostki",
+        "location": "Miejsce",
+        "observedAt": "Czas pomiaru (lokalny)",
+        "stale": "Nieaktualne",
+        "source": "Źródło",
+        "attribution": "Źródło danych",
+        "fetchedAt": "Pobrano (UTC)",
+        "ageMinutes": "Wiek w minutach",
+        "problem": "Problem"
+      }
+    },
+    "forecast": {
+      "name": "Prognoza",
+      "description": "Podaje najbliższe dni w Twoim miejscu: najniższą i najwyższą temperaturę, warunki i szansę opadów dla każdego dnia.",
+      "category": "Pogoda",
+      "parameters": {
+        "days": {
+          "label": "Dni",
+          "description": "Ile dni podać, począwszy od dzisiejszego w danym miejscu."
+        },
+        "at": {
+          "label": "Czas uruchomienia",
+          "description": "Opcjonalne. W przepływie uruchamianym według harmonogramu: czas wyzwolenia (RRRR-MM-DD GG:MM). Dzięki niemu wtyczka używa pamięci podręcznej zamiast pytać ponownie."
+        }
+      },
+      "outputs": {
+        "summary": "Podsumowanie (wiersz na dzień)",
+        "json": "Dni jako JSON",
+        "days": "Liczba dni",
+        "temperatureUnit": "Jednostka temperatury",
+        "units": "Jednostki",
+        "location": "Miejsce",
+        "day1Date": "Dzień 1: data",
+        "day1Min": "Dzień 1: najniższa temperatura",
+        "day1Max": "Dzień 1: najwyższa temperatura",
+        "day1Condition": "Dzień 1: warunki",
+        "day1ConditionName": "Dzień 1: nazwa warunków",
+        "day1Precipitation": "Dzień 1: szansa opadów (%)",
+        "day2Date": "Dzień 2: data",
+        "day2Min": "Dzień 2: najniższa temperatura",
+        "day2Max": "Dzień 2: najwyższa temperatura",
+        "day2Condition": "Dzień 2: warunki",
+        "day2ConditionName": "Dzień 2: nazwa warunków",
+        "day2Precipitation": "Dzień 2: szansa opadów (%)",
+        "day3Date": "Dzień 3: data",
+        "day3Min": "Dzień 3: najniższa temperatura",
+        "day3Max": "Dzień 3: najwyższa temperatura",
+        "day3Condition": "Dzień 3: warunki",
+        "day3ConditionName": "Dzień 3: nazwa warunków",
+        "day3Precipitation": "Dzień 3: szansa opadów (%)",
+        "stale": "Nieaktualne",
+        "source": "Źródło",
+        "attribution": "Źródło danych",
+        "fetchedAt": "Pobrano (UTC)",
+        "ageMinutes": "Wiek w minutach",
+        "problem": "Problem"
+      }
+    },
+    "find-location": {
+      "name": "Znajdź miejsce",
+      "description": "Wyszukuje miejsca po nazwie. Gdy Wybór ma wartość 0, wypisuje wyniki; z numerem wyniku zapisuje to miejsce jako to, dla którego podawana jest pogoda.",
+      "category": "Pogoda",
+      "parameters": {
+        "query": {
+          "label": "Nazwa miejsca",
+          "description": "Miejscowość lub kod pocztowy, co najmniej dwa znaki; aby zawęzić, dodaj kraj po przecinku (Springfield, US)."
+        },
+        "select": {
+          "label": "Wybór",
+          "description": "0 wypisuje wyniki; 1-5 zapisuje wynik o tym numerze."
+        }
+      },
+      "outputs": {
+        "count": "Liczba wyników",
+        "matches": "Wyniki (po jednym w wierszu)",
+        "source": "Źródło",
+        "attribution": "Źródło danych",
+        "selected": "Zapisane miejsce",
+        "timezone": "Strefa czasowa zapisanego miejsca"
+      }
+    },
+    "forget-location": {
+      "name": "Zapomnij miejsce",
+      "description": "Usuwa zapisane miejsce, zapisaną pogodę i zapisane wyszukiwania miejsc oraz czyści zmienne wtyczki. Ustawienia pozostają bez zmian.",
+      "category": "Pogoda"
+    }
+  },
+  "variables": {
+    "temperature": {
+      "name": "Temperatura",
+      "description": "Temperatura z ostatniego uruchomienia akcji Aktualna pogoda, w jednostce z ustawień."
+    },
+    "feelsLike": {
+      "name": "Temperatura odczuwalna",
+      "description": "Temperatura odczuwalna z ostatniego uruchomienia akcji Aktualna pogoda."
+    },
+    "condition": {
+      "name": "Warunki",
+      "description": "Warunki jako krótki tekst w języku z ustawień."
+    },
+    "conditionName": {
+      "name": "Nazwa warunków",
+      "description": "Warunki jako stała nazwa, na przykład partly-cloudy albo rain."
+    },
+    "summary": {
+      "name": "Podsumowanie",
+      "description": "Jedno zdanie o aktualnej pogodzie; zaczyna się od [nieaktualne], gdy nie wiadomo, czy dane są aktualne."
+    },
+    "stale": {
+      "name": "Nieaktualne",
+      "description": "Prawda, gdy ostatnie uruchomienie akcji Aktualna pogoda nie powiodło się albo podało tylko zapisane dane."
+    },
+    "forecast": {
+      "name": "Prognoza",
+      "description": "Dni z ostatniego uruchomienia akcji Prognoza: date, min, max, weatherCode, condition, conditionName, precipitationProbability."
+    },
+    "forecastSummary": {
+      "name": "Podsumowanie prognozy",
+      "description": "Prognoza, wiersz na dzień; zaczyna się od [nieaktualne], gdy nie wiadomo, czy dane są aktualne."
+    },
+    "forecastStale": {
+      "name": "Prognoza nieaktualna",
+      "description": "Prawda, gdy ostatnie uruchomienie akcji Prognoza nie powiodło się albo podało tylko zapisane dane."
+    }
+  },
+  "settings": {
+    "units": {
+      "label": "Jednostki",
+      "description": "metric: °C i km/h. imperial: °F i mph."
+    },
+    "language": {
+      "label": "Język tekstów",
+      "description": "Język warunków i komunikatów: en (angielski) albo pl (polski)."
+    },
+    "latitude": {
+      "label": "Szerokość geograficzna",
+      "description": "Stopnie dziesiętne, od -90 do 90 (52,23). Zostaw to pole i Długość puste, aby użyć miejsca zapisanego przez Znajdź miejsce; gdy oba są ustawione, mają pierwszeństwo."
+    },
+    "longitude": {
+      "label": "Długość geograficzna",
+      "description": "Stopnie dziesiętne, od -180 do 180 (21,01)."
+    },
+    "locationName": {
+      "label": "Nazwa miejsca",
+      "description": "Nazwa wyświetlana dla powyższej szerokości i długości."
+    },
+    "timezone": {
+      "label": "Strefa czasowa",
+      "description": "Nazwa z bazy tz, na przykład Europe/Warsaw, dla powyższej szerokości i długości. Puste: strefa czasowa samego miejsca."
+    }
+  },
+  "errorCodes": {
+    "no-location": "Nie ustawiono miejsca: uruchom Znajdź miejsce albo wpisz szerokość i długość w ustawieniach.",
+    "invalid-location": "Szerokości, długości albo strefy czasowej z ustawień nie da się użyć.",
+    "location-not-found": "Wyszukiwanie nie znalazło miejsca o tej nazwie.",
+    "invalid-selection": "Wybór jest większy niż liczba znalezionych miejsc.",
+    "provider-error": "Open-Meteo odpowiedział błędem i nie było zapisanych danych do pokazania.",
+    "invalid-response": "Odpowiedzi Open-Meteo nie udało się odczytać i nie było zapisanych danych do pokazania.",
+    "response-too-large": "Odpowiedź Open-Meteo była większa, niż wtyczka przyjmuje.",
+    "timed-out": "Open-Meteo nie odpowiedział na czas i nie było zapisanych danych do pokazania."
+  }
+}
