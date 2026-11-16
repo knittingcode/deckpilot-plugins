@@ -8,6 +8,7 @@
 resolver = "3"
 # One line per plugin, sorted.
 members = [
+    "air-quality",
     "break-reminder",
     "pomodoro",
     "template",

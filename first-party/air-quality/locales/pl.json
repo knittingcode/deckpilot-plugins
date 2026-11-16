@@ -1,0 +1,144 @@
+{
+  "name": "Jakość powietrza",
+  "description": "PM2.5, PM10 i polski indeks jakości powietrza jednej stacji pomiarowej, z czasem pomiaru: komunikaty, wyjścia dla przepływów pracy i zmienne. Źródło danych: GIOŚ - EKOINFONET (CC BY 4.0).",
+  "permissions": {
+    "network": "Pyta GIOŚ (Główny Inspektorat Ochrony Środowiska) o listę stacji i o wartości wybranej przez Ciebie stacji. Tylko odczytuje i wysyła wyłącznie numer tej stacji."
+  },
+  "actions": {
+    "current": {
+      "name": "Aktualna jakość powietrza",
+      "description": "Podaje indeks jakości powietrza, PM2.5 i PM10 Twojej stacji wraz z czasem pomiaru oraz informuje, gdy nie są aktualne.",
+      "category": "Jakość powietrza",
+      "parameters": {
+        "at": {
+          "label": "Czas uruchomienia",
+          "description": "Opcjonalne. W przepływie uruchamianym według harmonogramu: czas wyzwolenia (RRRR-MM-DD GG:MM). Dzięki niemu wtyczka używa pamięci podręcznej zamiast pytać ponownie."
+        }
+      },
+      "outputs": {
+        "summary": "Podsumowanie",
+        "category": "Kategoria indeksu",
+        "categoryName": "Nazwa kategorii indeksu",
+        "unit": "Jednostka wartości PM",
+        "station": "Stacja",
+        "provider": "Dostawca danych",
+        "measuredAt": "Czas najstarszej wartości (czas polski)",
+        "stale": "Nieaktualne",
+        "source": "Źródło",
+        "attribution": "Źródło danych",
+        "index": "Indeks jakości powietrza (0-5)",
+        "indexTime": "Czas danych indeksu",
+        "pm25": "PM2.5 (µg/m³)",
+        "pm25Time": "Czas wartości PM2.5",
+        "pm10": "PM10 (µg/m³)",
+        "pm10Time": "Czas wartości PM10",
+        "no2Category": "Nazwa kategorii indeksu NO2",
+        "o3Category": "Nazwa kategorii indeksu O3",
+        "so2Category": "Nazwa kategorii indeksu SO2",
+        "measurementAgeMinutes": "Wiek najstarszej wartości w minutach",
+        "fetchedAt": "Pobrano (UTC)",
+        "ageMinutes": "Minuty od pobrania",
+        "problem": "Problem"
+      }
+    },
+    "find-station": {
+      "name": "Znajdź stację",
+      "description": "Wyszukuje stacje pomiarowe GIOŚ według miasta, nazwy stacji lub województwa i wypisuje do 8 z ich numerami.",
+      "category": "Jakość powietrza",
+      "parameters": {
+        "query": {
+          "label": "Miasto lub nazwa stacji",
+          "description": "Co najmniej dwie litery; polskie znaki można pominąć (Krakow, Lodz). Kolejne słowa zawężają wyszukiwanie."
+        }
+      },
+      "outputs": {
+        "count": "Liczba wyników",
+        "shown": "Liczba wypisanych wyników",
+        "matches": "Wyniki (numer: stacja, po jednym w wierszu)",
+        "firstId": "Numer pierwszego wyniku",
+        "source": "Źródło",
+        "attribution": "Źródło danych"
+      }
+    },
+    "select-station": {
+      "name": "Wybierz stację",
+      "description": "Zapisuje stację o podanym numerze jako tę, dla której działa Aktualna jakość powietrza, i sprawdza jej stanowiska PM2.5 i PM10.",
+      "category": "Jakość powietrza",
+      "parameters": {
+        "station": {
+          "label": "Numer stacji",
+          "description": "Numer sprzed nazwy stacji na liście akcji Znajdź stację."
+        }
+      },
+      "outputs": {
+        "selected": "Wybrana stacja",
+        "stationId": "Numer stacji",
+        "hasPm25": "Mierzy PM2.5",
+        "hasPm10": "Mierzy PM10",
+        "attribution": "Źródło danych"
+      }
+    },
+    "forget-station": {
+      "name": "Zapomnij stację",
+      "description": "Usuwa wybraną stację i jej zapisane wartości oraz czyści zmienne wtyczki. Lista stacji i ustawienia pozostają.",
+      "category": "Jakość powietrza"
+    }
+  },
+  "variables": {
+    "pm25": {
+      "name": "PM2.5",
+      "description": "PM2.5 w µg/m³ z ostatniego uruchomienia akcji Aktualna jakość powietrza; bez wartości, gdy stacja jej nie podaje."
+    },
+    "pm10": {
+      "name": "PM10",
+      "description": "PM10 w µg/m³ z ostatniego uruchomienia akcji Aktualna jakość powietrza; bez wartości, gdy stacja jej nie podaje."
+    },
+    "index": {
+      "name": "Indeks jakości powietrza",
+      "description": "Polski indeks jakości powietrza, od 0 (bardzo dobry) do 5 (bardzo zły); bez wartości, gdy stacja nie ma indeksu."
+    },
+    "category": {
+      "name": "Kategoria indeksu",
+      "description": "Kategoria indeksu jako tekst w języku z ustawień."
+    },
+    "categoryName": {
+      "name": "Nazwa kategorii indeksu",
+      "description": "Kategoria indeksu jako stała nazwa: very-good, good, moderate, sufficient, bad, very-bad albo none."
+    },
+    "summary": {
+      "name": "Podsumowanie",
+      "description": "Odczyt jako jeden tekst z czasem i źródłem; zaczyna się od [nieaktualne], gdy nie wiadomo, czy dane są aktualne."
+    },
+    "measuredAt": {
+      "name": "Czas pomiaru",
+      "description": "Czas najstarszej z podanych wartości, w czasie polskim (RRRR-MM-DD GG:MM)."
+    },
+    "stale": {
+      "name": "Nieaktualne",
+      "description": "Prawda, chyba że ostatnie uruchomienie akcji Aktualna jakość powietrza wykazało, że wartości są świeże."
+    },
+    "station": {
+      "name": "Stacja",
+      "description": "Stacja, z której pochodzą wartości."
+    }
+  },
+  "settings": {
+    "provider": {
+      "label": "Dostawca danych",
+      "description": "gios: Główny Inspektorat Ochrony Środowiska, bez klucza. Jedyny dostawca w tej wersji."
+    },
+    "language": {
+      "label": "Język tekstów",
+      "description": "Język kategorii i komunikatów: en (angielski) albo pl (polski)."
+    }
+  },
+  "errorCodes": {
+    "no-station": "Nie wybrano stacji: uruchom Znajdź stację, a potem Wybierz stację.",
+    "station-not-found": "Żadna stacja nie pasuje do wyszukiwania albo żadna nie ma podanego numeru.",
+    "no-data": "Stacja nie podaje teraz ani wartości PM2.5, ani PM10, ani indeksu.",
+    "provider-error": "GIOŚ odpowiedział błędem i nie było zapisanych danych do pokazania.",
+    "invalid-response": "Odpowiedzi GIOŚ nie udało się odczytać i nie było zapisanych danych do pokazania.",
+    "response-too-large": "Odpowiedź GIOŚ była większa, niż wtyczka przyjmuje.",
+    "timed-out": "GIOŚ nie odpowiedział na czas i nie było zapisanych danych do pokazania."
+  }
+}
