@@ -1,4 +1,4 @@
-# Reusable: builds and checks the marketplace website (website/) and uploads
+# Reusable: builds and tests the marketplace website (website/) and uploads
 # it as the artifact `website`. Called by website.yml (pull requests),
 # _site.yml (deploys from main) and publish.yml (deploys from a release tag).
 #
@@ -31,6 +31,10 @@ on:
         description: The caller verified that tree with deckpilot-registry verify-site
         type: boolean
         default: false
+      browser-tests:
+        description: Also run the browser tests (Playwright, axe)
+        type: boolean
+        default: true
 
 permissions: {}
 
@@ -83,6 +87,14 @@ jobs:
           npm run build
       - name: Build the test-only fixture catalog (never deployed)
         run: npm run build:fixture
+      - name: Links and language parity
+        run: npm run test:static
+      - name: Install the browser
+        if: inputs.browser-tests
+        run: npx playwright install --with-deps chromium
+      - name: Browser tests (navigation, catalog, accessibility, SEO)
+        if: inputs.browser-tests
+        run: npm run test:browser
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: website
