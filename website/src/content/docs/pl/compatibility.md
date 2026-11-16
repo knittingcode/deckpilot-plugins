@@ -111,7 +111,7 @@ Użytkownik może też przywrócić poprzednią wersję. Zaplanuj przechowywane 
 
 ## Narzędzia rejestru i przypięcie DeckPilota
 
-Repozytorium rejestru buduje swoje narzędzia i kopiuje swoje schematy z jednego przypiętego commita DeckPilota. Funkcje manifestu dodane do DeckPilota po tym commicie, takie jak adresy serwerów podane przez użytkownika, nie przechodzą walidacji w rejestrze, dopóki przypięcie nie zostanie przesunięte.
+Repozytorium rejestru buduje swoje narzędzia i kopiuje swoje schematy z jednego przypiętego commita DeckPilota. Funkcje manifestu dodane do DeckPilota po tym commicie nie przechodzą walidacji w rejestrze, dopóki przypięcie nie zostanie przesunięte.
 
 ## Dokumentacja źródłowa
 

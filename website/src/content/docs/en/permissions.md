@@ -163,8 +163,6 @@ Consent works in steps:
 
 The broker matches each request against the allowed server exactly, by scheme, host, port and path prefix, and checks every redirect the same way.
 
-> **Note:** The registry repository builds its tooling from an older pinned DeckPilot commit whose manifest schema does not yet contain `userOrigins`. Until that pin moves, a submission that uses it does not pass the registry's validation.
-
 ## Canonical reference
 
 [docs/marketplace/sdk/permissions.md](https://github.com/knittingcode/deckpilot/blob/main/docs/marketplace/sdk/permissions.md) has the exhaustive rules, including the full list of refused headers. The broker's source is [plugins/runtime/crates/broker](https://github.com/knittingcode/deckpilot/blob/main/plugins/runtime/crates/broker/src/lib.rs).

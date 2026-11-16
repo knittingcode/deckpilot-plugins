@@ -23,7 +23,11 @@ The reviewer checks, with the job summary of *Validate registry* and
    the plugin does; network hosts belong to the service the plugin claims;
    credential slots match those hosts; `openUrl` hosts are the pages the
    plugin's actions open for the user (the plugin's own service, its
-   documentation), never a broad wildcard. Any new permission in an update is
+   documentation), never a broad wildcard; a `userOrigins` slot is for a
+   service the user hosts themselves (the address is theirs to enter and
+   to consent to), never a way around naming a fixed service in `hosts`,
+   and `privateNetwork` is set only when such a server can be on a private
+   network. Any new permission in an update is
    an escalation: it is reviewed as carefully as a new plugin, and users
    are asked again before it applies.
 4. **Build.** The recipe uses an exact toolchain, a locked Cargo workspace
