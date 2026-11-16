@@ -1,0 +1,20 @@
+# Untrusted: builds and tests the marketplace website on every pull request,
+# including forks. No secrets, no environment, a read-only token, and it
+# never deploys.
+name: Website
+
+on:
+  pull_request:
+
+permissions: {}
+
+concurrency:
+  group: website-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  site:
+    name: Website
+    uses: ./.github/workflows/_website.yml
+    permissions:
+      contents: read
