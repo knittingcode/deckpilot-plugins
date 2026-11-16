@@ -6,7 +6,10 @@
 # refuses a `rev` below that differs from DECKPILOT_COMMIT.
 [workspace]
 resolver = "3"
-members = ["template"]
+# One line per plugin, sorted.
+members = [
+    "template",
+]
 
 [workspace.package]
 edition = "2024"
