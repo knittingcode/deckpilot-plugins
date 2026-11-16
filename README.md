@@ -2,7 +2,7 @@
 
 <p>
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/icon.svg" />
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/wordmark-dark.svg" />
     <img src=".github/assets/wordmark.svg" alt="DeckPilot" height="72" />
   </picture>
 </p>
