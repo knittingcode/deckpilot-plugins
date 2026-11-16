@@ -1,0 +1,22 @@
+# deckpilot.break-reminder: break and hydration reminders, driven by a
+# scheduled workflow that calls `tick` (plugin API 1.0 has no timers).
+[package]
+name = "deckpilot-break-reminder"
+description = "DeckPilot plugin: break and hydration reminders with snooze, skip, pause and quiet hours"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+deckpilot-plugin-sdk.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true
