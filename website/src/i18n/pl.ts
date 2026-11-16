@@ -55,6 +55,7 @@ export const pl: Dictionary = {
     docs: 'Dokumentacja',
     gettingStarted: 'Pierwsze kroki',
     submit: 'Zgłoś wtyczkę',
+    website: 'Strona DeckPilot',
     deckpilot: 'DeckPilot w serwisie GitHub',
     registryRepo: 'Repozytorium rejestru',
     contributing: 'Zasady współpracy',
