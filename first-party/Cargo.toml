@@ -1,0 +1,45 @@
+# DeckPilot's own independently installable plugins (first-party/README.md).
+#
+# One Cargo workspace with one Cargo.lock: every plugin here is built for
+# wasm32-unknown-unknown with the `guest` profile, against the plugin SDK of
+# the DeckPilot commit pinned in tools/deckpilot.env. tools/first-party.sh
+# refuses a `rev` below that differs from DECKPILOT_COMMIT.
+[workspace]
+resolver = "3"
+# One line per plugin, sorted.
+members = [
+    "template",
+]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.90"
+license = "Apache-2.0"
+repository = "https://github.com/knittingcode/deckpilot-plugins"
+publish = false
+
+[workspace.dependencies]
+# The SDK is not published to crates.io: a git dependency on the pinned
+# DeckPilot commit (plugins/runtime/guest/plugin-sdk, SDK 0.1.0, plugin
+# API 1.0, guest ABI 1).
+deckpilot-plugin-sdk = { git = "https://github.com/knittingcode/deckpilot", rev = "dc1a8a2ee190df080377ab372c33eafb3c1f55a0" }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+
+# The profile of DeckPilot's plugins/runtime workspace, so a module built
+# here is built like a bundled one.
+[profile.guest]
+inherits = "release"
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

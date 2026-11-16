@@ -1,0 +1,24 @@
+# deckpilot.template: the starting point for a first-party plugin. Copy the
+# directory, rename the package and the id, and add the crate to `members`
+# in ../Cargo.toml. Never published and never listed in registry/.
+[package]
+name = "deckpilot-template"
+description = "Template of a DeckPilot first-party plugin: a setting, storage, an own variable, a typed error"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+deckpilot-plugin-sdk.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true
