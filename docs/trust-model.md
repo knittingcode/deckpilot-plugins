@@ -115,5 +115,5 @@ they are enforced offline from then on.
 
 No production keys exist. `keys/` is empty, `registry-publish` and
 `registry-timestamp` do not exist, and the public site serves only the
-landing page and `/v1/README.txt`. Registries signed with throwaway keys
+Marketplace website and `/v1/README.txt`. Registries signed with throwaway keys
 exist only inside CI jobs and are discarded.

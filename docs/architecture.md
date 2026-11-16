@@ -35,9 +35,10 @@ plugins/examples/          CI fixtures, never published
 keys/                      public trust material after the key ceremony (empty now)
 schemas/                   DeckPilot's schemas, byte-identical at the pin
 schemas/inputs/            this repository's input schemas (build recipe, plugin.json)
-pages/                     the static landing page and /v1/README.txt
+pages/                     static registry files: /v1/README.txt
+website/                   the Marketplace website (Astro), a read-only consumer
 tools/                     scripts used by the workflows (and locally)
-.github/workflows/         validate, workflow lint, pages, publish, refresh-timestamp
+.github/workflows/         validate, workflow lint, website, pages, publish, refresh-timestamp
 ```
 
 Never committed (`tools/check-hygiene.py` refuses them): `site/` (the
@@ -72,13 +73,62 @@ tag of a plugin version is always exactly `<id>--v<version>`.
 | --- | --- | --- | --- |
 | `validate.yml` (*Validate*) | every pull request, push to `main` | none | hygiene, submission rules, schema pin, rebuild and verify every version, throwaway-key signed registry with `verify-site --require-packages`, examples |
 | `workflow-lint.yml` (*Workflow lint*) | every pull request, push to `main` | none | actionlint and zizmor |
-| `pages.yml` (*Pages*) | push to `main`, dispatch | none (timestamp only if enabled) | landing page; `/v1/` README, or the verified live registry |
-| `publish.yml` (*Publish*) | owner-created tag `*--v*`, dispatch on a tag | `registry-publish`: index and timestamp keys | build, sign, release, deploy, verify published |
+| `website.yml` (*Website*) | every pull request | none | builds and tests the website; composes it with the registry tree and checks that no registry path changes; never deploys |
+| `pages.yml` (*Pages*) | push to `main`, dispatch | none (timestamp only if enabled) | `/v1/` README, or the verified live registry; the website around it |
+| `publish.yml` (*Publish*) | owner-created tag `*--v*`, dispatch on a tag | `registry-publish`: index and timestamp keys | build, sign, release, website, deploy, verify published |
 | `refresh-timestamp.yml` (*Refresh timestamp*) | daily, dispatch | `registry-timestamp`: timestamp key | re-sign `timestamp.json`, redeploy |
 
 `_site.yml` is the reusable build and deploy of the Pages site used by
-*Pages* and *Refresh timestamp*. *Pages*, *Publish* and *Refresh timestamp*
-share the concurrency group `registry-pages` and never cancel each other.
+*Pages* and *Refresh timestamp*. `_website.yml` is the reusable build and
+test of the website used by *Website*, `_site.yml` and *Publish*. *Pages*,
+*Publish* and *Refresh timestamp* share the concurrency group
+`registry-pages` and never cancel each other.
+
+## The website and the registry on one Pages site
+
+GitHub Pages serves one tree per repository, so the Marketplace website
+(`website/`) and the registry (`/v1/`) are deployed together, and kept
+apart by construction:
+
+```text
+build registry tree            build website (_website.yml)
+/v1/** and /icon.svg:          npm ci, build, tests; reads the registry
+mirrored live registry,        tree only to generate the catalog
+verify-site with the           no environment, no secret, contents: read
+committed roots (or README)             |
+        |                               |
+        +-------------+-----------------+
+                      v
+        compose (tools/compose-site.py, runs no npm code)
+        registry tree copied byte for byte; fails if the website has a
+        file under v1/ or at any registry path, or is a fixture build;
+        sha256 of every registry path read back from the artifact
+                      |
+                      v
+        deploy (github-pages) -> verify (tools/verify-live-registry.sh:
+        the live registry paths serve exactly those bytes)
+```
+
+- The website is a read-only consumer. Its job has no environment and no
+  secret, and it cannot reach `registry-publish` or `registry-timestamp`.
+  It never signs, re-signs or rewrites a registry document.
+- The catalog is generated from the registry tree that `verify-site`
+  accepted in the same run, never from `registry/` source data, examples
+  or fixtures. While no registry is published, the catalog is empty.
+- The gates of registry publication are unchanged: a signed registry still
+  reaches Pages only through `publish.yml` (owner's tag, `registry-publish`)
+  or as the mirrored, verified copy of what is already live. A deploy from
+  `main` republishes the registry that is already published, byte for byte,
+  or `/v1/README.txt` while there is none.
+- The site root (`/`, `/index.html`) forwards people to `/en/` or `/pl/`.
+  DeckPilot clients read only `<site>/v1/...`, so nothing at the root is a
+  registry path. Missing paths answer 404 as before (now with the website's
+  404 page as the body).
+- The daily timestamp refresh rebuilds the website from `main` too (without
+  the browser tests). If the website cannot be built, that run fails and
+  the live site, including its registry, stays as it was; the timestamp is
+  valid for 7 days and the refresh runs daily, so one failed run does not
+  expire it.
 
 Rules every workflow follows: top-level `permissions: {}` and only what
 each job needs; third-party actions pinned to a full commit SHA with the

@@ -1,6 +1,6 @@
 # Re-signs timestamp.json of the live registry before it expires (7 days,
 # re-signed daily) with the timestamp key only, then redeploys. The index
-# is unchanged byte for byte. A no-op (landing page redeploy only) until a
+# is unchanged byte for byte. A no-op (a redeploy of the same site) until a
 # signed registry is live and REGISTRY_TIMESTAMP_ENABLED is 'true'.
 name: Refresh timestamp
 

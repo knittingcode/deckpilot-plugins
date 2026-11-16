@@ -11,7 +11,7 @@
 [DeckPilot](https://github.com/knittingcode/deckpilot), the open-source,
 local-first Stream Deck controller and automation app.
 
-[Contributing a plugin](CONTRIBUTING.md) &nbsp;&bull;&nbsp; [Security](SECURITY.md) &nbsp;&bull;&nbsp; [Documentation](docs/README.md) &nbsp;&bull;&nbsp; [Registry site](https://knittingcode.github.io/deckpilot-plugins/)
+[Marketplace website](https://knittingcode.github.io/deckpilot-plugins/) &nbsp;&bull;&nbsp; [Contributing a plugin](CONTRIBUTING.md) &nbsp;&bull;&nbsp; [Security](SECURITY.md) &nbsp;&bull;&nbsp; [Documentation](docs/README.md)
 
 [![Validate](https://github.com/knittingcode/deckpilot-plugins/actions/workflows/validate.yml/badge.svg)](https://github.com/knittingcode/deckpilot-plugins/actions/workflows/validate.yml)
 
@@ -38,6 +38,11 @@ then browse, install and update them from inside the app.
 - **Plugin packages** (`<id>-<version>.dpplugin`) are assets of this
   repository's GitHub Releases, one release per plugin version, tagged
   `<id>--v<version>`.
+- **The Marketplace website** at
+  <https://knittingcode.github.io/deckpilot-plugins/> (English and Polish)
+  is the human-facing side: the plugin directory, plugin pages and the
+  developer documentation. It is generated from the published registry and
+  only reads it; see [`website/`](website/).
 
 ## How DeckPilot uses it
 
@@ -63,6 +68,7 @@ from one pinned DeckPilot commit (`tools/deckpilot.env`).
 | [`keys/`](keys/) | Public trust material after the key ceremony (empty for now) |
 | [`schemas/`](schemas/) | DeckPilot's JSON schemas, pinned to the DeckPilot commit |
 | [`tools/`](tools/) | Build, validation and publishing scripts used by CI |
+| [`website/`](website/) | The Marketplace website (Astro): [README](website/README.md), [design system](website/DESIGN.md) |
 | [`docs/`](docs/) | [Architecture](docs/architecture.md), [publishing](docs/publishing.md), [production readiness](docs/production-readiness.md), [trust model](docs/trust-model.md), [review policy](docs/review-policy.md), [separation from app releases](docs/separation.md) |
 
 The generated site (`site/v1/`) is never committed; CI builds it.
@@ -76,6 +82,9 @@ tools/build-cli.sh      # pinned deckpilot-registry + schema-check into .work/bi
 tools/validate.sh       # what the Validate workflow runs
 tools/lint-workflows.sh # actionlint + zizmor
 ```
+
+The website has its own checks (needs Node.js): `cd website && npm ci &&
+npm run verify`, see [website/README.md](website/README.md).
 
 `tools/validate.sh` builds plugin code from its source: run it only on
 plugins you are willing to build on your machine.

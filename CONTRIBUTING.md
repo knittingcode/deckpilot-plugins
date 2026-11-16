@@ -91,7 +91,7 @@ The *Submission rules* check enforces this on every pull request:
 | `registry/publishers/<your-login>.json` | you (with your own `github_id` and `login`) |
 | `registry/plugins/<your-namespace>.*/**`, `plugins/<your-namespace>.*/**` | you |
 | `docs/*.md`, `README.md`, `plugins/README.md`, `registry/README.md` | anyone |
-| `.github/**`, `tools/**`, `schemas/**`, `keys/**`, `registry/revocations.json`, other publishers' files, `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `LICENSE` | owner only |
+| `.github/**`, `tools/**`, `schemas/**`, `keys/**`, `website/**`, `registry/revocations.json`, other publishers' files, `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `LICENSE` | owner only |
 
 Everything is reviewed by the owner (CODEOWNERS) before it is merged.
 

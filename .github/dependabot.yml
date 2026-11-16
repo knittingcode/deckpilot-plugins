@@ -24,3 +24,8 @@ updates:
     groups:
       website:
         patterns: ["*"]
+    ignore:
+      # Astro's type checker (@astrojs/check) sets the supported TypeScript
+      # major; take a new major together with it, by hand.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]

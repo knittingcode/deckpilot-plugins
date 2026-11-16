@@ -16,7 +16,12 @@
 #                     reviewed pins, signs, verify-site as an existing client
 #   release           contents: write: uploads the verified package to the
 #                     GitHub Release of the tag (never creates a tag)
-#   deploy            github-pages: landing page plus the signed /v1/
+#   website           UNPRIVILEGED (no environment, no secret): builds the
+#                     marketplace website, with its catalog generated from
+#                     the registry `sign` just verified; read-only consumer
+#   deploy            github-pages: the signed /v1/ byte for byte, the
+#                     website around it (tools/compose-site.py fails if the
+#                     website touches a registry path)
 #   verify-published  fetches the live site anonymously and verifies it
 #
 # Nothing from validate.yml or any other workflow run is used. The root key
@@ -152,10 +157,25 @@ jobs:
           VERSION: ${{ needs.resolve.outputs.version }}
         run: tools/upload-release.sh "$TAG" "$ID" "$VERSION" "$RUNNER_TEMP/packages"
 
+  website:
+    name: Website
+    needs: [resolve, sign]
+    uses: ./.github/workflows/_website.yml
+    with:
+      ref: ${{ needs.resolve.outputs.commit }}
+      registry-artifact: registry-v1
+      registry-path: .
+      registry-verified: true
+      # The tagged commit passed the browser tests when it reached main; a
+      # publication must not depend on them a second time.
+      browser-tests: false
+    permissions:
+      contents: read
+
   deploy:
     name: Deploy the registry
-    needs: [resolve, sign, release]
-    if: always() && needs.sign.result == 'success' && (needs.release.result == 'success' || needs.release.result == 'skipped')
+    needs: [resolve, sign, release, website]
+    if: always() && needs.sign.result == 'success' && needs.website.result == 'success' && (needs.release.result == 'success' || needs.release.result == 'skipped')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment:
@@ -174,11 +194,17 @@ jobs:
         with:
           name: registry-v1
           path: ${{ runner.temp }}/registry-v1
-      - name: Assemble the landing page and the signed /v1/
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: website
+          path: ${{ runner.temp }}/website
+      - name: Compose the signed /v1/ (byte for byte) and the website around it
         run: |
-          tools/build-landing.sh "$RUNNER_TEMP/site"
-          rm -rf "$RUNNER_TEMP/site/v1"
-          mv "$RUNNER_TEMP/registry-v1" "$RUNNER_TEMP/site/v1"
+          tools/build-landing.sh "$RUNNER_TEMP/registry"
+          rm -rf "$RUNNER_TEMP/registry/v1"
+          mv "$RUNNER_TEMP/registry-v1" "$RUNNER_TEMP/registry/v1"
+          python3 -I tools/compose-site.py --registry "$RUNNER_TEMP/registry" \
+            --website "$RUNNER_TEMP/website" --out "$RUNNER_TEMP/site"
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: ${{ runner.temp }}/site
