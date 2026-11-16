@@ -101,7 +101,7 @@ All checks run without secrets and with a read-only token, also for forks:
 
 | Check | What |
 | --- | --- |
-| *Repository hygiene* | no private keys, key files, packages or generated `site/` output |
+| *Repository hygiene* | no private keys, key files, packages, Python bytecode or generated `site/` output |
 | *Submission rules* | the path guard above, publisher identity, no reserved publisher id, append-only versions; the permission diff and a source compare link go to the job summary |
 | *Schemas match DeckPilot* | `schemas/` equal the pinned DeckPilot commit |
 | *Validate registry* | schemas of every input; your source fetched at the recorded commit (the tag must point at it); `cargo build --locked`; `deckpilot-registry package`; the version record re-derived and compared byte for byte; the registry signed with throwaway keys and accepted by DeckPilot's own client (`verify-site --require-packages`) |

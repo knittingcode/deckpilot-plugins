@@ -26,6 +26,7 @@ DECKPILOT = None
 
 
 def load_script():
+    sys.dont_write_bytecode = True
     spec = importlib.util.spec_from_file_location("check_submission", SCRIPT)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
