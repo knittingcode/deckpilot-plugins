@@ -1,0 +1,697 @@
+{
+  "$schema": "https://knittingcode.github.io/deckpilot-plugins/v1/schemas/plugin-manifest.schema.json",
+  "manifestVersion": 1,
+  "id": "deckpilot.break-reminder",
+  "name": "Break & Hydration",
+  "version": "0.1.0",
+  "publisher": {
+    "id": "deckpilot",
+    "name": "DeckPilot",
+    "url": "https://github.com/knittingcode/deckpilot"
+  },
+  "description": "Reminds you to take breaks and drink water, with snooze, skip, pause and quiet hours. It has no timer of its own: a workflow you add runs its Tick action every minute.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/knittingcode/deckpilot-plugins",
+    "directory": "first-party/break-reminder"
+  },
+  "license": "Apache-2.0",
+  "keywords": [
+    "break",
+    "hydration",
+    "reminder",
+    "health",
+    "water"
+  ],
+  "categories": [
+    "productivity"
+  ],
+  "engines": {
+    "deckpilot": ">=0.6.0 <1.0.0",
+    "pluginApi": "^1.0",
+    "sdk": "0.1.0"
+  },
+  "runtime": {
+    "kind": "wasm",
+    "abi": 1
+  },
+  "entry": "src/lib.rs",
+  "icons": {
+    "128": "assets/icon-128.png"
+  },
+  "assets": {
+    "readme": "README.md"
+  },
+  "permissions": [
+    {
+      "kind": "notifications",
+      "routing": {
+        "desktop": "desktop",
+        "statusBar": "statusBar"
+      },
+      "justification": "Shows the break and hydration reminders, on the desktop or in the status bar as you choose in this plugin's settings."
+    }
+  ],
+  "contributes": {
+    "actions": [
+      {
+        "id": "tick",
+        "name": "Tick",
+        "description": "Advances the countdowns to the given time and shows the reminders that are due. Run it from a workflow with an every-minute schedule; it is the plugin's only clock.",
+        "category": "Break & Hydration",
+        "parameters": [
+          {
+            "key": "firedAt",
+            "label": "Date and time",
+            "description": "The schedule trigger's “Date and time” (YYYY-MM-DD HH:MM), passed through a workflow input.",
+            "required": true,
+            "kind": {
+              "type": "text",
+              "multiline": false,
+              "maxLength": 32
+            }
+          }
+        ],
+        "node": {
+          "version": 1,
+          "icon": "timer",
+          "outputs": [
+            {
+              "key": "state",
+              "label": "State",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "breakRemaining",
+              "label": "Minutes until the break",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "hydrationRemaining",
+              "label": "Minutes until water",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "reminder",
+              "label": "Reminder due",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "notified",
+              "label": "Notification shown",
+              "kind": "boolean",
+              "always": true
+            },
+            {
+              "key": "reason",
+              "label": "Why not shown",
+              "kind": "text",
+              "always": false
+            }
+          ],
+          "timeoutMs": 10000,
+          "retrySafe": false,
+          "idempotent": false,
+          "effect": "modifies"
+        }
+      },
+      {
+        "id": "snooze",
+        "name": "Snooze",
+        "description": "Shows a reminder again in the given number of minutes, counted from the next tick.",
+        "category": "Break & Hydration",
+        "parameters": [
+          {
+            "key": "minutes",
+            "label": "Minutes",
+            "description": "How long to wait.",
+            "required": false,
+            "kind": {
+              "type": "integer",
+              "min": 1,
+              "max": 120
+            },
+            "default": {
+              "type": "integer",
+              "value": 10
+            }
+          },
+          {
+            "key": "reminder",
+            "label": "Reminder",
+            "description": "Which reminder; “last” is the one shown most recently.",
+            "required": false,
+            "kind": {
+              "type": "choice",
+              "options": [
+                "last",
+                "break",
+                "hydration",
+                "both"
+              ]
+            },
+            "default": {
+              "type": "choice",
+              "value": "last"
+            }
+          }
+        ],
+        "node": {
+          "version": 1,
+          "icon": "alarm-clock",
+          "outputs": [
+            {
+              "key": "state",
+              "label": "State",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "breakRemaining",
+              "label": "Minutes until the break",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "hydrationRemaining",
+              "label": "Minutes until water",
+              "kind": "integer",
+              "always": false
+            }
+          ],
+          "timeoutMs": 10000,
+          "retrySafe": false,
+          "idempotent": false,
+          "effect": "modifies"
+        }
+      },
+      {
+        "id": "skip",
+        "name": "Skip next",
+        "description": "Passes over the next reminder: when it is due nothing is shown and its countdown starts again.",
+        "category": "Break & Hydration",
+        "parameters": [
+          {
+            "key": "reminder",
+            "label": "Reminder",
+            "description": "Which reminder to skip once.",
+            "required": false,
+            "kind": {
+              "type": "choice",
+              "options": [
+                "break",
+                "hydration",
+                "both"
+              ]
+            },
+            "default": {
+              "type": "choice",
+              "value": "break"
+            }
+          }
+        ],
+        "node": {
+          "version": 1,
+          "icon": "skip-forward",
+          "outputs": [
+            {
+              "key": "state",
+              "label": "State",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "breakRemaining",
+              "label": "Minutes until the break",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "hydrationRemaining",
+              "label": "Minutes until water",
+              "kind": "integer",
+              "always": false
+            }
+          ],
+          "timeoutMs": 10000,
+          "retrySafe": false,
+          "idempotent": true,
+          "effect": "modifies"
+        }
+      },
+      {
+        "id": "restart",
+        "name": "Restart countdown",
+        "description": "Starts a countdown again from its full interval, for example after a break you took by yourself.",
+        "category": "Break & Hydration",
+        "parameters": [
+          {
+            "key": "reminder",
+            "label": "Reminder",
+            "description": "Which countdown to start again.",
+            "required": false,
+            "kind": {
+              "type": "choice",
+              "options": [
+                "break",
+                "hydration",
+                "both"
+              ]
+            },
+            "default": {
+              "type": "choice",
+              "value": "both"
+            }
+          }
+        ],
+        "node": {
+          "version": 1,
+          "icon": "rotate-ccw",
+          "outputs": [
+            {
+              "key": "state",
+              "label": "State",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "breakRemaining",
+              "label": "Minutes until the break",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "hydrationRemaining",
+              "label": "Minutes until water",
+              "kind": "integer",
+              "always": false
+            }
+          ],
+          "timeoutMs": 10000,
+          "retrySafe": false,
+          "idempotent": true,
+          "effect": "modifies"
+        }
+      },
+      {
+        "id": "pause",
+        "name": "Pause",
+        "description": "Stops the countdowns and the reminders until you resume, or for a number of minutes.",
+        "category": "Break & Hydration",
+        "parameters": [
+          {
+            "key": "minutes",
+            "label": "Minutes",
+            "description": "0 pauses until you resume; otherwise the reminders resume by themselves.",
+            "required": false,
+            "kind": {
+              "type": "integer",
+              "min": 0,
+              "max": 1440
+            },
+            "default": {
+              "type": "integer",
+              "value": 0
+            }
+          }
+        ],
+        "node": {
+          "version": 1,
+          "icon": "pause",
+          "outputs": [
+            {
+              "key": "state",
+              "label": "State",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "breakRemaining",
+              "label": "Minutes until the break",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "hydrationRemaining",
+              "label": "Minutes until water",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "paused",
+              "label": "Paused",
+              "kind": "boolean",
+              "always": true
+            }
+          ],
+          "timeoutMs": 10000,
+          "retrySafe": false,
+          "idempotent": true,
+          "effect": "modifies"
+        }
+      },
+      {
+        "id": "resume",
+        "name": "Resume",
+        "description": "Continues the countdowns where they stopped.",
+        "category": "Break & Hydration",
+        "parameters": [],
+        "node": {
+          "version": 1,
+          "icon": "play",
+          "outputs": [
+            {
+              "key": "state",
+              "label": "State",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "breakRemaining",
+              "label": "Minutes until the break",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "hydrationRemaining",
+              "label": "Minutes until water",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "paused",
+              "label": "Paused",
+              "kind": "boolean",
+              "always": true
+            }
+          ],
+          "timeoutMs": 10000,
+          "retrySafe": false,
+          "idempotent": true,
+          "effect": "modifies"
+        }
+      },
+      {
+        "id": "toggle-pause",
+        "name": "Pause or resume",
+        "description": "Pauses the reminders, or resumes them when they are paused: one key for both.",
+        "category": "Break & Hydration",
+        "parameters": [],
+        "node": {
+          "version": 1,
+          "icon": "circle-pause",
+          "outputs": [
+            {
+              "key": "state",
+              "label": "State",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "breakRemaining",
+              "label": "Minutes until the break",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "hydrationRemaining",
+              "label": "Minutes until water",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "paused",
+              "label": "Paused",
+              "kind": "boolean",
+              "always": true
+            }
+          ],
+          "timeoutMs": 10000,
+          "retrySafe": false,
+          "idempotent": false,
+          "effect": "modifies"
+        }
+      },
+      {
+        "id": "status",
+        "name": "Status",
+        "description": "Reports the minutes until the next break and hydration reminder and whether the reminders are paused or in quiet hours, as of the last tick.",
+        "category": "Break & Hydration",
+        "parameters": [],
+        "node": {
+          "version": 1,
+          "icon": "info",
+          "outputs": [
+            {
+              "key": "state",
+              "label": "State",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "breakRemaining",
+              "label": "Minutes until the break",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "hydrationRemaining",
+              "label": "Minutes until water",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "paused",
+              "label": "Paused",
+              "kind": "boolean",
+              "always": true
+            },
+            {
+              "key": "quietHours",
+              "label": "Quiet hours",
+              "kind": "boolean",
+              "always": true
+            },
+            {
+              "key": "pauseRemaining",
+              "label": "Minutes of pause left",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "breaksToday",
+              "label": "Break reminders today",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "hydrationToday",
+              "label": "Water reminders today",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "lastTick",
+              "label": "Last tick",
+              "kind": "text",
+              "always": false
+            }
+          ],
+          "timeoutMs": 10000,
+          "retrySafe": true,
+          "idempotent": true,
+          "effect": "readOnly"
+        }
+      }
+    ],
+    "variables": [
+      {
+        "id": "state",
+        "name": "State",
+        "description": "waiting (no tick yet), running, paused or quiet, after the plugin's last action.",
+        "valueType": {
+          "type": "string"
+        },
+        "scope": "machine"
+      },
+      {
+        "id": "breakRemaining",
+        "name": "Minutes until the break",
+        "description": "Minutes until the next break reminder; no value while break reminders are off.",
+        "valueType": {
+          "type": "integer"
+        },
+        "scope": "machine"
+      },
+      {
+        "id": "hydrationRemaining",
+        "name": "Minutes until water",
+        "description": "Minutes until the next hydration reminder; no value while hydration reminders are off.",
+        "valueType": {
+          "type": "integer"
+        },
+        "scope": "machine"
+      }
+    ],
+    "settings": {
+      "portabilityVersion": 1,
+      "fields": [
+        {
+          "key": "breakEnabled",
+          "label": "Break reminders",
+          "description": "Reminds you to take a break.",
+          "required": true,
+          "kind": {
+            "type": "boolean"
+          },
+          "default": {
+            "type": "boolean",
+            "value": true
+          },
+          "portability": "portable"
+        },
+        {
+          "key": "breakMinutes",
+          "label": "Minutes between breaks",
+          "description": "How long you work before a break reminder.",
+          "required": true,
+          "kind": {
+            "type": "integer",
+            "min": 5,
+            "max": 240
+          },
+          "default": {
+            "type": "integer",
+            "value": 50
+          },
+          "portability": "portable"
+        },
+        {
+          "key": "hydrationEnabled",
+          "label": "Hydration reminders",
+          "description": "Reminds you to drink water.",
+          "required": true,
+          "kind": {
+            "type": "boolean"
+          },
+          "default": {
+            "type": "boolean",
+            "value": true
+          },
+          "portability": "portable"
+        },
+        {
+          "key": "hydrationMinutes",
+          "label": "Minutes between water",
+          "description": "How long between two reminders to drink water.",
+          "required": true,
+          "kind": {
+            "type": "integer",
+            "min": 5,
+            "max": 480
+          },
+          "default": {
+            "type": "integer",
+            "value": 60
+          },
+          "portability": "portable"
+        },
+        {
+          "key": "quietStart",
+          "label": "Quiet hours from",
+          "description": "A time such as 22:00. From then until “Quiet hours until” nothing is shown and the countdowns wait. Empty: no quiet hours.",
+          "required": false,
+          "kind": {
+            "type": "text",
+            "multiline": false,
+            "maxLength": 5
+          },
+          "portability": "portable"
+        },
+        {
+          "key": "quietEnd",
+          "label": "Quiet hours until",
+          "description": "A time such as 07:00; may be the next day.",
+          "required": false,
+          "kind": {
+            "type": "text",
+            "multiline": false,
+            "maxLength": 5
+          },
+          "portability": "portable"
+        },
+        {
+          "key": "awayMinutes",
+          "label": "Away after (minutes)",
+          "description": "A pause this long between two ticks (the computer slept, DeckPilot was locked) counts as a break: both countdowns start again and nothing is shown for the time missed.",
+          "required": true,
+          "kind": {
+            "type": "integer",
+            "min": 3,
+            "max": 120
+          },
+          "default": {
+            "type": "integer",
+            "value": 5
+          },
+          "portability": "portable"
+        },
+        {
+          "key": "language",
+          "label": "Language of reminders",
+          "description": "The language of the notifications.",
+          "required": true,
+          "kind": {
+            "type": "choice",
+            "options": [
+              "en",
+              "pl"
+            ]
+          },
+          "default": {
+            "type": "choice",
+            "value": "en"
+          },
+          "portability": "portable"
+        },
+        {
+          "key": "desktop",
+          "label": "Desktop notifications",
+          "description": "Shows reminders as notifications of the operating system. macOS and Windows may ask whether to allow them.",
+          "required": true,
+          "kind": {
+            "type": "boolean"
+          },
+          "default": {
+            "type": "boolean",
+            "value": true
+          },
+          "portability": "portable"
+        },
+        {
+          "key": "statusBar",
+          "label": "Status bar",
+          "description": "Also lists reminders in the status bar while DeckPilot is open.",
+          "required": true,
+          "kind": {
+            "type": "boolean"
+          },
+          "default": {
+            "type": "boolean",
+            "value": true
+          },
+          "portability": "portable"
+        }
+      ]
+    },
+    "errorCodes": {
+      "invalid-fired-at": "The time passed to Tick is not the schedule trigger's date and time (YYYY-MM-DD HH:MM).",
+      "invalid-settings": "The quiet hours in the plugin's settings are not times such as 22:00, or only one of the two is set.",
+      "storage-unavailable": "The reminder state could not be read or saved; the action can be run again."
+    }
+  }
+}
