@@ -217,6 +217,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     permissions:
       contents: read
+      actions: read
       pages: write
       id-token: write
     steps:
@@ -242,8 +243,14 @@ jobs:
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: ${{ runner.temp }}/site
+      # Not actions/deploy-pages: it deploys with the commit as the build
+      # version, and Pages keeps the content of an earlier deployment of the
+      # same commit (tools/deploy-pages.sh).
       - id: deployment
-        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+        name: Deploy to Pages (build version unique to this run attempt)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: tools/deploy-pages.sh
 
   verify-published:
     name: Verify the published registry

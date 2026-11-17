@@ -196,11 +196,23 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     permissions:
+      contents: read
+      actions: read
       pages: write
       id-token: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: tools
+      # Not actions/deploy-pages: it deploys with the commit as the build
+      # version, and Pages keeps the content of an earlier deployment of the
+      # same commit (tools/deploy-pages.sh).
       - id: deployment
-        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+        name: Deploy to Pages (build version unique to this run attempt)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: tools/deploy-pages.sh
 
   verify:
     name: Verify the live registry paths

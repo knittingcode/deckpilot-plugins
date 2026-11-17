@@ -23,5 +23,6 @@ jobs:
       refresh-timestamp: true
     permissions:
       contents: read
+      actions: read
       pages: write
       id-token: write
