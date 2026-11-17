@@ -30,7 +30,7 @@ jobs:
     # The maximum the called jobs may use; only its deploy job takes pages
     # and id-token, the others contents: read at most.
     permissions:
-      contents: read
+      contents: write
       actions: read
       pages: write
       id-token: write
