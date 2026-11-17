@@ -335,11 +335,29 @@ manifest, packaged and verified like every named file, in the shape
 `first-party/README.md` describes; the same for the registry's
 `plugin.json`. Until then Polish texts live beside the source.
 
-### 6.6 Privileged services (not proposed here)
+### 6.6 Privileged services (proposed in DeckPilot, awaiting the owner)
 
 `system.metrics`, power actions, clipboard and screen capture each need
 the owner's decision on what leaves the agent, on which platforms, and
-under which consent tier. They are listed in section 3 and stop there.
+under which consent tier. A design-only proposal for all four is in
+DeckPilot's `docs/marketplace/privileged-capabilities.md`
+([knittingcode/deckpilot#308](https://github.com/knittingcode/deckpilot/pull/308),
+a draft for the owner). For each it gives the narrowest broker operation,
+a new narrow permission kind and its tier, the consent flow, the OS
+permissions on macOS, Windows and Linux, what is never exposed, budgets,
+a threat model and a test plan. In short:
+
+| Plugin | Proposed operation | Tier |
+| --- | --- | --- |
+| system-monitor | `system.metrics`: whole-machine CPU, memory and swap percentages, uptime | low; also on keys (key state) |
+| power | `power.request`: lock, sleep, restart, shut down; restart and shut down always confirmed by DeckPilot | low to high per action |
+| screen-capture | `screen.capture`: the plugin is only a trigger and never sees the image, which goes to a folder the user chose or to the clipboard | high |
+| clipboard | `clipboard.writeText`, write only; reading is not proposed | medium |
+
+Nothing of it is implemented, and the plugins of section 3 that need it
+stay unbuilt until the owner decides. The broad kinds that DeckPilot
+refuses today (`clipboard`, `machineResources`, `process`, …) stay
+refused either way.
 
 ## 7. The first wave
 
