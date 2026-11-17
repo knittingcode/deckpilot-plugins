@@ -1,0 +1,165 @@
+{
+  "$schema": "https://knittingcode.github.io/deckpilot-plugins/v1/schemas/plugin-manifest.schema.json",
+  "manifestVersion": 1,
+  "id": "deckpilot.memory",
+  "name": "Memory",
+  "version": "0.1.0",
+  "publisher": {
+    "id": "deckpilot",
+    "name": "DeckPilot",
+    "url": "https://github.com/knittingcode/deckpilot"
+  },
+  "description": "The memory game on your keys: find the pairs among face-down cards, shuffled anew for every game. Counts moves and time, and keeps your best game for each board size.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/knittingcode/deckpilot-plugins",
+    "directory": "first-party/memory"
+  },
+  "license": "Apache-2.0",
+  "keywords": ["memory", "game", "pairs", "cards"],
+  "categories": ["other"],
+  "engines": { "deckpilot": ">=0.6.0 <1.0.0", "pluginApi": "^1.2", "sdk": "0.1.0" },
+  "runtime": { "kind": "wasm", "abi": 1 },
+  "entry": "src/lib.rs",
+  "icons": { "128": "assets/icon-128.png" },
+  "assets": { "readme": "README.md" },
+  "permissions": [
+    {
+      "kind": "device",
+      "state": true,
+      "justification": "Shows each card, and the score, on the keys you bound to the game."
+    }
+  ],
+  "contributes": {
+    "actions": [
+      {
+        "id": "new-game",
+        "name": "New game",
+        "description": "Shuffles a new board of the size set in the settings and starts the clock. A game in progress is given up.",
+        "category": "Memory",
+        "parameters": [],
+        "node": {
+          "version": 1,
+          "icon": "shuffle",
+          "outputs": [
+            { "key": "pairs", "label": "Pairs", "kind": "integer", "always": true },
+            { "key": "cells", "label": "Cards", "kind": "integer", "always": true }
+          ],
+          "timeoutMs": 5000,
+          "retrySafe": false,
+          "idempotent": false,
+          "effect": "modifies"
+        }
+      },
+      {
+        "id": "flip",
+        "name": "Turn card",
+        "description": "Turns one card face up. Two that match stay up; two that do not are turned back at your next turn. Put it on a card's long press.",
+        "category": "Memory",
+        "parameters": [
+          {
+            "key": "cell",
+            "label": "Card",
+            "description": "The card's number on the board, from 1.",
+            "required": true,
+            "kind": { "type": "integer", "min": 1, "max": 32 }
+          }
+        ],
+        "node": {
+          "version": 1,
+          "icon": "rotate-ccw",
+          "outputs": [
+            { "key": "result", "label": "Result", "kind": "text", "always": true },
+            { "key": "moves", "label": "Moves", "kind": "integer", "always": true },
+            { "key": "pairsFound", "label": "Pairs found", "kind": "integer", "always": true }
+          ],
+          "timeoutMs": 5000,
+          "retrySafe": false,
+          "idempotent": false,
+          "effect": "modifies"
+        }
+      },
+      {
+        "id": "card",
+        "name": "Card",
+        "description": "Shows one card on its key: its back, or its face once turned. Running it changes nothing. Put it on a card's click.",
+        "category": "Memory",
+        "parameters": [
+          {
+            "key": "cell",
+            "label": "Card",
+            "description": "The card's number on the board, from 1.",
+            "required": true,
+            "kind": { "type": "integer", "min": 1, "max": 32 }
+          }
+        ],
+        "node": {
+          "version": 1,
+          "icon": "square",
+          "outputs": [],
+          "timeoutMs": 5000,
+          "retrySafe": true,
+          "idempotent": true,
+          "effect": "readOnly"
+        },
+        "state": { "refresh": "onEvents", "intervalSeconds": 5 }
+      },
+      {
+        "id": "score",
+        "name": "Score",
+        "description": "Shows the pairs found and the moves on its key, and the time once the game is won. Running it changes nothing.",
+        "category": "Memory",
+        "parameters": [],
+        "node": {
+          "version": 1,
+          "icon": "trophy",
+          "outputs": [
+            { "key": "moves", "label": "Moves", "kind": "integer", "always": true },
+            { "key": "pairsFound", "label": "Pairs found", "kind": "integer", "always": true },
+            { "key": "pairs", "label": "Pairs", "kind": "integer", "always": true }
+          ],
+          "timeoutMs": 5000,
+          "retrySafe": true,
+          "idempotent": true,
+          "effect": "readOnly"
+        },
+        "state": { "refresh": "onEvents", "intervalSeconds": 5 }
+      }
+    ],
+    "variables": [
+      {
+        "id": "moves",
+        "name": "Moves",
+        "description": "Pairs of cards turned in the current game.",
+        "valueType": { "type": "integer" },
+        "scope": "machine"
+      },
+      {
+        "id": "pairsFound",
+        "name": "Pairs found",
+        "description": "Pairs found in the current game.",
+        "valueType": { "type": "integer" },
+        "scope": "machine"
+      }
+    ],
+    "settings": {
+      "portabilityVersion": 1,
+      "fields": [
+        {
+          "key": "pairs",
+          "label": "Pairs",
+          "description": "How many pairs a new game has, from 2 to 16 (4 to 32 cards).",
+          "required": false,
+          "kind": { "type": "integer", "min": 2, "max": 16 },
+          "default": { "type": "integer", "value": 6 },
+          "portability": "portable"
+        }
+      ]
+    },
+    "errorCodes": {
+      "no-game": "No game is running; start a new game.",
+      "no-such-card": "The card is not on this board; bind cards from 1 to the number of cards.",
+      "game-over": "Every pair was found; start a new game."
+    }
+  }
+}
