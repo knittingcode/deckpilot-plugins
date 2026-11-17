@@ -1860,9 +1860,9 @@ fn the_key_shows_the_last_report_and_its_age_once_old() {
     assert_eq!(key(&a), KeyState::new());
     queue(&a, http(200, FORECAST));
     ok(run(&a, "current", json!({})));
-    // Fresh: the temperature in ASCII, the condition, a colour for rain.
+    // Fresh: the temperature, the condition, a colour for rain.
     let fresh = key(&a);
-    assert_eq!(fresh.label.as_deref(), Some("7 C"));
+    assert_eq!(fresh.label.as_deref(), Some("7 °C"));
     assert_eq!(fresh.detail.as_deref(), Some("Light drizzle"));
     assert_eq!(fresh.accent, Some(Accent::Blue));
     assert_eq!((fresh.badge.as_deref(), fresh.indicator), (None, None));
@@ -1894,12 +1894,12 @@ fn the_key_follows_units_language_and_place() {
     let a = warsaw();
     queue(&a, http(200, FORECAST));
     ok(run(&a, "current", json!({})));
-    // Imperial and Polish: no degree sign, no Polish letters on a key.
+    // Imperial and Polish, as DeckPilot draws them.
     a.borrow_mut().settings["units"] = json!("imperial");
     a.borrow_mut().settings["language"] = json!("pl");
     let state = key(&a);
-    assert_eq!(state.label.as_deref(), Some("44 F"));
-    assert_eq!(state.detail.as_deref(), Some("Slaba mzawka"));
+    assert_eq!(state.label.as_deref(), Some("44 °F"));
+    assert_eq!(state.detail.as_deref(), Some("Słaba mżawka"));
     // Another place than the stored report's: nothing shown for it.
     a.borrow_mut().settings["latitude"] = json!("50.06");
     a.borrow_mut().settings["longitude"] = json!("19.94");
@@ -1910,16 +1910,26 @@ fn the_key_follows_units_language_and_place() {
 }
 
 #[test]
-fn key_texts_are_ascii_within_their_bounds() {
-    use crate::key::{age_badge, ascii};
-    assert_eq!(ascii("Mgła osadzająca szadź", 32), "Mgla osadzajaca szadz");
-    assert_eq!(ascii("ZAŻÓŁĆ GĘŚLĄ JAŹŃ", 32), "ZAZOLC GESLA JAZN");
-    assert_eq!(ascii("7 °C\n", 32), "7 C");
-    assert_eq!(ascii(&"x".repeat(40), 32).len(), 32);
+fn key_texts_are_what_deckpilot_draws_within_their_bounds() {
+    use crate::key::{age_badge, drawn, key_text};
+    // What DeckPilot draws passes as it is.
+    assert_eq!(
+        key_text("Mgła osadzająca szadź", 32),
+        "Mgła osadzająca szadź"
+    );
+    assert_eq!(key_text("ZAŻÓŁĆ GĘŚLĄ JAŹŃ", 32), "ZAŻÓŁĆ GĘŚLĄ JAŹŃ");
+    assert_eq!(key_text("7 °C – “ok” · 5 €…", 32), "7 °C – “ok” · 5 €…");
+    // What it lacks is folded or dropped, never left to become `?`.
+    assert_eq!(key_text("Œuvre ſ Ĳ\n", 32), "OEuvre s IJ");
+    assert_eq!(key_text("rain 🌧 ☂ 雨", 32), "rain   ");
+    assert_eq!(key_text(&"ż".repeat(40), 32).chars().count(), 32);
+    for c in ['\u{80}', '\u{9F}', '\u{1}', 'Ŋ', 'œ', '✓', '°'] {
+        assert_eq!(drawn(c), c == '°', "{c:?}");
+    }
     for (code, _, en, pl) in conditions::CODES {
         for text in [en, pl] {
-            let shown = ascii(text, 32);
-            assert!(shown.is_ascii() && !shown.is_empty(), "{code}: {text}");
+            assert_eq!(key_text(text, 64), *text, "{code}: drawn as it is");
+            assert!(text.chars().all(drawn), "{code}: {text}");
         }
     }
     for (seconds, badge) in [

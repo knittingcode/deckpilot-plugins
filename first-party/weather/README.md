@@ -19,7 +19,7 @@ Polish: [README.pl.md](README.pl.md).
 
 *Since 0.2.0; needs DeckPilot with plugin API 1.2.* A key bound to
 **Current weather** shows the temperature and the conditions, such as
-`12 C` over `Partly cloudy`, on a colour for the kind of weather: amber for
+`12 °C` over `Partly cloudy`, on a colour for the kind of weather: amber for
 sun, purple for a clear night, grey for clouds and fog, blue for rain, teal
 for snow, red for storms.
 
@@ -32,9 +32,9 @@ Press the key, or refresh on a schedule ([below](#refreshing-on-a-schedule)),
 to fetch a new one.
 
 Before the first report, or when no place is set, the key shows the title
-you gave it. Key texts are in DeckPilot's key font, which has no `°` and
-no Polish letters: `12 C`, and `Mgla` for `Mgła`. The action's message and
-outputs keep the full text. A device without displays shows nothing.
+you gave it. Key texts appear as they are (`12 °C`, `Mgła`) with a
+DeckPilot that draws accented letters (since DeckPilot #307; every release
+with plugin API 1.2 has it). A device without displays shows nothing.
 
 ## What it does not do
 

@@ -3,7 +3,7 @@
 [package]
 name = "deckpilot-pomodoro"
 description = "DeckPilot plugin: Pomodoro focus and break timer with notifications, auto-start and session statistics"
-version = "0.2.0"
+version = "0.2.1"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

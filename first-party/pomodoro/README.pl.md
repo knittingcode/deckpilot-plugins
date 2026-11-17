@@ -178,8 +178,8 @@ fazy, która biegnie lub jest wstrzymana, od następnej fazy.
 
 *Od wersji 0.2.0; wymaga DeckPilota z API wtyczek 1.2.* Klawisz przypisany
 do akcji **Stan** pokazuje pozostałe minuty (`12 min`), fazę w drugim
-wierszu (`Skupienie 2/4`, `Krotka przerwa`, `Dluga przerwa`, z dopiskiem
-`- pauza` lub `- gotowe`; po angielsku, gdy tak mówi ustawienie języka),
+wierszu (`Skupienie 2/4`, `Krótka przerwa`, `Długa przerwa`, z dopiskiem
+`· pauza` lub `· gotowe`; po angielsku, gdy tak mówi ustawienie języka),
 pasek postępu fazy, pasek u góry, gdy odliczanie biegnie, oraz kolor fazy:
 czerwony dla skupienia, zielony dla krótkiej przerwy, morski dla długiej.
 Znacznik w rogu jest niebieski w trakcie odliczania, bursztynowy podczas
@@ -194,8 +194,9 @@ nie udaje, że liczy: dodaje znacznik ostrzeżenia i czas od ostatniego
 taktu jako plakietkę (`12m`, `2h`), albo `?` przed pierwszym taktem.
 Następny takt doprowadza minutnik do porządku jak zawsze.
 
-Teksty na klawiszach są w czcionce DeckPilota, która nie ma polskich
-liter (`Krotka przerwa`). Naciśnięcie klawisza uruchamia Stan, który
+Teksty na klawiszach wyglądają tak, jak są (`Krótka przerwa`), w
+DeckPilocie, który rysuje litery z diakrytykami (od DeckPilot #307; ma go
+każde wydanie z API wtyczek 1.2). Naciśnięcie klawisza uruchamia Stan, który
 niczego nie zmienia; **Start, pauza lub wznowienie** umieść na innym
 klawiszu albo na długim naciśnięciu tego. Urządzenie bez wyświetlaczy nic
 nie pokazuje.

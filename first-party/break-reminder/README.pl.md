@@ -149,11 +149,12 @@ do akcji **Stan** pokazuje:
 | Godziny ciszy | `Godziny ciszy` | odliczania | fioletowy |
 | Przed pierwszym taktem | `Czeka na takt` | odliczania | brak, z `?` |
 
-Wyłączone przypomnienie jest pomijane; oba wyłączone: `Wylaczone`. W
+Wyłączone przypomnienie jest pomijane; oba wyłączone: `Wyłączone`. W
 trakcie odliczania pasek pokazuje, ile minęło z odliczania do bliższego
 przypomnienia, a u góry biegnie znacznik. Teksty są w języku z
-ustawień, bez polskich liter (czcionka klawiszy DeckPilota ich nie ma);
-po angielsku: `Break 12 min`, `Water 4 min`, `Paused`, `Quiet hours`.
+ustawień, z polskimi literami w DeckPilocie, który je rysuje (od
+DeckPilot #307; ma go każde wydanie z API wtyczek 1.2); po angielsku:
+`Break 12 min`, `Water 4 min`, `Paused`, `Quiet hours`.
 
 Klawisz pokazuje minuty **z ostatniego taktu**: odliczania przesuwają się
 tylko wtedy, gdy przepływ co minutę uruchamia Takt. Gdy powinny biec, ale

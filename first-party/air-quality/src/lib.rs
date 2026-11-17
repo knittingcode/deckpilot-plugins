@@ -43,7 +43,7 @@ use texts::{Language, UNIT, fold, one_line};
 
 /// Must equal `manifest.json` (`id`, `version`).
 pub const ID: &str = "deckpilot.air-quality";
-pub const VERSION: &str = "0.2.0";
+pub const VERSION: &str = "0.2.1";
 
 /// Error codes of this plugin, each declared in `contributes.errorCodes`.
 pub const NO_STATION: &str = "no-station";

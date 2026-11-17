@@ -9,8 +9,9 @@
 //! time since the last tick as a badge (`?` before the first). With the
 //! time (`time.now`) it can tell; the timer itself is not changed.
 //!
-//! Texts are ASCII (DeckPilot's key font): `·` becomes `-`, Polish words
-//! lose their diacritics.
+//! Texts are drawn by DeckPilot's key font as they are (`·`, Polish
+//! letters, DeckPilot #307); a character the font lacks is folded or
+//! dropped ([`key_text`]), never shown as `?`.
 
 use deckpilot_plugin_sdk::prelude::*;
 
@@ -19,33 +20,60 @@ use crate::{Phase, Snapshot, State, Timer};
 /// A running countdown without a tick for this long is marked as late.
 pub const LATE_TICK_MINUTES: i64 = 3;
 
-/// The text with `·` as `-`, Polish letters folded to ASCII and anything
-/// else outside ASCII dropped, cut to `max` characters.
-pub fn ascii(text: &str, max: usize) -> String {
-    text.chars()
-        .filter_map(|c| match c {
-            '·' => Some('-'),
-            'ą' => Some('a'),
-            'ć' => Some('c'),
-            'ę' => Some('e'),
-            'ł' => Some('l'),
-            'ń' => Some('n'),
-            'ó' => Some('o'),
-            'ś' => Some('s'),
-            'ź' | 'ż' => Some('z'),
-            'Ą' => Some('A'),
-            'Ć' => Some('C'),
-            'Ę' => Some('E'),
-            'Ł' => Some('L'),
-            'Ń' => Some('N'),
-            'Ó' => Some('O'),
-            'Ś' => Some('S'),
-            'Ź' | 'Ż' => Some('Z'),
-            c if c.is_ascii() && !c.is_ascii_control() => Some(c),
-            _ => None,
-        })
-        .take(max)
-        .collect()
+/// Whether DeckPilot's key font draws `c` (DeckPilot #307): ASCII, the
+/// Latin-1 Supplement, Latin Extended-A but `Ĳ ĳ ĸ Ŋ ŋ Œ œ ſ`, and `…`,
+/// `€`, `•`, typographic quotes, primes and dashes. Anything else would be
+/// drawn as `?`.
+pub fn drawn(c: char) -> bool {
+    match u32::from(c) {
+        0x20..=0x7E | 0xA0..=0xFF => true,
+        0x100..=0x17F => !matches!(c, 'Ĳ' | 'ĳ' | 'ĸ' | 'Ŋ' | 'ŋ' | 'Œ' | 'œ' | 'ſ'),
+        _ => matches!(
+            c,
+            '…' | '€'
+                | '•'
+                | '‘'
+                | '’'
+                | '‚'
+                | '′'
+                | '“'
+                | '”'
+                | '„'
+                | '″'
+                | '‐'
+                | '‑'
+                | '‒'
+                | '–'
+                | '—'
+                | '−'
+        ),
+    }
+}
+
+/// A key text: what [`drawn`] passes as it is, the letters it lacks folded
+/// to ASCII (`Œ` as `OE`), anything else dropped, so nothing becomes `?`;
+/// cut to `max` characters.
+pub fn key_text(text: &str, max: usize) -> String {
+    let mut out = String::new();
+    for c in text.chars() {
+        let folded: &str = match c {
+            c if drawn(c) => {
+                out.push(c);
+                continue;
+            }
+            'Ĳ' => "IJ",
+            'ĳ' => "ij",
+            'ĸ' => "k",
+            'Ŋ' => "N",
+            'ŋ' => "n",
+            'Œ' => "OE",
+            'œ' => "oe",
+            'ſ' => "s",
+            _ => "",
+        };
+        out.push_str(folded);
+    }
+    out.chars().take(max).collect()
 }
 
 /// Minutes as a badge of at most 4 characters: `5m`, `3h`, `2d`.
@@ -64,8 +92,8 @@ pub fn minutes_badge(minutes: i64) -> String {
 pub fn status(snapshot: &Snapshot, state: &State, now_local_minute: i64) -> KeyState {
     let face = snapshot.key();
     let mut key = KeyState::new()
-        .label(ascii(&face.label, 32))
-        .detail(ascii(&face.detail, 32))
+        .label(key_text(&face.label, 32))
+        .detail(key_text(&face.detail, 32))
         .progress(face.progress)
         .toggle(face.toggle)
         .accent(match snapshot.phase {

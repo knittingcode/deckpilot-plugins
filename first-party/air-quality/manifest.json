@@ -3,7 +3,7 @@
   "manifestVersion": 1,
   "id": "deckpilot.air-quality",
   "name": "Air Quality",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": {
     "id": "deckpilot",
     "name": "DeckPilot",

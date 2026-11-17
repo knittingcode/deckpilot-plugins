@@ -2527,7 +2527,7 @@ fn the_key_counts_down_with_the_ticks_and_says_when_they_stop() {
     // A paused timer does not count: never late, amber, no bar along the top.
     assert!(state.pause());
     let paused = key_at(&state, &config, "2026-11-16 12:00");
-    assert_eq!(paused.detail.as_deref(), Some("Focus 1/4 - paused"));
+    assert_eq!(paused.detail.as_deref(), Some("Focus 1/4 · paused"));
     assert_eq!(
         (paused.indicator, paused.badge.as_deref()),
         (Some(Indicator::Warning), None)
@@ -2536,14 +2536,14 @@ fn the_key_counts_down_with_the_ticks_and_says_when_they_stop() {
 }
 
 #[test]
-fn every_phase_has_its_colour_and_ascii_texts_in_both_languages() {
+fn every_phase_has_its_colour_and_drawn_texts_in_both_languages() {
     for (settings, focus, short, long) in [
         (json!({}), "Focus 1/4", "Short break", "Long break"),
         (
             json!({"language": "pl"}),
             "Skupienie 1/4",
-            "Krotka przerwa",
-            "Dluga przerwa",
+            "Krótka przerwa",
+            "Długa przerwa",
         ),
     ] {
         let config = config(settings);
@@ -2572,7 +2572,7 @@ fn every_phase_has_its_colour_and_ascii_texts_in_both_languages() {
             assert!(
                 texts
                     .iter()
-                    .all(|t| t.is_ascii() && t.chars().count() <= 32),
+                    .all(|t| t.chars().all(key::drawn) && t.chars().count() <= 32),
                 "{texts:?}"
             );
         }

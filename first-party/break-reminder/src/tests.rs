@@ -1960,7 +1960,7 @@ fn paused_quiet_waiting_and_off_are_told_apart() {
 }
 
 #[test]
-fn polish_texts_are_ascii_on_the_key() {
+fn polish_texts_keep_their_letters_on_the_key() {
     let config = config(json!({ "language": "pl" }));
     let mut state = started(&config, at("2026-11-16 09:00"));
     let shown = key_at(&state, &config, "2026-11-16 09:00");
@@ -1980,7 +1980,14 @@ fn polish_texts_are_ascii_on_the_key() {
         key_at(&state, &config, "2026-11-16 09:00").label.unwrap(),
     ];
     assert_eq!(texts, ["Czeka na takt", "Pauza"]);
-    assert!(texts.iter().all(|t| t.is_ascii()));
+    let off = self::config(json!({
+        "language": "pl", "breakEnabled": false, "hydrationEnabled": false
+    }));
+    let state = started(&off, at("2026-11-16 09:00"));
+    assert_eq!(
+        key_at(&state, &off, "2026-11-16 09:00").label.as_deref(),
+        Some("Wyłączone")
+    );
 }
 
 #[test]

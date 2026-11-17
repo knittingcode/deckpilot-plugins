@@ -38,9 +38,10 @@ oznaczone znacznikiem ostrzeżenia i wiekiem pomiaru jako plakietką (`4h`,
 `2d`), albo `?`, gdy jest nieznany. Nigdy nie są pokazywane jako aktualne.
 
 Przed pierwszym odczytem albo bez wybranej stacji klawisz pokazuje
-nadany przez Ciebie tytuł. Teksty na klawiszach są w czcionce DeckPilota,
-która nie ma polskich liter: `Zly` zamiast `Zły`. Komunikat i wyjścia
-akcji zachowują pełny tekst. Urządzenie bez wyświetlaczy nic nie pokazuje.
+nadany przez Ciebie tytuł. Teksty na klawiszach wyglądają tak, jak są
+(`Zły`), w DeckPilocie, który rysuje litery z diakrytykami (od DeckPilot
+#307; ma go każde wydanie z API wtyczek 1.2). Urządzenie bez wyświetlaczy
+nic nie pokazuje.
 
 ## Czego wtyczka nie robi
 
