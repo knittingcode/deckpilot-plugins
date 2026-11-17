@@ -189,7 +189,7 @@ jobs:
   # The commit this run's Pages deployment is recorded under: Pages ignores
   # a second deployment of a build version it has seen and refuses one that
   # is not a commit (tools/pages-build-commit.sh). Its only permission is
-  # writing the empty commit to the branch pages-builds; it runs no
+  # writing a build commit to the branch pages-builds; it runs no
   # repository code but that script and has no secret.
   pages-build:
     name: Pages build commit
@@ -207,7 +207,7 @@ jobs:
           persist-credentials: false
           sparse-checkout: tools
       - id: commit
-        name: Append an empty build commit to pages-builds
+        name: Append a build commit to pages-builds
         env:
           GH_TOKEN: ${{ github.token }}
         run: tools/pages-build-commit.sh
