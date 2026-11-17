@@ -21,12 +21,14 @@
 //! it was, rather than several phases finishing unseen. A clock that went
 //! backwards takes nothing off.
 //!
-//! **No key state.** ABI 1 has no state call, so a key cannot show the
-//! countdown. [`Snapshot`] is the one place that turns the stored state
-//! into what a user sees (the outputs and the variables today), and
-//! [`Snapshot::key`] is what a key would show; a later version can return
-//! it from a state call without changing what is stored.
+//! **Key state** (plugin API 1.2). [`Snapshot`] is the one place that
+//! turns the stored state into what a user sees: the outputs, the
+//! variables and, through [`Snapshot::key`] and [`key`], a key bound to
+//! `status`, which shows the minutes left as of the last tick and marks a
+//! running countdown whose ticks stopped.
 #![deny(unsafe_code)]
+
+pub mod key;
 
 use deckpilot_plugin_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -34,7 +36,7 @@ use serde_json::Value;
 
 /// Must equal `manifest.json` (`id`, `version`).
 pub const ID: &str = "deckpilot.pomodoro";
-pub const VERSION: &str = "0.1.0";
+pub const VERSION: &str = "0.2.0";
 
 /// The storage key of the whole state: one value, written once per action.
 pub const STATE_KEY: &str = "state";
@@ -76,6 +78,7 @@ const SCOPES: [&str; 4] = ["phase", "cycle", "statistics", "all"];
 /// must equal `manifest.json`; a unit test compares them.
 pub fn plugin() -> Plugin {
     Plugin::new(ID, VERSION)
+        .requires_api(deckpilot_plugin_sdk::ApiLevel { major: 1, minor: 2 })
         .action(Action::new("tick", tick).param(Param::text("firedAt").required().max_length(32)))
         .action(Action::new("start", start))
         .action(Action::new("pause", pause))
@@ -83,7 +86,7 @@ pub fn plugin() -> Plugin {
         .action(Action::new("toggle", toggle))
         .action(Action::new("skip", skip))
         .action(Action::new("reset", reset).param(Param::choice("scope", &SCOPES).default("phase")))
-        .action(Action::new("status", status))
+        .action(Action::new("status", status).state(key::status_state))
 }
 
 deckpilot_plugin_sdk::plugin!(plugin);
@@ -676,7 +679,7 @@ pub enum Note {
 
 /// What the user sees of the state: the outputs of every action and the
 /// plugin's variables today, and, through [`Snapshot::key`], what a key
-/// would show once a plugin can provide key state.
+/// shows ([`key`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Snapshot {
     pub phase: Phase,
@@ -699,7 +702,8 @@ pub struct Snapshot {
 
 /// What a key would show: the members of DeckPilot's `ButtonState`, which
 /// the proposed key-state call for plugins returns
-/// (`docs/plugin-factory.md`, 6.1). Not delivered to a key by this version.
+/// (`docs/plugin-factory.md`, 6.1), returned from `status`'s state call by
+/// [`key`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeyFace {
     /// The title: the minutes left, at most 32 characters.
