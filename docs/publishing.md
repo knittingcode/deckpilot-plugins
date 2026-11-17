@@ -1,9 +1,9 @@
 # Publishing process
 
 How a plugin version goes from a pull request to a signed registry entry
-and a release asset. Nothing here has run with production keys yet: the
-owner has not run the key ceremony, and `publish.yml` refuses to run until
-the setup in [Owner setup](#owner-setup) exists.
+and a release asset. The production setup exists (key set 1, the
+environments and the variables of [Owner setup](#owner-setup)); DeckPilot's
+first-party plugins are published this way.
 
 ## 1. Submission (contributor)
 
@@ -175,9 +175,7 @@ key set with `seq_floor_reset` ([trust-model.md](trust-model.md)).
 
 ## Owner setup
 
-None of this exists yet; the workflows are no-ops or refuse to run until it
-does.
-The exact, ordered steps with their commands, and the decisions still open,
+All of this exists since 2026-11-17 (key set 1). The exact, ordered steps with their commands, and the decisions still open,
 are in [production-readiness.md](production-readiness.md).
 
 1. **Key ceremony** (offline, PUBLISHING.md in DeckPilot, U-10): root keys,

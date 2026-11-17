@@ -5,10 +5,10 @@ plugin submissions, plugin updates, and fixes to its documentation. Changes
 to tooling, workflows, schemas and keys are maintained by the owner (see
 [What you may change](#what-you-may-change)).
 
-> **Status:** the registry is not open for publication yet. No production
-> keys exist, so nothing can be published. You can already prepare and
-> validate a submission; it will be reviewed and published once the
-> registry opens.
+> **Status:** the signed production registry is live and serves DeckPilot's
+> own plugins, but it is not open to other publishers yet. You can already
+> prepare and validate a submission; it will be reviewed and published once
+> the registry opens.
 
 By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
 
