@@ -40,6 +40,36 @@ job fails and prints the record derived from its own build in the log and
 the job summary. Commit that record; the source, tag and commit are yours,
 and `published_at` is kept from your file.
 
+### First-party plugins (`deckpilot.*`, owner only)
+
+DeckPilot's own installable plugins live in [`first-party/`](../first-party/)
+and are published by the owner under the publisher `deckpilot`
+(`registry/publishers/knittingcode.json`, verified). A registry may serve
+them only because its root-signed key set authorizes the namespace
+([trust-model.md](trust-model.md#first-party-plugins-deckpilot)); the
+plugins the application bundles (`deckpilot.github`, `deckpilot.gitlab`,
+`deckpilot.jira`, `deckpilot.notifications`) are never listed.
+
+`registry/plugins/deckpilot.<name>/plugin.json` and
+`plugins/deckpilot.<name>/build.json` (`"workspace": "first-party"`) are
+committed. A version record is made as above with two differences:
+
+- `tools/build-plugin.sh` passes `--first-party` to `package` by itself
+  (recipe id `deckpilot.*`); `add-version` needs `--first-party` too, with
+  `--source-repository knittingcode/deckpilot-plugins --source-path
+  first-party/<name>`.
+- `add-version` checks a `deckpilot.*` package against the workspace's
+  current key set, which must authorize `deckpilot`. The repository root
+  has none under `site/v1/keys/`, so run it in a scratch workspace: copy
+  `registry/`, `keys/roots.json` to `roots.json` and `keys/<n>.json(.minisig)`
+  to `site/v1/keys/`, then copy the new record back. *Validate registry*
+  re-derives it the same way under a throwaway authorizing key set.
+
+The source tag must resolve to a commit of this repository that holds the
+plugin's source, and it is not the release tag: `<id>--v<version>` goes on
+the later `main` commit that holds the record. Use a name without `--v`
+(e.g. `first-party/weather/v0.2.1`) so the push does not start *Publish*.
+
 ## 2. Validation (`validate.yml`, untrusted)
 
 Runs on the pull request with no secrets and a read-only token:
@@ -48,13 +78,15 @@ Runs on the pull request with no secrets and a read-only token:
   or packages.
 - *Submission rules*: the path guard, publisher identity (`github_id` and
   `login` equal to the pull request author's), no publisher id DeckPilot
-  reserves (`deckpilot` is its first-party publisher) for a contributor,
-  append-only versions, and
+  reserves for a contributor (`deckpilot` included), `deckpilot.*` records
+  only from the owner (login and numeric id) with the owner's verified
+  `deckpilot` record, never a plugin the application bundles, append-only
+  versions, and
   the permission diff against the previous version plus a source compare
   link in the job summary.
-- *Schemas match DeckPilot*: `schemas/`, `rust-toolchain.toml` and the
-  reserved publisher ids of `tools/check-submission.py` equal the pinned
-  DeckPilot commit.
+- *Schemas match DeckPilot*: `schemas/`, `rust-toolchain.toml`, the
+  reserved publisher ids and the bundled plugin ids of `tools/` equal the
+  pinned DeckPilot commit.
 - *Validate registry*: schema and layout checks of all inputs; every
   recorded version rebuilt from its source (the tag must resolve to the
   commit in the named repository); each record re-derived with `add-version`

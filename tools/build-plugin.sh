@@ -5,7 +5,9 @@
 # Builds one plugin package from its pinned source, the way the registry
 # does: a checkout of exactly COMMIT (and, with --tag, the proof that TAG in
 # OWNER/NAME resolves to COMMIT), `cargo build --locked` for the recipe's
-# package, profile and pinned toolchain, then `deckpilot-registry package`.
+# package, profile and pinned toolchain, then `deckpilot-registry package`
+# (with `--first-party` when the recipe's id is a `deckpilot.*` plugin, so
+# the first-party manifest rules apply; DeckPilot B6).
 #
 # This runs the plugin's build scripts and proc macros: run it only where
 # no secret is available (validate.yml, the `build` job of publish.yml, or
@@ -76,4 +78,6 @@ note "cargo build -p $package --profile $profile"
 module=$target/$WASM_TARGET/$profile/$artifact
 [ -f "$module" ] || die "the build produced no $artifact"
 mkdir -p "$(dirname "$out")"
-"$CLI" package --plugin-dir "$src/$path" --module "$module" --out "$out"
+first_party=()
+case $(field id) in deckpilot.*) first_party=(--first-party) ;; esac
+"$CLI" package --plugin-dir "$src/$path" --module "$module" --out "$out" "${first_party[@]+"${first_party[@]}"}"

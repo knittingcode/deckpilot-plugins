@@ -1,0 +1,12 @@
+{
+  "id": "deckpilot.air-quality",
+  "name": "Air Quality",
+  "summary": "PM2.5, PM10 and the Polish air quality index of one measuring station, with the time of the measurement, as messages, workflow outputs and variables. Źródło danych: GIOŚ - EKOINFONET (CC BY 4.0).",
+  "description": "PM2.5, PM10 and the Polish air quality index of one measuring station, with the time of the measurement, as messages, workflow outputs and variables. Źródło danych: GIOŚ - EKOINFONET (CC BY 4.0).",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/knittingcode/deckpilot-plugins/tree/main/first-party/air-quality",
+  "source_repository": "knittingcode/deckpilot-plugins",
+  "categories": [
+    "monitoring"
+  ]
+}

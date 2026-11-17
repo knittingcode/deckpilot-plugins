@@ -242,9 +242,9 @@ Nie w tej wersji, bo API wtyczek nie ma do tego wywołania:
 - **Brak dźwięku i przycisków** w powiadomieniu: start i pomijanie to
   klawisze albo węzły przepływu pracy.
 - **Brak historii dzień po dniu**: dzisiejsze liczniki i sumy, nic więcej.
-- **Jeszcze nie do zainstalowania z Marketplace**: DeckPilot przyjmuje
-  wydawcę `deckpilot` tylko we wtyczkach dołączonych do aplikacji
-  ([docs/plugin-factory.md](../../docs/plugin-factory.md), B6).
+- **Jeszcze nie do zainstalowania z Marketplace**: żadna wersja nie jest
+  opublikowana; rejestr nie ma jeszcze kluczy produkcyjnych
+  ([docs/plugin-factory.md](../../docs/plugin-factory.md), B1).
 
 ## Budowanie i testy
 

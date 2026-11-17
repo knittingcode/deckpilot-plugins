@@ -1,0 +1,12 @@
+{
+  "id": "deckpilot.markets",
+  "name": "Markets",
+  "summary": "Daily ECB euro reference exchange rates via Frankfurter, never live prices: conversion, changes, the range of recent rates and threshold alerts, as messages, workflow outputs and variables. Information, not financial advice.",
+  "description": "Daily ECB euro reference exchange rates via Frankfurter, never live prices: conversion, changes, the range of recent rates and threshold alerts, as messages, workflow outputs and variables. Information, not financial advice.",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/knittingcode/deckpilot-plugins/tree/main/first-party/markets",
+  "source_repository": "knittingcode/deckpilot-plugins",
+  "categories": [
+    "monitoring"
+  ]
+}

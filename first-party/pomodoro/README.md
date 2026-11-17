@@ -229,9 +229,9 @@ Not in this version, because the plugin API has no call for it:
 - **No sound and no action buttons** in the notification: start and skip
   are keys or workflow nodes.
 - **No history per day**: today's counters and the totals, nothing else.
-- **Not installable from the Marketplace yet**: DeckPilot accepts the
-  publisher `deckpilot` only in plugins bundled with the application
-  ([docs/plugin-factory.md](../../docs/plugin-factory.md), B6).
+- **Not installable from the Marketplace yet**: no version is published;
+  the registry has no production keys yet
+  ([docs/plugin-factory.md](../../docs/plugin-factory.md), B1).
 
 ## Building and testing
 

@@ -16,16 +16,14 @@
 #          THROWAWAY keys made here and accepted by the client's own rules
 #          (`verify-site --require-packages`). Keys and output are scratch.
 #
-# The packages of the last step are made under the test publisher
-# `deckpilot-test`, because the pinned tool refuses the first-party publisher
-# `deckpilot` in a package (DeckPilot B6: first-party plugins install only
-# from the application bundle today). Only the copy of manifest.json is
-# changed (`id`, `publisher.id`); the module is the one built from the
-# committed source. The script first checks that the unchanged manifest is
-# refused for that reason, and fails once the tool accepts it, so the
-# workaround cannot outlive B6 unnoticed; every other problem of the
-# manifest is then reported by packaging the copy. Nothing made here is
-# published or kept.
+# The packages are made as they would be published: `deckpilot.<name>`,
+# `package --first-party` and `add-version --first-party` (DeckPilot B6). The
+# throwaway key set authorizes the namespace (`keyset init --first-party`)
+# and the scratch registry holds the committed publisher record of
+# `deckpilot` (registry/publishers/knittingcode.json, verified), so
+# `verify-site` applies the client's first-party rules. The listing is the
+# committed registry/plugins/<id>/plugin.json when there is one. Nothing
+# made here is published or kept.
 #
 # Runs the plugins' build scripts and proc macros: never run it where a
 # secret is available.
@@ -34,8 +32,7 @@ what=${1:-all}
 
 FP=$REPO_ROOT/first-party
 OUT=$WORK/first-party
-TEST_PUBLISHER=deckpilot-test
-RESERVED_MESSAGE='publisher.id: `deckpilot` is reserved for DeckPilot'
+PUBLISHER_RECORD=$REPO_ROOT/registry/publishers/knittingcode.json
 
 list_plugins() {
   python3 -I "$REPO_ROOT/tools/check-first-party.py" --root "$FP" --commit "$DECKPILOT_COMMIT" "$@"
@@ -63,17 +60,22 @@ run_tests() {
   fi
 }
 
-# A complete signed site in DIR/site/v1 under new keys (as tools/validate.sh).
-throwaway_sign() {
-  local dir=$1 keys commit
-  commit=$(git -C "$REPO_ROOT" rev-parse HEAD)
-  keys=$(mktemp -d "$OUT/keys.XXXXXX")
+# throwaway_keys DIR KEYS: new root, index and timestamp keys in KEYS and a
+# root-signed key set in DIR that authorizes the first-party namespace.
+throwaway_keys() {
+  local dir=$1 keys=$2
   for role in root index timestamp; do
     "$CLI" keys generate --role "$role" --out "$keys/$role.key" --no-password >/dev/null
   done
   "$CLI" keyset init --dir "$dir" --root "$keys/root.key.pub" \
-    --index "$keys/index.key.pub" --timestamp "$keys/timestamp.key.pub"
+    --index "$keys/index.key.pub" --timestamp "$keys/timestamp.key.pub" --first-party
   "$CLI" keyset sign --dir "$dir" --key "$keys/root.key"
+}
+
+# throwaway_sign DIR KEYS: the signed site in DIR/site/v1, then the keys go.
+throwaway_sign() {
+  local dir=$1 keys=$2 commit
+  commit=$(git -C "$REPO_ROOT" rev-parse HEAD)
   "$CLI" build-index --dir "$dir" --source-commit "$commit"
   "$CLI" sign-index --dir "$dir" --key "$keys/index.key"
   "$CLI" timestamp --dir "$dir" --key "$keys/timestamp.key"
@@ -101,11 +103,13 @@ package() {
 
   local reg=$OUT/registry commit
   commit=$(git -C "$REPO_ROOT" rev-parse HEAD)
-  rm -rf "$reg" "$OUT/stage" "$OUT/packages"
+  rm -rf "$reg" "$OUT/packages"
   mkdir -p "$reg/registry/publishers" "$OUT/packages"
-  jq -n --arg ns "$TEST_PUBLISHER" \
-    '{namespace: $ns, github_id: 1, login: $ns, display_name: "DeckPilot (throwaway test publisher)", verified: false}' \
-    >"$reg/registry/publishers/$TEST_PUBLISHER.json"
+  [ -f "$PUBLISHER_RECORD" ] || die "$PUBLISHER_RECORD (the publisher deckpilot) is missing"
+  cp "$PUBLISHER_RECORD" "$reg/registry/publishers/"
+  local keys
+  keys=$(mktemp -d "$OUT/keys.XXXXXX")
+  throwaway_keys "$reg" "$keys"
   summary "### First-party plugins (not published)" "" \
     "| Plugin | Version | Module sha256 | Module bytes | Package bytes | Permissions |" \
     "| --- | --- | --- | --- | --- | --- |"
@@ -118,39 +122,28 @@ package() {
       "https://knittingcode.github.io/deckpilot-plugins/v1/schemas/plugin-manifest.schema.json" \
       "$dir/manifest.json" >&2 || die "$dir/manifest.json does not match the manifest schema"
 
-    # The unchanged manifest: refused, and only for the reserved publisher.
-    local log=$OUT/$name.refusal.log
-    if "$CLI" package --plugin-dir "$dir" --module "$module" \
-      --out "$OUT/packages/$id-$version.dpplugin" >"$log" 2>&1; then
-      die "the pinned tool now packages $id as it is: B6 changed. Remove the test publisher from tools/first-party.sh"
+    local pkg=$OUT/packages/$id-$version.dpplugin
+    "$CLI" package --plugin-dir "$dir" --module "$module" --out "$pkg" --first-party
+
+    local listing=$REPO_ROOT/registry/plugins/$id/plugin.json
+    mkdir -p "$reg/registry/plugins/$id"
+    if [ -f "$listing" ]; then
+      cp "$listing" "$reg/registry/plugins/$id/plugin.json"
+    else
+      jq '{id, name, summary: .description, description, license,
+           source_repository: "knittingcode/deckpilot-plugins", categories: (.categories // ["other"])}' \
+        "$dir/manifest.json" >"$reg/registry/plugins/$id/plugin.json"
     fi
-    grep -qF "$RESERVED_MESSAGE" "$log" || {
-      cat "$log" >&2
-      die "$id: the package is refused, and not for its reserved publisher (above)"
-    }
-
-    local test_id=$TEST_PUBLISHER.$name stage=$OUT/stage/$name
-    mkdir -p "$stage"
-    cp -R "$dir/." "$stage/"
-    jq --arg id "$test_id" --arg ns "$TEST_PUBLISHER" '.id = $id | .publisher.id = $ns' \
-      "$dir/manifest.json" >"$stage/manifest.json"
-    local pkg=$OUT/packages/$test_id-$version.dpplugin
-    "$CLI" package --plugin-dir "$stage" --module "$module" --out "$pkg"
-
-    mkdir -p "$reg/registry/plugins/$test_id"
-    jq '{id, name, summary: .description, description, license,
-         source_repository: "knittingcode/deckpilot-plugins", categories: (.categories // ["other"])}' \
-      "$stage/manifest.json" >"$reg/registry/plugins/$test_id/plugin.json"
     "$CLI" add-version --dir "$reg" --package "$pkg" \
-      --plugin-detail "$reg/registry/plugins/$test_id/plugin.json" \
+      --plugin-detail "$reg/registry/plugins/$id/plugin.json" \
       --source-repository knittingcode/deckpilot-plugins --tag unpublished-first-party \
-      --commit "$commit" --source-path "first-party/$name" --builder "$BUILDER_VERSION"
+      --commit "$commit" --source-path "first-party/$name" --builder "$BUILDER_VERSION" --first-party
     summary "| \`$id\` | $version | \`$(shasum -a 256 "$module" | cut -d' ' -f1)\` | $(wc -c <"$module" | tr -d ' ') | $(wc -c <"$pkg" | tr -d ' ') | $(jq -c '[.permissions[] | .kind + (if .hosts then ":" + (.hosts | join(",")) else "" end)]' "$dir/manifest.json") |"
   done <<<"$plugins"
 
-  note "signing a registry of the test packages with throwaway keys"
-  throwaway_sign "$reg"
-  summary "" "Packaged under the test publisher \`$TEST_PUBLISHER\` (the pinned tool refuses \`deckpilot\` in a package), signed with throwaway keys and accepted by \`verify-site --require-packages\`. Nothing is published."
+  note "signing a registry of the packages with throwaway keys"
+  throwaway_sign "$reg" "$keys"
+  summary "" "Packaged as \`deckpilot.*\` with \`--first-party\`, signed with throwaway keys whose key set authorizes the first-party namespace, and accepted by \`verify-site --require-packages\`. Nothing is published."
 }
 
 mkdir -p "$OUT"

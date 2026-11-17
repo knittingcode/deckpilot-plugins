@@ -1,0 +1,9 @@
+{
+  "$schema": "../../../schemas/inputs/build-recipe.schema.json",
+  "id": "deckpilot.pomodoro",
+  "toolchain": "1.99.1",
+  "workspace": "first-party",
+  "package": "deckpilot-pomodoro",
+  "profile": "guest",
+  "artifact": "deckpilot_pomodoro.wasm"
+}

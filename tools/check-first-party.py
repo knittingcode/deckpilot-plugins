@@ -7,6 +7,7 @@ first-party/ is one Cargo workspace; every directory in it that has a
 manifest.json is one plugin. For each, this checks what neither cargo nor
 the manifest schema does:
 
+* the id is not one the application bundles (BUNDLED_PLUGIN_IDS);
 * the directory is the plugin's name: id `deckpilot.<dir>`, publisher
   `deckpilot`, Cargo package `deckpilot-<dir>`, a workspace member, the same
   version in Cargo.toml and manifest.json, `repository` pointing here;
@@ -30,6 +31,12 @@ from pathlib import Path
 
 REPOSITORY = "https://github.com/knittingcode/deckpilot-plugins"
 PUBLISHER = "deckpilot"
+# DeckPilot's BUNDLED_PLUGIN_IDS (crates/deckpilot-plugin-bundled/src/lib.rs
+# at the pinned commit; tools/check-schemas.sh compares): the agent never
+# takes these from a registry, so they have no source here.
+BUNDLED_PLUGIN_IDS = frozenset({
+    "deckpilot.github", "deckpilot.gitlab", "deckpilot.jira", "deckpilot.notifications",
+})
 problems = []
 
 
@@ -125,6 +132,8 @@ def check_plugin(root, pdir, members):
     pid = manifest.get("id")
     if pid != f"{PUBLISHER}.{name}":
         problem(f"{pdir}/manifest.json: id {pid!r} is not {PUBLISHER}.{name}")
+    if pid in BUNDLED_PLUGIN_IDS:
+        problem(f"{pdir}: {pid} is bundled with the application; DeckPilot never installs it from a registry")
     if manifest.get("publisher", {}).get("id") != PUBLISHER:
         problem(f"{pdir}/manifest.json: publisher.id is not {PUBLISHER!r}")
     repository = manifest.get("repository", {})

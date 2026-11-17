@@ -7,15 +7,18 @@
 #   1. tools/check-inputs.py: schemas and layout rules.
 #   2. Rebuilds every recorded version from its pinned source
 #      (tools/build-plugin.sh) and re-derives its version record with
-#      `deckpilot-registry add-version` in a scratch registry; the result must
+#      `deckpilot-registry add-version` in a scratch registry (`--first-party`
+#      for `deckpilot.*`, under a throwaway key set that authorizes the
+#      namespace, as the production one must); the result must
 #      be byte-identical to registry/plugins/<id>/versions/<v>.json (sha256,
 #      size, manifest digest, permissions, engines, platforms, URL).
 #   3. plugins/<id>/manifest.json must equal the newest package's manifest.
 #   4. If keys/ holds a key set chain, `build-index` walks it with the
 #      client's own rules (proves the committed chain verifies).
-#   5. Signs the whole registry with THROWAWAY keys made here, and runs
-#      `verify-site --require-packages`: the DeckPilot client accepts it and
-#      every package matches its pins. The keys and the output are scratch.
+#   5. Signs the whole registry with THROWAWAY keys made here (a key set
+#      with the first-party authorization, `keyset init --first-party`), and
+#      runs `verify-site --require-packages`: the DeckPilot client accepts it
+#      and every package matches its pins. The keys and the output are scratch.
 # examples  plugins/examples/*: builds each example from source.json and runs
 #   step 5 on a registry holding only it. Examples are never published.
 #
@@ -34,16 +37,24 @@ check_inputs() {
     --schemas "$REPO_ROOT/schemas" "$@"
 }
 
-# throwaway_sign DIR: a complete signed site in DIR/site/v1 under new keys.
-throwaway_sign() {
-  local dir=$1 keys
-  keys=$(mktemp -d "$VAL/keys.XXXXXX")
+# throwaway_keys DIR KEYS: new keys in the empty directory KEYS and a
+# root-signed key set in DIR that authorizes the first-party namespace
+# `deckpilot` (`keyset init --first-party`).
+throwaway_keys() {
+  local dir=$1 keys=$2
   for role in root index timestamp; do
     "$CLI" keys generate --role "$role" --out "$keys/$role.key" --no-password >/dev/null
   done
   "$CLI" keyset init --dir "$dir" --root "$keys/root.key.pub" \
-    --index "$keys/index.key.pub" --timestamp "$keys/timestamp.key.pub"
+    --index "$keys/index.key.pub" --timestamp "$keys/timestamp.key.pub" --first-party
   "$CLI" keyset sign --dir "$dir" --key "$keys/root.key"
+}
+
+# throwaway_sign DIR: a complete signed site in DIR/site/v1 under new keys.
+throwaway_sign() {
+  local dir=$1 keys
+  keys=$(mktemp -d "$VAL/keys.XXXXXX")
+  throwaway_keys "$dir" "$keys"
   "$CLI" build-index --dir "$dir" --source-commit "$COMMIT"
   "$CLI" sign-index --dir "$dir" --key "$keys/index.key"
   "$CLI" timestamp --dir "$dir" --key "$keys/timestamp.key"
@@ -60,6 +71,11 @@ validate_registry() {
   mkdir -p "$site" "$derive/registry"
   cp -R "$REPO_ROOT/registry/." "$site/registry/"
   [ -d "$REPO_ROOT/registry/publishers" ] && cp -R "$REPO_ROOT/registry/publishers" "$derive/registry/"
+  # add-version checks a deckpilot.* package against the current key set.
+  local derive_keys
+  derive_keys=$(mktemp -d "$VAL/keys.XXXXXX")
+  throwaway_keys "$derive" "$derive_keys"
+  rm -rf "$derive_keys"
   summary "### Registry submissions" ""
   summary "| Plugin | Version | sha256 | Size | Permissions |" "| --- | --- | --- | --- | --- |"
 
@@ -92,6 +108,8 @@ validate_registry() {
     if [ "$(jq -r '.attestation // empty' "$record")" != "" ]; then
       args+=(--attestation "$(jq -r .attestation "$record")")
     fi
+    # DeckPilot's own plugins (B6).
+    case $id in deckpilot.*) args+=(--first-party) ;; esac
     "$CLI" add-version "${args[@]}"
     local derived=$derive/registry/plugins/$id/versions/$version.json
     if ! diff -u <(jq -S 'del(.yanked)' "$derived") <(jq -S 'del(.yanked)' "$record") >&2; then
@@ -131,6 +149,13 @@ validate_registry() {
     cp "$REPO_ROOT"/keys/[0-9]*.json "$REPO_ROOT"/keys/[0-9]*.json.minisig "$chain/site/v1/keys/"
     "$CLI" build-index --dir "$chain" --source-commit "$COMMIT" >/dev/null
     note "the committed key set chain verifies"
+    # Clients refuse deckpilot.* unless the current key set authorizes it.
+    local newest
+    newest=$(find "$REPO_ROOT/keys" -name '[0-9]*.json' -exec basename {} .json \; | sort -n | tail -1)
+    if compgen -G "$REPO_ROOT/registry/plugins/deckpilot.*/versions/*.json" >/dev/null &&
+      ! jq -e '.first_party.namespaces // [] | index("deckpilot")' "$REPO_ROOT/keys/$newest.json" >/dev/null; then
+      die "keys/$newest.json does not authorize the namespace deckpilot (keyset rotate --first-party), but registry/ records deckpilot.* versions"
+    fi
   fi
 
   note "signing the registry with throwaway keys"

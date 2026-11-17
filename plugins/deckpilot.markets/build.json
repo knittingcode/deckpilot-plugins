@@ -1,0 +1,9 @@
+{
+  "$schema": "../../../schemas/inputs/build-recipe.schema.json",
+  "id": "deckpilot.markets",
+  "toolchain": "1.99.1",
+  "workspace": "first-party",
+  "package": "deckpilot-markets",
+  "profile": "guest",
+  "artifact": "deckpilot_markets.wasm"
+}

@@ -127,7 +127,7 @@ The owner's decision is "sources in both repositories". Applied:
 | Plugins | Source | Built by | Trusted through |
 | --- | --- | --- | --- |
 | Bundled with the application (`default` and `migration` classes: `deckpilot.github`, `deckpilot.notifications`, …) | `knittingcode/deckpilot`, `plugins/first-party/` | the application's release build (`plugins/first-party/build.sh`) | sha256 pins compiled into the agent |
-| Independently installable (this catalog) | **this repository, `first-party/<name>/`** | this repository's CI; a published version by `tools/build-plugin.sh` from a version record whose `source` names this repository | the registry's signatures (blocked: B1, B6) |
+| Independently installable (this catalog) | **this repository, `first-party/<name>/`** | this repository's CI; a published version by `tools/build-plugin.sh` from a version record whose `source` names this repository | the registry's signatures, with the root-signed first-party authorization (B6, done; blocked: B1) |
 
 `first-party/` is one Cargo workspace with one `Cargo.lock`. The SDK is
 not on crates.io; the workspace takes it as a git dependency at the commit
@@ -143,53 +143,42 @@ first-party plugins*; untrusted, no secrets) runs `tools/first-party.sh`:
 1. `check`: layout, ids, the SDK pin, Polish texts against the manifest.
 2. `test`: `cargo test --locked`, `cargo fmt --check`, `cargo clippy -D warnings`.
 3. `package`: each manifest against the pinned schema, the wasm build
-   (`guest` profile), `deckpilot-registry package`, and all packages in a
-   registry signed with **throwaway keys** and accepted by
+   (`guest` profile), `deckpilot-registry package --first-party`, and all
+   packages (`add-version --first-party`) in a registry signed with
+   **throwaway keys** whose key set authorizes `deckpilot`, with the
+   committed verified `deckpilot` publisher, accepted by
    `verify-site --require-packages`.
 
-### Can a `deckpilot.*` plugin be installed from a registry today? No.
+### Can a `deckpilot.*` plugin be installed from a registry?
 
-Checked by running the tool, not only by reading:
+Yes, since DeckPilot B6 (PR #311, `70490125`, the pinned commit), under
+conditions the client checks before any download
+(`RegistryClient::resolve_install`; DeckPilot
+`crates/deckpilot-plugin-registry/PUBLISHING.md`, "First-party plugins"):
 
-- `deckpilot-registry package` refuses the manifest:
-  ``publisher.id: `deckpilot` is reserved for DeckPilot``. `verify_package`
-  (`crates/deckpilot-plugin-package/src/contents.rs`, `parse_manifest`)
-  calls `Manifest::validate`, which refuses every `RESERVED_PUBLISHERS`
-  id. The same function verifies a package the agent downloads from a
-  registry, so a test registry cannot deliver one either.
-- Only `verify_bundled_files` uses `Manifest::validate_first_party`, for
-  files matched against the pins compiled into the agent.
-- The store itself would allow it (`InstallSource::Registry` allows a
-  first-party id, `crates/deckpilot-plugin-store/src/store.rs`); a file
-  (sideload) or a dev install of a `deckpilot.*` id is refused, so that
-  nothing but the bundle or a registry can take the built-in modules'
-  action aliases.
-- Here, *Submission rules* refuses reserved publishers for contributors
-  only; a maintainer's pull request passes it and then fails *Validate
-  registry* at `package`.
+- the current key set, signed by the **offline root role**, carries
+  `"first_party": {"namespaces": ["deckpilot"]}` (`keyset init
+  --first-party`). The online index key alone cannot open the namespace;
+  an earlier sketch here relied on the index's publisher record only;
+- the verified index lists the publisher `deckpilot` with
+  `verified: true` (`registry/publishers/knittingcode.json`);
+- the package passes `Manifest::validate_first_party`
+  (`ExpectedPackage::first_party`, set only by the registry client for
+  such a plugin). Every other reserved publisher stays refused.
 
-So today a catalog plugin can be **built, tested and packaged under a test
-publisher** (step 3 above copies the manifest with `id` and `publisher.id`
-changed to `deckpilot-test`; the module is the one built from the committed
-source). Such a package is also the only way to try one in a real agent,
-from a local test registry (`docs/marketplace/local-testing.md`); that was
-not run for this audit. It cannot reach a user as
-`deckpilot.<name>`. `tools/first-party.sh` fails as soon as the pinned tool
-accepts the real manifest, so the workaround cannot outlive the blocker.
+`deckpilot-registry package` and `add-version` need `--first-party` for a
+`deckpilot.*` plugin, and `add-version` also checks the authorizing key
+set and the verified publisher. `tools/first-party.sh` and
+`tools/build-plugin.sh` pass it; the earlier `deckpilot-test` workaround is
+gone. The agent never takes the plugins it bundles (`deckpilot.github`,
+`deckpilot.gitlab`, `deckpilot.jira`, `deckpilot.notifications`) from any
+registry; *Submission rules* and `tools/first-party.sh check` refuse them
+here.
 
-**B6, the smallest reviewed change** (DeckPilot; owner decision, not made
-here): let the package verifier accept the publisher `deckpilot` when, and
-only when, the caller says the package comes from a registry whose signed
-index lists `deckpilot` as a publisher bound to the owner's GitHub id and
-marked verified, under the roots compiled into the application. In code:
-an `ExpectedPackage` flag set by the registry client from the verified
-index (never by `File` or `Dev` installs), `validate_first_party` instead
-of `validate` under that flag, the same flag for `deckpilot-registry
-package` and `add-version` behind an explicit option, and
-`registry/publishers/knittingcode.json` here with the namespace
-`deckpilot`. It is useless without **B1** (no production keys exist; U-10,
-U-12 in [production-readiness.md](production-readiness.md)): with test
-roots it works only in an agent started with those roots.
+What still blocks a user install is **B1**: no production keys exist
+(U-10, U-12 in [production-readiness.md](production-readiness.md)), and
+no version is recorded. With test roots it works only in an agent started
+with those roots (`docs/marketplace/local-testing.md`).
 
 ## 5. External data providers
 

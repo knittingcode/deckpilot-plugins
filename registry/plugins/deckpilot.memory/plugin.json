@@ -1,0 +1,12 @@
+{
+  "id": "deckpilot.memory",
+  "name": "Memory",
+  "summary": "The memory game on your keys: find the pairs among face-down cards, shuffled anew for every game. Counts moves and time, and keeps your best game for each board size.",
+  "description": "The memory game on your keys: find the pairs among face-down cards, shuffled anew for every game. Counts moves and time, and keeps your best game for each board size.",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/knittingcode/deckpilot-plugins/tree/main/first-party/memory",
+  "source_repository": "knittingcode/deckpilot-plugins",
+  "categories": [
+    "other"
+  ]
+}
