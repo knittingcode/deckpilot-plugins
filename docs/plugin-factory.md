@@ -12,8 +12,8 @@ DeckPilot. Paths without a repository are DeckPilot's.
 DeckPilot (design: `docs/marketplace/plugin-key-state.md`): the time (6.3)
 and randomness (6.4) as plugin API 1.1 (#291), and key state (6.1) as
 plugin API 1.2: the renderer's marks (#292), the runtime and SDK (#293),
-and the agent asking for it (#294). The SDK pinned here
-(`tools/deckpilot.env`) includes #291-#293. Sections 1 to 5 are the audit as
+and the agent asking for it (#294). All four are on DeckPilot's `main`,
+and the commit pinned here (`tools/deckpilot.env`) includes them. Sections 1 to 5 are the audit as
 taken; where a row of the matrix says **Missing** for one of these, read
 its section in 6.
 
@@ -228,8 +228,9 @@ its section says so.
 
 ### 6.1 Key state for plugin actions (dynamic key content)
 
-**Implemented** as plugin API 1.2: DeckPilot #292 (the renderer's marks),
-#293 (runtime and SDK), #294 (the agent asks for it). Reference:
+**Implemented** as plugin API 1.2, all of it on DeckPilot's `main`: #292
+(the renderer's marks), #293 (runtime and SDK) and #294 (the agent asks
+for key state and draws it, for keys shown on a device). Reference:
 `docs/marketplace/plugin-key-state.md` section 4 and
 `docs/marketplace/sdk/actions.md`, "Key state".
 
