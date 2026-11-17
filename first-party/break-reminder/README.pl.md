@@ -9,9 +9,8 @@ English: [README.md](README.md).
 > odliczania i działa tylko wtedy, gdy działa któraś z jej akcji (API
 > wtyczek 1.0). Sama z siebie nie robi więc nic: **dodajesz jeden przepływ
 > pracy, który co minutę uruchamia jej akcję Takt** ([Konfiguracja](#konfiguracja)).
-> Klawisz **nie pokaże też odliczania** ani tego, że przypomnienia są
-> wstrzymane, bo wtyczka nie może jeszcze przekazać klawiszowi swojego
-> stanu ([Czego nie robi](#czego-nie-robi)).
+> Od wersji 0.2.0, z API wtyczek 1.2 DeckPilota, klawisz przypisany do
+> akcji **Stan** pokazuje odliczania ([Na klawiszu](#na-klawiszu)).
 
 ## Konfiguracja
 
@@ -138,11 +137,43 @@ Zmiana odstępu albo włączenie przypomnienia zaczyna dane odliczanie od nowa.
   Twoje ustawienia powiadomień nigdzie nie pokazują, liczy się jako
   pokazane.
 
+## Na klawiszu
+
+*Od wersji 0.2.0; wymaga DeckPilota z API wtyczek 1.2.* Klawisz przypisany
+do akcji **Stan** pokazuje:
+
+| Kiedy | Tytuł | Drugi wiersz | Kolor |
+| --- | --- | --- | --- |
+| Odliczanie | `Przerwa 12 min` | `Woda 4 min` | morski; bursztynowy, gdy któreś przypomnienie przypada teraz (`Przerwa teraz`) |
+| Wstrzymane | `Pauza` | `jeszcze 40 min` albo `do wznowienia` | szary |
+| Godziny ciszy | `Godziny ciszy` | odliczania | fioletowy |
+| Przed pierwszym taktem | `Czeka na takt` | odliczania | brak, z `?` |
+
+Wyłączone przypomnienie jest pomijane; oba wyłączone: `Wylaczone`. W
+trakcie odliczania pasek pokazuje, ile minęło z odliczania do bliższego
+przypomnienia, a u góry biegnie znacznik. Teksty są w języku z
+ustawień, bez polskich liter (czcionka klawiszy DeckPilota ich nie ma);
+po angielsku: `Break 12 min`, `Water 4 min`, `Paused`, `Quiet hours`.
+
+Klawisz pokazuje minuty **z ostatniego taktu**: odliczania przesuwają się
+tylko wtedy, gdy przepływ co minutę uruchamia Takt. Gdy powinny biec, ale
+od 3 minut nie było taktu (przepływ wyłączony, komputer uśpiony, DeckPilot
+zablokowany), klawisz nie udaje, że liczy: dodaje znacznik ostrzeżenia i
+czas od ostatniego taktu jako plakietkę (`12m`, `2h`). Nic zapisanego się
+nie zmienia; następny takt doprowadza odliczania do porządku jak zawsze.
+
+Naciśnięcie klawisza uruchamia Stan, który niczego nie zmienia; **Wstrzymaj
+lub wznów** albo **Odłóż** umieść na innym klawiszu albo na długim
+naciśnięciu tego. Urządzenie bez wyświetlaczy nic nie pokazuje.
+
 ## Uprawnienia i dane
 
-- **Powiadomienia**, jedyne uprawnienie: do pokazywania przypomnień tam,
-  gdzie wskazują dwa ustawienia powyżej. Bez dostępu do sieci, bez
-  poświadczeń.
+- **Powiadomienia**: do pokazywania przypomnień tam, gdzie wskazują dwa
+  ustawienia powyżej.
+- **Stan klawisza** (`device`, `state`): do pokazywania odliczań na
+  klawiszach przypisanych do akcji Stan ([Na klawiszu](#na-klawiszu)).
+  Wtyczka opisuje klawisz; rysuje go DeckPilot.
+- Bez dostępu do sieci, bez poświadczeń.
 - Wtyczka trzyma w swojej pamięci na tym komputerze jedną małą wartość:
   oba odliczania, wstrzymanie, czas ostatniego taktu oraz liczniki
   przypomnień pokazanych, pominiętych i odłożonych. Nic nie opuszcza
@@ -163,13 +194,8 @@ Zmiana odstępu albo włączenie przypomnienia zaczyna dane odliczanie od nowa.
 
 ## Czego nie robi
 
-Nie w tej wersji, bo API wtyczek 1.0 nie ma do tego wywołania:
+Nie w tej wersji, bo API wtyczek nie ma do tego wywołania:
 
-- **Brak dynamicznego stanu klawisza.** Klawisz nie pokazuje odliczania,
-  następnego przypomnienia ani „wstrzymane”; użyj akcji Status albo
-  zmiennych. DeckPilot dostaje wywołanie stanu klawisza dla wtyczek;
-  zapisany stan wtyczki (minuty pozostałe dla każdego przypomnienia,
-  wstrzymanie, godziny ciszy) to już to, co klawisz by pokazał.
 - **Brak własnego zegara.** Bez przepływu pracy nic się nie dzieje,
   a wtyczka nie może utworzyć go za Ciebie.
 - **Brak wykrywania bezczynności.** Wtyczka nie wie, czy jesteś przy

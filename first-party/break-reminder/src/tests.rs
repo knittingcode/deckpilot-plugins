@@ -793,14 +793,18 @@ fn the_manifest_declares_what_the_code_uses() {
     assert_eq!(m["id"], ID);
     assert_eq!(m["version"], VERSION);
     assert_eq!(m["publisher"]["id"], "deckpilot");
-    // One permission, and no network.
+    // Notifications and key state (plugin API 1.2), and no network.
     let kinds: Vec<&str> = m["permissions"]
         .as_array()
         .unwrap()
         .iter()
         .map(|p| p["kind"].as_str().unwrap())
         .collect();
-    assert_eq!(kinds, ["notifications"]);
+    assert_eq!(kinds, ["notifications", "device"]);
+    assert_eq!(m["permissions"][1]["state"], true);
+    assert!(m["permissions"][1].get("icons").is_none());
+    assert_eq!(m["engines"]["pluginApi"], "^1.2");
+    assert_eq!(plugin().api_level().to_string(), "1.2");
     let fields = m["contributes"]["settings"]["fields"].as_array().unwrap();
     let field = |key: &str| {
         fields
@@ -1829,4 +1833,175 @@ fn a_day_of_work_never_shows_more_than_the_intervals_allow() {
     let state = stored(&agent);
     assert_eq!(state.hydration.skipped, 1);
     assert_eq!(u64::from(state.break_.today), state.break_.shown);
+}
+
+// ------------------------------------------------------------ key state
+
+/// The key of `state` under `config`, at the local time `now`.
+fn key_at(state: &State, config: &Config, now: &str) -> KeyState {
+    key::status(&Snapshot::of(state, config), state, config, at(now).0)
+}
+
+#[test]
+fn only_status_shows_key_state() {
+    let m = manifest();
+    for action in m["contributes"]["actions"].as_array().unwrap() {
+        let id = action["id"].as_str().unwrap();
+        let declared = action.get("state").is_some();
+        assert_eq!(declared, id == "status", "{id}");
+        if declared {
+            assert_eq!(action["node"]["effect"], "readOnly");
+            assert_eq!(
+                action["state"],
+                json!({"refresh": "every", "intervalSeconds": 60})
+            );
+        }
+        assert_eq!(plugin().find(id).unwrap().has_state(), declared, "{id}");
+    }
+}
+
+#[test]
+fn the_key_counts_down_with_the_ticks_and_says_when_they_stop() {
+    let config = defaults();
+    let start = at("2026-11-16 09:00");
+    let mut state = started(&config, start);
+    let fresh = key_at(&state, &config, "2026-11-16 09:00");
+    assert_eq!(fresh.label.as_deref(), Some("Break 50 min"));
+    assert_eq!(fresh.detail.as_deref(), Some("Water 60 min"));
+    assert_eq!((fresh.progress, fresh.toggle), (Some(0), Some(true)));
+    assert_eq!(
+        (fresh.accent, fresh.indicator),
+        (Some(Accent::Teal), Some(Indicator::Running))
+    );
+    assert_eq!(fresh.badge, None);
+    fresh.validate().expect("within the bounds of key state");
+    run(&mut state, &config, start, 10);
+    let later = key_at(&state, &config, "2026-11-16 09:10");
+    assert_eq!(
+        (later.label.as_deref(), later.progress),
+        (Some("Break 40 min"), Some(20))
+    );
+    assert_eq!(later.detail.as_deref(), Some("Water 50 min"));
+    // Up to two minutes without a tick is normal; three or more is said.
+    assert_eq!(key_at(&state, &config, "2026-11-16 09:12"), later);
+    for (now, badge) in [("2026-11-16 09:13", "3m"), ("2026-11-16 12:10", "3h")] {
+        let late = key_at(&state, &config, now);
+        assert_eq!(late.label, later.label, "{now}");
+        assert_eq!(
+            (late.indicator, late.badge.as_deref()),
+            (Some(Indicator::Warning), Some(badge))
+        );
+    }
+    // A reminder due now, before it is shown: amber.
+    let mut due = started(&config, start);
+    for minute in 1..=50 {
+        due.advance(&config, Stamp(start.0 + minute));
+    }
+    let now = key_at(&due, &config, "2026-11-16 09:50");
+    assert_eq!(
+        (now.label.as_deref(), now.accent),
+        (Some("Break now"), Some(Accent::Amber))
+    );
+}
+
+#[test]
+fn paused_quiet_waiting_and_off_are_told_apart() {
+    let config = defaults();
+    let mut state = started(&config, at("2026-11-16 09:00"));
+    state.pause(40);
+    let paused = key_at(&state, &config, "2026-11-16 18:00");
+    assert_eq!(paused.label.as_deref(), Some("Paused"));
+    assert_eq!(paused.detail.as_deref(), Some("40 min left"));
+    assert_eq!(
+        (paused.accent, paused.indicator),
+        (Some(Accent::Grey), Some(Indicator::Warning))
+    );
+    assert_eq!(
+        (paused.badge, paused.toggle, paused.progress),
+        (None, Some(false), None)
+    );
+    state.pause(0);
+    assert_eq!(
+        key_at(&state, &config, "2026-11-16 18:00")
+            .detail
+            .as_deref(),
+        Some("until resumed")
+    );
+
+    let quiet_config = self::config(json!({ "quietStart": "12:00", "quietEnd": "13:00" }));
+    let mut quiet = started(&quiet_config, at("2026-11-16 11:58"));
+    run(&mut quiet, &quiet_config, at("2026-11-16 11:58"), 4);
+    let shown = key_at(&quiet, &quiet_config, "2026-11-16 12:02");
+    assert_eq!(shown.label.as_deref(), Some("Quiet hours"));
+    assert_eq!(
+        (shown.accent, shown.indicator),
+        (Some(Accent::Purple), Some(Indicator::Unknown))
+    );
+    // Ticks run in quiet hours too: a late one is said there as well.
+    let late = key_at(&quiet, &quiet_config, "2026-11-16 12:30");
+    assert_eq!(late.badge.as_deref(), Some("28m"));
+
+    let mut waiting = State::new();
+    waiting.sync(&config);
+    let shown = key_at(&waiting, &config, "2026-11-16 09:00");
+    assert_eq!(shown.label.as_deref(), Some("Waiting"));
+    assert_eq!(
+        (shown.badge.as_deref(), shown.indicator),
+        (Some("?"), Some(Indicator::Warning))
+    );
+
+    let off = config_off();
+    let state = started(&off, at("2026-11-16 09:00"));
+    let shown = key_at(&state, &off, "2026-11-16 09:00");
+    assert_eq!(
+        (shown.label.as_deref(), shown.detail, shown.progress),
+        (Some("Off"), None, None)
+    );
+}
+
+#[test]
+fn polish_texts_are_ascii_on_the_key() {
+    let config = config(json!({ "language": "pl" }));
+    let mut state = started(&config, at("2026-11-16 09:00"));
+    let shown = key_at(&state, &config, "2026-11-16 09:00");
+    assert_eq!(shown.label.as_deref(), Some("Przerwa 50 min"));
+    assert_eq!(shown.detail.as_deref(), Some("Woda 60 min"));
+    state.pause(15);
+    assert_eq!(
+        key_at(&state, &config, "2026-11-16 09:00")
+            .detail
+            .as_deref(),
+        Some("jeszcze 15 min")
+    );
+    let mut waiting = State::new();
+    waiting.sync(&config);
+    let texts = [
+        key_at(&waiting, &config, "2026-11-16 09:00").label.unwrap(),
+        key_at(&state, &config, "2026-11-16 09:00").label.unwrap(),
+    ];
+    assert_eq!(texts, ["Czeka na takt", "Pauza"]);
+    assert!(texts.iter().all(|t| t.is_ascii()));
+}
+
+#[test]
+fn the_state_call_reads_the_stored_reminders_and_writes_nothing() {
+    let config = defaults();
+    let state = started(&config, at("2026-11-16 09:00"));
+    let stored = serde_json::to_value(&state).unwrap();
+    let now_minute = at("2026-11-16 09:04").0;
+    let mut host = MockHost::new(move |request| match request {
+        CapabilityRequest::SettingsGet(_) => CallResult::Ok(json!({})),
+        CapabilityRequest::StorageGet(k) if k.key == STATE_KEY => CallResult::Ok(stored.clone()),
+        CapabilityRequest::TimeNow(_) => {
+            CallResult::Ok(json!({ "unixMs": now_minute * 60_000, "utcOffsetMinutes": 0 }))
+        }
+        other => panic!("a state call may only read: {other:?}"),
+    });
+    let deckpilot_plugin_sdk::StateOutcome::Ok(shown) =
+        host.key_state(&plugin(), "status", json!({}))
+    else {
+        panic!("no state")
+    };
+    assert_eq!(shown.label.as_deref(), Some("Break 50 min"));
+    assert_eq!(shown.badge.as_deref(), Some("4m"));
 }

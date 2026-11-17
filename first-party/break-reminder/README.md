@@ -8,9 +8,9 @@ Polish: [README.pl.md](README.pl.md).
 > **Read this first.** A DeckPilot plugin has no timer and no clock, and it
 > runs only while one of its actions runs (plugin API 1.0). This plugin
 > therefore does nothing by itself: **you add one workflow that runs its
-> Tick action every minute** ([Setup](#setup)). And a key **cannot show the
-> countdown** or whether the reminders are paused, because a plugin cannot
-> give a key its state yet ([What it does not do](#what-it-does-not-do)).
+> Tick action every minute** ([Setup](#setup)). Since 0.2.0, with
+> DeckPilot's plugin API 1.2, a key bound to **Status** shows the
+> countdowns ([On a key](#on-a-key)).
 
 ## Setup
 
@@ -127,10 +127,44 @@ Changing an interval, or turning a reminder on, starts that countdown again.
   says so in `reason`. One that your notification settings show nowhere
   counts as shown.
 
+## On a key
+
+*Since 0.2.0; needs DeckPilot with plugin API 1.2.* A key bound to
+**Status** shows:
+
+| When | Title | Second line | Colour |
+| --- | --- | --- | --- |
+| Counting | `Break 12 min` | `Water 4 min` | teal; amber when one is due now (`Break now`) |
+| Paused | `Paused` | `40 min left` or `until resumed` | grey |
+| In quiet hours | `Quiet hours` | the countdowns | purple |
+| Before the first tick | `Waiting` | the countdowns | none, with `?` |
+
+A reminder that is turned off is left out; both off: `Off`. While
+counting, a bar shows how much of the countdown to the sooner reminder is
+over, and a mark runs along the top. The texts follow the language
+setting, without Polish letters (DeckPilot's key font has none):
+`Przerwa 12 min`, `Woda 4 min`, `Pauza`, `Godziny ciszy`.
+
+The key shows the minutes **as of the last tick**: the countdowns move
+only when the every-minute workflow runs. When they should be counting but
+no tick has come for 3 minutes (the workflow was disabled, the computer
+slept, DeckPilot was locked), the key does not pretend to count: it adds a
+warning and the time since the last tick as a badge (`12m`, `2h`).
+Nothing stored changes; the next tick brings the countdowns up to date as
+it always did.
+
+Pressing the key runs Status, which changes nothing; put **Pause or
+resume** or **Snooze** on another key, or on this key's long press. A
+device without displays shows nothing.
+
 ## Permissions and data
 
-- **Notifications**, the only permission: to show the reminders, where
-  the two settings above say. No network access, no credentials.
+- **Notifications**: to show the reminders, where the two settings above
+  say.
+- **Key state** (`device`, `state`): to show the countdowns on the keys
+  bound to Status ([On a key](#on-a-key)). The plugin describes the key;
+  DeckPilot draws it.
+- No network access, no credentials.
 - The plugin keeps one small value in its own storage on this computer:
   the two countdowns, the pause, the time of the last tick and counters of
   reminders shown, skipped and snoozed. Nothing leaves the computer, and
@@ -150,13 +184,8 @@ Changing an interval, or turning a reminder on, starts that countdown again.
 
 ## What it does not do
 
-Not in this version, because plugin API 1.0 has no call for it:
+Not in this version, because the plugin API has no call for it:
 
-- **No dynamic key state.** A key does not show the countdown, the next
-  reminder or "paused"; use the Status action or the variables. DeckPilot
-  is getting a key-state call for plugins; the plugin's stored state
-  (minutes left per reminder, paused, quiet) is already what a key would
-  show.
 - **No timer of its own.** Without the workflow nothing happens, and the
   plugin cannot create that workflow for you.
 - **No idle detection.** It does not know whether you are at the keyboard;
