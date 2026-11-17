@@ -1,0 +1,37 @@
+{
+  "version": "0.2.1",
+  "published_at": "2026-11-17T20:51:39.515145Z",
+  "engines": {
+    "deckpilot": ">=0.6.0 <1.0.0",
+    "pluginApi": "^1.2",
+    "sdk": "0.1.0"
+  },
+  "permissions": [
+    {
+      "justification": "Shows a notification when a focus session or a break ends, on the desktop or in the status bar as you choose in this plugin's settings.",
+      "kind": "notifications",
+      "routing": {
+        "desktop": "desktop",
+        "statusBar": "statusBar"
+      }
+    },
+    {
+      "justification": "Shows the minutes left, the phase and its progress on the keys you bound to Status.",
+      "kind": "device",
+      "state": true
+    }
+  ],
+  "manifest_sha256": "92ca0238e8f9c5cb1bb76a8b1db5ce48af94d80fd0469f48f2e484e124a10378",
+  "source": {
+    "repository": "knittingcode/deckpilot-plugins",
+    "tag": "first-party/pomodoro/v0.2.1",
+    "commit": "c7e54be30d014a199ee26f536f29d0d947d93456",
+    "path": "first-party/pomodoro"
+  },
+  "package": {
+    "url": "https://github.com/knittingcode/deckpilot-plugins/releases/download/deckpilot.pomodoro--v0.2.1/deckpilot.pomodoro-0.2.1.dpplugin",
+    "sha256": "7eccbfc86f608d2e1f04ed58f5778833b0a10d3770db01848c1f8056abd64f7c",
+    "size": 115513
+  },
+  "builder": "1.0.0"
+}
