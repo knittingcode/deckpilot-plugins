@@ -1,0 +1,20 @@
+[package]
+name = "deckpilot-memory"
+description = "Memory: the pairs game on DeckPilot keys, with key state, a random shuffle and the time"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+deckpilot-plugin-sdk.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

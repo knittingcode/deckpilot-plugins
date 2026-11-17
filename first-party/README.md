@@ -7,7 +7,11 @@ to the plugins bundled with the application, whose sources stay in
 
 What each plugin can and cannot do today, and why, is in
 [docs/plugin-factory.md](../docs/plugin-factory.md). Read it first: plugin
-API 1.0 has no timers, no clock, no random source and no access to keys.
+API 1.0 has no timers, no clock, no random source and no access to keys;
+1.1 adds the time and random bytes, and 1.2 key state (a plugin describes
+what its keys show). There are still no timers. A plugin that needs a
+later level declares it in `engines.pluginApi` and with
+`Plugin::requires_api` (see `memory/`).
 
 > **Status.** Nothing here is published, and nothing here can be installed
 > from a registry yet: DeckPilot accepts the publisher `deckpilot` only in
