@@ -1,0 +1,50 @@
+{
+  "name": "Memory",
+  "description": "Gra w pary na Twoich klawiszach: znajdź pary wśród zakrytych kart, tasowanych od nowa w każdej grze. Liczy ruchy i czas oraz pamięta Twoją najlepszą grę dla każdego rozmiaru planszy.",
+  "permissions": {
+    "device": "Pokazuje każdą kartę i wynik na klawiszach, które przypisałeś do gry."
+  },
+  "actions": {
+    "new-game": {
+      "name": "Nowa gra",
+      "description": "Tasuje nową planszę o rozmiarze z ustawień i uruchamia zegar. Trwająca gra zostaje porzucona.",
+      "category": "Memory",
+      "outputs": { "pairs": "Pary", "cells": "Karty" }
+    },
+    "flip": {
+      "name": "Odkryj kartę",
+      "description": "Odkrywa jedną kartę. Dwie pasujące zostają odkryte; dwie niepasujące są zakrywane przy następnym ruchu. Przypisz ją do długiego naciśnięcia karty.",
+      "category": "Memory",
+      "parameters": {
+        "cell": { "label": "Karta", "description": "Numer karty na planszy, od 1." }
+      },
+      "outputs": { "result": "Wynik", "moves": "Ruchy", "pairsFound": "Znalezione pary" }
+    },
+    "card": {
+      "name": "Karta",
+      "description": "Pokazuje jedną kartę na jej klawiszu: rewers albo awers po odkryciu. Uruchomienie niczego nie zmienia. Przypisz ją do kliknięcia karty.",
+      "category": "Memory",
+      "parameters": {
+        "cell": { "label": "Karta", "description": "Numer karty na planszy, od 1." }
+      }
+    },
+    "score": {
+      "name": "Wynik",
+      "description": "Pokazuje na klawiszu znalezione pary i ruchy, a po wygranej czas. Uruchomienie niczego nie zmienia.",
+      "category": "Memory",
+      "outputs": { "moves": "Ruchy", "pairsFound": "Znalezione pary", "pairs": "Pary" }
+    }
+  },
+  "variables": {
+    "moves": { "name": "Ruchy", "description": "Pary kart odkryte w bieżącej grze." },
+    "pairsFound": { "name": "Znalezione pary", "description": "Pary znalezione w bieżącej grze." }
+  },
+  "settings": {
+    "pairs": { "label": "Pary", "description": "Ile par ma nowa gra, od 2 do 16 (od 4 do 32 kart)." }
+  },
+  "errorCodes": {
+    "no-game": "Żadna gra nie trwa; zacznij nową grę.",
+    "no-such-card": "Tej karty nie ma na planszy; przypisz karty od 1 do liczby kart.",
+    "game-over": "Wszystkie pary zostały znalezione; zacznij nową grę."
+  }
+}

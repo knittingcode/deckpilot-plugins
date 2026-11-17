@@ -36,6 +36,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "deckpilot-memory"
+version = "0.1.0"
+dependencies = [
+ "deckpilot-plugin-sdk",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "deckpilot-plugin-abi"
 version = "0.1.0"
 source = "git+https://github.com/knittingcode/deckpilot?rev=49d3f86776b917006dcb3d8814032252c6e6b272#49d3f86776b917006dcb3d8814032252c6e6b272"

@@ -11,6 +11,7 @@ members = [
     "air-quality",
     "break-reminder",
     "markets",
+    "memory",
     "pomodoro",
     "template",
     "weather",
