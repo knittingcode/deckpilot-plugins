@@ -1,0 +1,39 @@
+{
+  "version": "0.2.2",
+  "published_at": "2026-11-17T20:51:24.192223Z",
+  "engines": {
+    "deckpilot": ">=0.6.0 <1.0.0",
+    "pluginApi": "^1.2",
+    "sdk": "0.1.0"
+  },
+  "permissions": [
+    {
+      "hosts": [
+        "api.gios.gov.pl"
+      ],
+      "justification": "Asks GIOŚ (Poland's environmental inspectorate) for its list of stations and for the values of the station you choose. It only reads, and sends only that station's number.",
+      "kind": "network",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "justification": "Shows the index category and the PM values of the last reading on the keys you bound to Current air quality.",
+      "kind": "device",
+      "state": true
+    }
+  ],
+  "manifest_sha256": "0dc32dd3344f5b0b38f8cb99743119ace875811e849972ea8f28223ab8d20a62",
+  "source": {
+    "repository": "knittingcode/deckpilot-plugins",
+    "tag": "first-party/air-quality/v0.2.2",
+    "commit": "c7e54be30d014a199ee26f536f29d0d947d93456",
+    "path": "first-party/air-quality"
+  },
+  "package": {
+    "url": "https://github.com/knittingcode/deckpilot-plugins/releases/download/deckpilot.air-quality--v0.2.2/deckpilot.air-quality-0.2.2.dpplugin",
+    "sha256": "4ff3743ef36f4b7e5c38cc838978a4ecc3088138292d36831556bedc631c150d",
+    "size": 152031
+  },
+  "builder": "1.0.0"
+}
