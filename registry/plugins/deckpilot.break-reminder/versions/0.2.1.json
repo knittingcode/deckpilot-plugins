@@ -1,0 +1,37 @@
+{
+  "version": "0.2.1",
+  "published_at": "2026-11-17T20:51:46.936297Z",
+  "engines": {
+    "deckpilot": ">=0.6.0 <1.0.0",
+    "pluginApi": "^1.2",
+    "sdk": "0.1.0"
+  },
+  "permissions": [
+    {
+      "justification": "Shows the break and hydration reminders, on the desktop or in the status bar as you choose in this plugin's settings.",
+      "kind": "notifications",
+      "routing": {
+        "desktop": "desktop",
+        "statusBar": "statusBar"
+      }
+    },
+    {
+      "justification": "Shows the minutes to the next break and glass of water, or that the reminders are paused, on the keys you bound to Status.",
+      "kind": "device",
+      "state": true
+    }
+  ],
+  "manifest_sha256": "5170252b9fc4026911092e41bfa487095b6a25b35420e30a343c52ea7bbefe3e",
+  "source": {
+    "repository": "knittingcode/deckpilot-plugins",
+    "tag": "first-party/break-reminder/v0.2.1",
+    "commit": "c7e54be30d014a199ee26f536f29d0d947d93456",
+    "path": "first-party/break-reminder"
+  },
+  "package": {
+    "url": "https://github.com/knittingcode/deckpilot-plugins/releases/download/deckpilot.break-reminder--v0.2.1/deckpilot.break-reminder-0.2.1.dpplugin",
+    "sha256": "e9c739d924e717eabc5264438ac28c6c809dbe4af9debc7a52ab464c79c77ccf",
+    "size": 110280
+  },
+  "builder": "1.0.0"
+}
