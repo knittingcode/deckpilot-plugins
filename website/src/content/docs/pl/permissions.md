@@ -48,8 +48,8 @@ Schemat wersji manifestu 1 definiuje dziewięć rodzajów. Cztery mają skutek w
 | --- | --- | --- |
 | `network` | `hosts`, `methods`, `userOrigins`, `privateNetwork` | **Działa.** Pozwala na `Context::fetch` do `https://<host>` wymienioną metodą |
 | `credentials` | `refs` (od 1 do 8 kluczy slotów) | **Działa.** Pozwala dołączyć pole danych uwierzytelniających (slot) do żądania i wywołać `Context::has_credential` |
-| `notifications` | brak | **Działa.** Pozwala na `Context::notify` |
-| `openUrl` | `hosts` (od 1 do 16) | **Działa.** Pozwala na `Context::open_url` dla stron `https://<host>` |
+| `notifications` | `routing` (opcjonalne) | **Działa.** Pozwala na `Context::notify` |
+| `openUrl` | `hosts` (od 0 do 16), `userOrigins` | **Działa.** Pozwala na `Context::open_url` dla stron `https://<host>` oraz serwera, który użytkownik wpisał i na który zezwolił |
 | `storage` | `quotaKb` (od 257 do 10 240) | **Działa.** Podnosi limit pamięci trwałej z 256 KiB do `quotaKb` KiB. Sama pamięć trwała nie wymaga uprawnienia |
 | `profile` | `read` (`profile`, `project`) | **Tylko w schemacie.** Żadna funkcja hosta w ABI 1 nie odczytuje profilu ani projektu |
 | `variables` | `read` (identyfikatory zmiennych innych właścicieli) | **Tylko w schemacie.** ABI 1 nie ma funkcji hosta do odczytu zmiennych. Własne zmienne wtyczki nie wymagają uprawnienia |
@@ -80,6 +80,26 @@ Limity na jedno żądanie: adres URL o rozmiarze co najwyżej 8 KiB, co najwyże
 
 `Context::notify(title, body)` pokazuje powiadomienie za pośrednictwem agenta, zatytułowane nazwą wtyczki. Tytuł ma co najwyżej 64 znaki, a treść co najwyżej 300.
 
+#### Kierowanie powiadomień
+
+Uprawnienie może wskazać własne ustawienia wtyczki, które decydują, gdzie pojawiają się jej powiadomienia. Agent odczytuje je, tak jak zapisał je użytkownik, przy każdym powiadomieniu; sama wtyczka nigdy o tym nie decyduje.
+
+```json
+{
+  "kind": "notifications",
+  "routing": { "desktop": "desktop", "statusBar": "statusBar", "minimumSeverity": "minimumSeverity" },
+  "justification": "Shows the notifications your workflows ask for, where you choose in the settings."
+}
+```
+
+| Pole | Ustawienie, które wskazuje |
+| --- | --- |
+| `desktop` | Ustawienie typu `boolean`: włączone pokazuje powiadomienia także przez system operacyjny |
+| `statusBar` | Ustawienie typu `boolean`: włączone wyświetla je na pasku stanu otwartego okna DeckPilot |
+| `minimumSeverity` | Ustawienie typu `choice` z wartościami `info`, `success`, `warning` i `error`: mniej ważne powiadomienia nie są pokazywane |
+
+Wymagane jest co najmniej jedno pole, a każde musi wskazywać ustawienie z `contributes.settings` odpowiedniego typu. Pominięte pole zachowuje to, co ma wtyczka bez kierowania: bez powiadomień systemowych, pasek stanu, każda ważność. Uprawnienie, jego niski poziom ryzyka, przedrostek z nazwą wtyczki i limit częstości są takie same z kierowaniem i bez niego. Agent starszy niż ta funkcja odrzuca manifest.
+
 ### Otwieranie adresów URL
 
 `Context::open_url(url)` prosi agenta o otwarcie strony w przeglądarce użytkownika.
@@ -87,6 +107,7 @@ Limity na jedno żądanie: adres URL o rozmiarze co najwyżej 8 KiB, co najwyże
 - Tylko adresy URL `https` na hoście, na który przyznano dokładnie takie uprawnienie, bez danych użytkownika w adresie, o rozmiarze co najwyżej 2048 bajtów. Hosty z symbolem wieloznacznym przechodzą walidację, ale nigdy nie są przyznawane.
 - Tylko w uruchomieniu rozpoczętym przez użytkownika: naciśnięciem przycisku, gestem, z aplikacji albo przez workflow, który użytkownik rozpoczął w ten sposób. W uruchomieniu rozpoczętym przez harmonogram, zdarzenie cyklu życia, start agenta albo sesję pracy wywołanie jest odrzucane. `Context::run_context()` pozwala to sprawdzić zawczasu.
 - `openUrl` nie daje dostępu sieciowego do hosta, a `network` nie daje prawa do otwierania stron.
+- Strony serwera wpisanego przez użytkownika opisuje sekcja [Strony serwera podanego przez użytkownika](#strony-serwera-podanego-przez-użytkownika).
 
 ## Zawsze dozwolone
 
@@ -116,7 +137,7 @@ Wywołanie ponad limit kończy się błędem rodzaju `Throttled`, który `?` zam
 
 - **Instalacja niczego nie przyznaje.** Wtyczka jest instalowana jako wyłączona.
 - **Włączenie przyznaje uprawnienia, które użytkownik zatwierdzi.** Zanim wtyczkę da się włączyć, każde zadeklarowane uprawnienie musi zostać przyznane. Wtyczka bez uprawnień jest włączana z pustą zgodą.
-- Każde uprawnienie jest przyznawane pod kluczem, na przykład `network:status.example.com` dla każdego hosta, `credentials:apiToken` dla każdego slotu, `openUrl:status.example.com` dla każdego hosta oraz `notifications` i `storage`.
+- Każde uprawnienie jest przyznawane pod kluczem, na przykład `network:status.example.com` dla każdego hosta, `credentials:apiToken` dla każdego slotu, `openUrl:status.example.com` dla każdego hosta, `network:user-origin:<ustawienie>` i `openUrl:user-origin:<ustawienie>` dla każdego ustawienia z adresem serwera oraz `notifications` i `storage`.
 - **Aktualizacja, która dodaje albo poszerza uprawnienie, jest eskalacją.** Agent odkłada taką aktualizację jako oczekującą i prosi o zgodę na eskalowane klucze. Odmowa pozostawia starą wersję. Zobacz [Zgodność wersji](../compatibility/).
 
 ## Cofanie uprawnień
@@ -162,6 +183,27 @@ Zgoda przebiega etapami:
 4. Zmiana ustawienia natychmiast kończy zgodę, podobnie jak cofnięcie uprawnienia slotu albo odinstalowanie.
 
 Broker dopasowuje każde żądanie do dozwolonego serwera dokładnie, według schematu, hosta, portu i prefiksu ścieżki, i w ten sam sposób sprawdza każde przekierowanie.
+
+### Strony serwera podanego przez użytkownika
+
+Pole `openUrl.hosts` zawiera stałe nazwy, więc nie obejmuje serwera znanego tylko użytkownikowi. Uprawnienie `openUrl` może wskazać ustawienia z adresem serwera, którego strony otwiera wtyczka:
+
+```json
+{
+  "kind": "openUrl",
+  "hosts": ["gitlab.com"],
+  "userOrigins": ["apiUrl"],
+  "justification": "Opens a project or a merge request on GitLab in your browser."
+}
+```
+
+- Każdy wpis musi być ustawieniem (`setting`) slotu `network.userOrigins`; co najwyżej 4. Pole `hosts` może wtedy być puste.
+- To osobne uprawnienie, `openUrl:user-origin:<ustawienie>`, pokazywane i przyznawane jak każde inne. Aktualizacja, która je dodaje, jest rozszerzeniem uprawnień.
+- Samo w sobie niczego nie otwiera. Strony otwierają się tylko na serwerze, który użytkownik wpisał w tym ustawieniu **i na który zezwolił**, dopóki to uprawnienie jest przyznane: strony `https` o dokładnie tym schemacie, hoście i porcie. Zgoda na serwer to wyraźnie mówi.
+- Dotyczy serwera, a nie przedrostka ścieżki: strony serwera zwykle nie leżą pod ścieżką jego API. Nie pozwala na żadne żądanie; żądania pozostają w granicach metod i przedrostka ścieżki, na które zezwolił użytkownik.
+- Serwer w sieci prywatnej otwiera się tylko wtedy, gdy jest dokładnie tym, na który użytkownik zezwolił w sieci prywatnej.
+- Obowiązują wszystkie inne zasady [otwierania adresów URL](#otwieranie-adresów-url): tylko w uruchomieniu rozpoczętym przez użytkownika i z tymi samymi limitami.
+- Cofnięcie tego uprawnienia, cofnięcie zgody na serwer, zmiana ustawienia albo odinstalowanie kończy je przy następnym wywołaniu. Agent starszy niż to pole odrzuca manifest.
 
 ## Dokumentacja źródłowa
 
