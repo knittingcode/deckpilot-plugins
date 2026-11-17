@@ -17,13 +17,16 @@ local-first Stream Deck controller and automation app.
 
 </div>
 
-> **Status: foundation. No production-signed plugins yet.** The submission
-> format, the validation pipeline and the publishing workflows are in place
-> and tested with throwaway keys, but no production keys exist, no plugin
-> has been published, and the public site serves no signed registry.
-> DeckPilot's plugin support is itself experimental and off by default.
-> What remains before the first publication:
-> [docs/production-readiness.md](docs/production-readiness.md).
+> **Status:** the signed production registry is live at
+> <https://knittingcode.github.io/deckpilot-plugins/v1/> (key set 1: two
+> offline roots, 1-of-2; index and timestamp keys in protected
+> environments; the timestamp is re-signed daily). It serves DeckPilot's own
+> first-party plugins, published through `publish.yml`. The registry is
+> not open to other publishers yet. Installing plugins needs the next
+> DeckPilot release (0.6.0 has no plugin support). What remains before the
+> registry opens to the public:
+> [docs/production-readiness.md](docs/production-readiness.md) ("Before
+> opening the registry to the public").
 
 ## What this is
 
@@ -65,7 +68,7 @@ from one pinned DeckPilot commit (`tools/deckpilot.env`).
 | --- | --- |
 | [`registry/`](registry/) | Reviewed source data: publishers, plugin listings, version records, revocations |
 | [`plugins/`](plugins/) | One directory per plugin: build recipe and manifest. [`plugins/examples/`](plugins/examples/) holds CI fixtures that are never published |
-| [`keys/`](keys/) | Public trust material after the key ceremony (empty for now) |
+| [`keys/`](keys/) | Public trust material: the roots and the root-signed key sets |
 | [`schemas/`](schemas/) | DeckPilot's JSON schemas, pinned to the DeckPilot commit |
 | [`tools/`](tools/) | Build, validation and publishing scripts used by CI |
 | [`website/`](website/) | The Marketplace website (Astro): [README](website/README.md), [design system](website/DESIGN.md) |

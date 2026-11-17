@@ -34,7 +34,7 @@ plugins/<id>/              per-plugin submission
 plugins/examples/          CI fixtures, never published
 first-party/               sources of DeckPilot's own installable plugins (one Cargo
                            workspace); built, tested and packaged by CI, not a submission
-keys/                      public trust material after the key ceremony (empty now)
+keys/                      public trust material: roots.json, key sets <n>.json(.minisig)
 schemas/                   DeckPilot's schemas, byte-identical at the pin
 schemas/inputs/            this repository's input schemas (build recipe, plugin.json)
 pages/                     static registry files: /v1/README.txt
@@ -117,7 +117,7 @@ committed roots (or README)             |
   It never signs, re-signs or rewrites a registry document.
 - The catalog is generated from the registry tree that `verify-site`
   accepted in the same run, never from `registry/` source data, examples
-  or fixtures. While no registry is published, the catalog is empty.
+  or fixtures. Without a published registry, the catalog is empty.
 - The gates of registry publication are unchanged: a signed registry still
   reaches Pages only through `publish.yml` (owner's tag, `registry-release`)
   or as the mirrored, verified copy of what is already live. A deploy from
@@ -151,6 +151,8 @@ or `workflow_run`; no caches; timeouts on every job; untrusted values reach
 
 ## Status
 
-Foundation only. There are no production keys (`keys/` is empty), no
-published plugins and no signed registry at the public URL. See
-[trust-model.md](trust-model.md) for what the owner has to set up first.
+Production since 2026-11-17: key set 1 in `keys/`, the signed registry at
+the public URL, DeckPilot's first-party plugins published by `publish.yml`
+without an approval prompt (tag authority, checked by its `gate` job). Not
+yet open to other publishers; see [production-readiness.md](production-readiness.md),
+"Before opening the registry to the public".
