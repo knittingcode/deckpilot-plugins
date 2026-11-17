@@ -192,6 +192,9 @@ struct Agent {
     cleared: usize,
     deny_network: bool,
     full_storage: bool,
+    /// The agent's clock for `time.now` (Unix seconds); the default is
+    /// the canned answers' `Date`.
+    now: u64,
 }
 
 type Shared = Rc<RefCell<Agent>>;
@@ -199,6 +202,7 @@ type Shared = Rc<RefCell<Agent>>;
 fn agent(settings: Value) -> Shared {
     Rc::new(RefCell::new(Agent {
         settings,
+        now: DATE_UNIX,
         ..Agent::default()
     }))
 }
@@ -301,6 +305,9 @@ fn host(agent: &Shared) -> MockHost {
                     None => panic!("an HTTP request the test did not expect: {}", f.url),
                 }
             }
+            CapabilityRequest::TimeNow(_) => CallResult::Ok(json!({
+                "unixMs": a.now * 1000, "utcOffsetMinutes": 60
+            })),
             other => panic!("an unexpected capability call: {other:?}"),
         }
     })
@@ -460,9 +467,15 @@ fn the_manifest_declares_what_the_code_uses_and_nothing_more() {
     assert_eq!(m["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(m["publisher"]["id"], "deckpilot");
 
-    // One permission: the one GIOŚ origin the code asks, GET only.
+    // The one GIOŚ origin the code asks, GET only; and key state for
+    // Current air quality (plugin API 1.2).
     let permissions = m["permissions"].as_array().unwrap();
-    assert_eq!(permissions.len(), 1);
+    assert_eq!(permissions.len(), 2);
+    assert_eq!(permissions[1]["kind"], "device");
+    assert_eq!(permissions[1]["state"], true);
+    assert!(permissions[1].get("icons").is_none());
+    assert_eq!(m["engines"]["pluginApi"], "^1.2");
+    assert_eq!(plugin().api_level().to_string(), "1.2");
     assert_eq!(permissions[0]["kind"], "network");
     assert_eq!(permissions[0]["hosts"], json!([gios::HOST]));
     assert_eq!(permissions[0]["methods"], json!(["GET"]));
@@ -1882,4 +1895,152 @@ fn a_very_long_station_name_still_gives_a_message_within_the_limit() {
     let (message, data) = current(&agent, json!({}));
     assert!(message.chars().count() <= 1_024);
     assert!(text(&data, "station").chars().count() <= 80);
+}
+
+// ---- Key state ------------------------------------------------------------
+
+/// What a key bound to Current air quality shows, through the state
+/// handler.
+fn key(agent: &Shared) -> KeyState {
+    match host(agent).key_state(&plugin(), "current", json!({})) {
+        deckpilot_plugin_sdk::StateOutcome::Ok(state) => state,
+        other => panic!("{other:?}"),
+    }
+}
+
+/// 2026-11-16 19:00 in Warsaw, the time of the canned values.
+const MEASURED: u64 = 1_794_852_000;
+
+#[test]
+fn only_current_shows_key_state_and_it_fetches_nothing() {
+    let m = manifest();
+    for action in m["contributes"]["actions"].as_array().unwrap() {
+        let id = action["id"].as_str().unwrap();
+        let declared = action.get("state").is_some();
+        assert_eq!(declared, id == "current", "{id}");
+        if declared {
+            assert_eq!(action["node"]["effect"], "readOnly");
+            assert_eq!(
+                action["state"],
+                json!({"refresh": "every", "intervalSeconds": 60})
+            );
+        }
+        assert_eq!(plugin().find(id).unwrap().has_state(), declared, "{id}");
+    }
+    let a = chosen_530(json!({}));
+    queue_reading(&a);
+    current(&a, json!({}));
+    let (urls, store) = (requests(&a), a.borrow().store.clone());
+    key(&a);
+    assert_eq!(requests(&a), urls);
+    assert_eq!(a.borrow().store, store);
+}
+
+#[test]
+fn the_key_shows_the_category_on_its_colour_and_marks_old_readings() {
+    // No station, then a station without a reading: the user's title.
+    assert_eq!(key(&agent(json!({}))), KeyState::new());
+    let a = chosen_530(json!({}));
+    assert_eq!(key(&a), KeyState::new());
+    queue_reading(&a);
+    current(&a, json!({}));
+    let fresh = key(&a);
+    assert_eq!(fresh.label.as_deref(), Some("Good"));
+    assert_eq!(fresh.detail.as_deref(), Some("PM2.5 15 PM10 23"));
+    assert_eq!(fresh.accent, Some(Accent::Green));
+    assert_eq!((fresh.badge.as_deref(), fresh.indicator), (None, None));
+    fresh.validate().expect("within the bounds of key state");
+    // Fetched 29 minutes ago, measured 71 minutes ago: still current.
+    a.borrow_mut().now = DATE_UNIX + 29 * 60;
+    assert_eq!(key(&a), fresh);
+    // Fetched 30 minutes ago: newer data may exist; marked with the age of
+    // the measurement, values kept.
+    for (now, badge) in [
+        (DATE_UNIX + 30 * 60, "1h"),
+        (MEASURED + 26 * 3_600, "26h"),
+        (MEASURED + 3 * 86_400, "3d"),
+    ] {
+        a.borrow_mut().now = now;
+        let old = key(&a);
+        assert_eq!(
+            (old.label.clone(), old.detail.clone()),
+            (fresh.label.clone(), fresh.detail.clone())
+        );
+        assert_eq!(old.badge.as_deref(), Some(badge));
+        assert_eq!(old.indicator, Some(Indicator::Warning));
+    }
+    // A clock far behind the measurement: its age is unknown, and said so.
+    a.borrow_mut().now = MEASURED - 2 * 3_600;
+    let unknown = key(&a);
+    assert_eq!(
+        (unknown.badge.as_deref(), unknown.indicator),
+        (Some("?"), Some(Indicator::Warning))
+    );
+    // Polish, without Polish letters on the key.
+    a.borrow_mut().now = DATE_UNIX;
+    a.borrow_mut().settings = json!({ "language": "pl" });
+    assert_eq!(key(&a).label.as_deref(), Some("Dobry"));
+}
+
+#[test]
+fn freshly_fetched_but_long_measured_is_not_current() {
+    use crate::cache::ReadingEntry;
+    use crate::provider::{Reading, Sample};
+    let entry = |index: Option<i64>, pm25_time: &str| ReadingEntry {
+        v: 1,
+        provider: "gios".into(),
+        station: 530,
+        fetched_at: Some(DATE_UNIX),
+        fetched_local: None,
+        reading: Reading {
+            index,
+            index_time: index.map(|_| pm25_time.to_owned()),
+            pm25: Some(Sample {
+                value: 41.6,
+                time: pm25_time.into(),
+            }),
+            ..Reading::default()
+        },
+    };
+    let show = |e: &ReadingEntry, language| key::current(Some(e), &gios::Gios, DATE_UNIX, language);
+    // Fetched now, measured five hours before: not current.
+    let old = show(&entry(Some(4), "2026-11-16 14:42:00"), texts::Language::En);
+    assert_eq!(old.label.as_deref(), Some("Bad"));
+    assert_eq!(old.detail.as_deref(), Some("PM2.5 42"));
+    assert_eq!(old.accent, Some(Accent::Red));
+    assert_eq!(
+        (old.badge.as_deref(), old.indicator),
+        (Some("5h"), Some(Indicator::Warning))
+    );
+    // The categories: colours and ASCII texts in both languages.
+    for (index, en, pl, accent) in [
+        (0, "Very good", "Bardzo dobry", Accent::Teal),
+        (1, "Good", "Dobry", Accent::Green),
+        (2, "Moderate", "Umiarkowany", Accent::Amber),
+        (3, "Sufficient", "Dostateczny", Accent::Amber),
+        (4, "Bad", "Zly", Accent::Red),
+        (5, "Very bad", "Bardzo zly", Accent::Purple),
+    ] {
+        let e = entry(Some(index), HOUR);
+        let shown = show(&e, texts::Language::En);
+        assert_eq!(
+            (shown.label.as_deref(), shown.accent),
+            (Some(en), Some(accent)),
+            "{index}"
+        );
+        assert_eq!(
+            show(&e, texts::Language::Pl).label.as_deref(),
+            Some(pl),
+            "{index}"
+        );
+    }
+    // No index: said so, without a colour; nothing at all: the title.
+    let none = show(&entry(None, HOUR), texts::Language::En);
+    assert_eq!(
+        (none.label.as_deref(), none.accent),
+        (Some("No index"), None)
+    );
+    let mut empty = entry(None, HOUR);
+    empty.reading.pm25 = None;
+    assert_eq!(show(&empty, texts::Language::En), KeyState::new());
 }

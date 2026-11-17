@@ -3,7 +3,7 @@
   "manifestVersion": 1,
   "id": "deckpilot.air-quality",
   "name": "Air Quality",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": {
     "id": "deckpilot",
     "name": "DeckPilot",
@@ -28,7 +28,7 @@
   ],
   "engines": {
     "deckpilot": ">=0.6.0 <1.0.0",
-    "pluginApi": "^1.0",
+    "pluginApi": "^1.2",
     "sdk": "0.1.0"
   },
   "runtime": {
@@ -52,6 +52,11 @@
         "GET"
       ],
       "justification": "Asks GIOŚ (Poland's environmental inspectorate) for its list of stations and for the values of the station you choose. It only reads, and sends only that station's number."
+    },
+    {
+      "kind": "device",
+      "state": true,
+      "justification": "Shows the index category and the PM values of the last reading on the keys you bound to Current air quality."
     }
   ],
   "contributes": {
@@ -220,6 +225,10 @@
           "retrySafe": true,
           "idempotent": true,
           "effect": "readOnly"
+        },
+        "state": {
+          "refresh": "every",
+          "intervalSeconds": 60
         }
       },
       {

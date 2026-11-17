@@ -7,10 +7,12 @@
 //! searches the provider's station list by city or name, `select-station`
 //! stores one of them, `forget-station` deletes the choice.
 //!
-//! What plugin API 1.0 does not have, and this plugin therefore does not
-//! do: it cannot draw on a key (no value, no colour), it cannot refresh by
-//! itself (no timers), and it has no clock ([`cache`] explains what that
-//! means for the age of what it shows).
+//! A key bound to `current` shows the index category on its colour and the
+//! PM values of the last reading (plugin API 1.2, [`key`]), marked with
+//! the measurement's age once it is not known to be current. What the
+//! plugin still does not do: it cannot refresh by itself (no timers; a key
+//! shows what the last run fetched), and its actions read the time only
+//! from `at` and the answers' `Date` ([`cache`]).
 //!
 //! Freshness is the point of an air quality reading, so it is never
 //! implied. Every value carries the time the provider measured it, and a
@@ -23,11 +25,13 @@
 //! a variable, and never into the log. Coordinates are not read at all.
 #![deny(unsafe_code)]
 
+use deckpilot_plugin_sdk::ApiLevel;
 use deckpilot_plugin_sdk::prelude::*;
 use serde::Serialize;
 
 pub mod cache;
 pub mod gios;
+pub mod key;
 pub mod provider;
 pub mod texts;
 pub mod time;
@@ -39,7 +43,7 @@ use texts::{Language, UNIT, fold, one_line};
 
 /// Must equal `manifest.json` (`id`, `version`).
 pub const ID: &str = "deckpilot.air-quality";
-pub const VERSION: &str = "0.1.0";
+pub const VERSION: &str = "0.2.0";
 
 /// Error codes of this plugin, each declared in `contributes.errorCodes`.
 pub const NO_STATION: &str = "no-station";
@@ -91,7 +95,12 @@ const MAX_MESSAGE_CHARS: usize = 1_024;
 /// must equal `manifest.json`; a unit test compares them.
 pub fn plugin() -> Plugin {
     Plugin::new(ID, VERSION)
-        .action(Action::new("current", current).param(Param::text("at").max_length(16)))
+        .requires_api(ApiLevel { major: 1, minor: 2 })
+        .action(
+            Action::new("current", current)
+                .param(Param::text("at").max_length(16))
+                .state(key::current_state),
+        )
         .action(
             Action::new("find-station", find_station)
                 .param(Param::text("query").required().max_length(80)),

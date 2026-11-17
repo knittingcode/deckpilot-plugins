@@ -2,7 +2,8 @@
   "name": "Jakość powietrza",
   "description": "PM2.5, PM10 i polski indeks jakości powietrza jednej stacji pomiarowej, z czasem pomiaru: komunikaty, wyjścia dla przepływów pracy i zmienne. Źródło danych: GIOŚ - EKOINFONET (CC BY 4.0).",
   "permissions": {
-    "network": "Pyta GIOŚ (Główny Inspektorat Ochrony Środowiska) o listę stacji i o wartości wybranej przez Ciebie stacji. Tylko odczytuje i wysyła wyłącznie numer tej stacji."
+    "network": "Pyta GIOŚ (Główny Inspektorat Ochrony Środowiska) o listę stacji i o wartości wybranej przez Ciebie stacji. Tylko odczytuje i wysyła wyłącznie numer tej stacji.",
+    "device": "Pokazuje kategorię indeksu i wartości PM z ostatniego odczytu na klawiszach przypisanych do akcji Aktualna jakość powietrza."
   },
   "actions": {
     "current": {

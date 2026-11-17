@@ -405,6 +405,19 @@ pub fn chosen(
         .filter(|chosen| chosen.v == FORMAT && chosen.provider == provider.id()))
 }
 
+/// The stored reading of `chosen`, without asking the provider: what a key
+/// shows (`crate::key`). Absent, of another station or another format:
+/// `None`.
+pub fn stored_reading(
+    ctx: &mut Context<'_>,
+    provider: &dyn Provider,
+    chosen: &Chosen,
+) -> Result<Option<ReadingEntry>, PluginError> {
+    let station = chosen.station.id;
+    Ok(read::<ReadingEntry>(ctx, READING_KEY)?
+        .filter(|e| e.v == FORMAT && e.provider == provider.id() && e.station == station))
+}
+
 /// Stores the chosen station and drops the reading of the previous one.
 pub fn choose(
     ctx: &mut Context<'_>,

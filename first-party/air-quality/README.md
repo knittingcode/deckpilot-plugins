@@ -19,15 +19,34 @@ Polish: [README.pl.md](README.pl.md).
 > ([first-party/README.md](../README.md)). Read the provider's terms again
 > before it is published ([below](#the-providers-terms)).
 
+## On a key
+
+*Since 0.2.0; needs DeckPilot with plugin API 1.2.* A key bound to
+**Current air quality** shows the index category, such as `Good`, on its
+colour, and the PM values below it (`PM2.5 12 PM10 20`, in µg/m³). The
+colours follow the index's scale as closely as DeckPilot's palette allows:
+teal for very good, green for good, amber for moderate and sufficient, red
+for bad, purple for very bad. A reading without an index shows
+`No index` without a colour.
+
+The key shows the **last reading a run of the action fetched** (a press of
+the key, or a scheduled workflow). Showing it never asks the provider. It
+follows the plugin's rule for [freshness](#freshness), applied to the
+present: unless the reading was fetched within 30 minutes **and**
+measured within 3 hours, the values stay but are marked, with a warning
+and the age of the measurement as a badge (`4h`, `2d`), or `?` when it is
+unknown. They are never shown as current.
+
+Before the first reading, or without a chosen station, the key shows the
+title you gave it. Key texts are in DeckPilot's key font, which has no
+Polish letters: `Zly` for `Zły`. The action's message and outputs keep the
+full text. A device without displays shows nothing.
+
 ## What it does not do
 
-Plugin API 1.0 has no way for a plugin to draw on a key, to run by itself,
-or to learn the time. So this version does **not**:
+Plugin API 1.2 lets a plugin describe what a key shows (above), but not
+run by itself or keep a timer. So this version does **not**:
 
-- **show the air quality on a key.** No value, no colour, no icon that
-  changes. A key bound to an action runs it; the result is the action's
-  message. The outputs `categoryName` and `index` are what a key's colour
-  would be chosen by once plugins can set key content.
 - **refresh by itself.** It runs when a key is pressed or a workflow runs
   it. A workflow with a schedule is the way to keep the variables current
   ([below](#refreshing-on-a-schedule)).
@@ -205,6 +224,7 @@ not compute one from PM values.
 | Permission | Why |
 | --- | --- |
 | `network`: `api.gios.gov.pl`, `GET` only | The list of stations, the sensors of the station you select, and that station's index and PM values |
+| `device`: `state` | The index and the PM values on the keys bound to Current air quality ([On a key](#on-a-key)) |
 
 Nothing else: no credentials, no notifications, no opening of pages. The
 plugin's storage (at most a few dozen kilobytes) needs no permission.
