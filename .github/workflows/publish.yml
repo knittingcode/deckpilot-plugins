@@ -23,6 +23,10 @@
 #   website           UNPRIVILEGED (no environment, no secret): builds the
 #                     marketplace website, with its catalog generated from
 #                     the registry `sign` just verified; read-only consumer
+#   pages-build       contents: write only: an empty commit on the branch
+#                     pages-builds, the build version of this deployment
+#                     (Pages ignores a version it has seen, and refuses
+#                     one that is not a commit; tools/pages-build-commit.sh)
 #   deploy            github-pages: the signed /v1/ byte for byte, the
 #                     website around it (tools/compose-site.py fails if the
 #                     website touches a registry path)
@@ -206,10 +210,37 @@ jobs:
     permissions:
       contents: read
 
-  deploy:
-    name: Deploy the registry
+  # The commit this run's Pages deployment is recorded under: Pages ignores
+  # a second deployment of a build version it has seen and refuses one that
+  # is not a commit (tools/pages-build-commit.sh). Its only permission is
+  # writing the empty commit to the branch pages-builds; it runs no
+  # repository code but that script and has no secret.
+  pages-build:
+    name: Pages build commit
     needs: [resolve, sign, release, website]
     if: always() && needs.sign.result == 'success' && needs.website.result == 'success' && (needs.release.result == 'success' || needs.release.result == 'skipped')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: tools
+          ref: ${{ needs.resolve.outputs.commit }}
+      - id: commit
+        name: Append an empty build commit to pages-builds
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: tools/pages-build-commit.sh
+
+  deploy:
+    name: Deploy the registry
+    needs: [resolve, sign, release, website, pages-build]
+    if: always() && needs.sign.result == 'success' && needs.website.result == 'success' && (needs.release.result == 'success' || needs.release.result == 'skipped') && needs.pages-build.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment:
@@ -243,13 +274,14 @@ jobs:
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: ${{ runner.temp }}/site
-      # Not actions/deploy-pages: it deploys with the commit as the build
-      # version, and Pages keeps the content of an earlier deployment of the
-      # same commit (tools/deploy-pages.sh).
+      # Not actions/deploy-pages: it deploys under the run's commit, and
+      # Pages keeps the content of an earlier deployment of the same commit
+      # (tools/deploy-pages.sh, tools/pages-build-commit.sh).
       - id: deployment
-        name: Deploy to Pages (build version unique to this run attempt)
+        name: Deploy to Pages under the build commit
         env:
           GH_TOKEN: ${{ github.token }}
+          PAGES_BUILD_COMMIT: ${{ needs.pages-build.outputs.sha }}
         run: tools/deploy-pages.sh
 
   verify-published:

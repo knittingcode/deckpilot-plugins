@@ -1,36 +1,38 @@
 #!/usr/bin/env bash
 # Deploys this run's `github-pages` artifact (actions/upload-pages-artifact)
-# to GitHub Pages, as actions/deploy-pages does, but with a build version
-# unique to this run attempt: <commit>-<run id>-<attempt>.
+# to GitHub Pages, as actions/deploy-pages does, but under the build commit
+# PAGES_BUILD_COMMIT (tools/pages-build-commit.sh) instead of GITHUB_SHA.
 #
-# actions/deploy-pages always uses the commit (GITHUB_SHA) as the
+# actions/deploy-pages always uses the commit of the run as the
 # pages_build_version, and Pages answers a second deployment of the same
 # version with the existing one: it reports success and serves the old
-# content. Here that is the normal case, not an accident: a release tag is
-# made on the main commit that pages.yml has just deployed, and the daily
-# timestamp refresh deploys the same main commit day after day. Each run
-# then "succeeded" without changing the site (observed with
-# deckpilot.memory--v0.1.0: the signed registry never went live).
+# content (observed with deckpilot.memory--v0.1.0: its tag is on the main
+# commit pages.yml had just deployed, and the signed registry never went
+# live). A version that is not a real commit is refused with 404 (observed
+# with "<commit>-<run>-<attempt>"), so each deployment gets a commit of its
+# own.
 #
-#   tools/deploy-pages.sh            (in a job with pages: write, id-token: write,
+#   PAGES_BUILD_COMMIT=<sha> tools/deploy-pages.sh
+#                                    (in a job with pages: write, id-token: write,
 #                                     actions: read and the github-pages environment)
 #
 # Writes page_url to $GITHUB_OUTPUT. Prints no token.
-# Environment: GH_TOKEN, GITHUB_REPOSITORY, GITHUB_SHA, GITHUB_RUN_ID,
-# GITHUB_RUN_ATTEMPT, ACTIONS_ID_TOKEN_REQUEST_URL and _TOKEN (set by the
+# Environment: GH_TOKEN, GITHUB_REPOSITORY, GITHUB_RUN_ID, PAGES_BUILD_COMMIT,
+# ACTIONS_ID_TOKEN_REQUEST_URL and _TOKEN (set by the
 # runner for id-token: write); GH (default: gh); DEPLOY_TIMEOUT_SECONDS
 # (default 600, the action's maximum).
 set -euo pipefail
 
 gh=${GH:-gh}
 fail() { echo "::error::$*" >&2; exit 1; }
-for v in GH_TOKEN GITHUB_REPOSITORY GITHUB_SHA GITHUB_RUN_ID GITHUB_RUN_ATTEMPT ACTIONS_ID_TOKEN_REQUEST_URL ACTIONS_ID_TOKEN_REQUEST_TOKEN; do
+for v in GH_TOKEN GITHUB_REPOSITORY GITHUB_RUN_ID PAGES_BUILD_COMMIT ACTIONS_ID_TOKEN_REQUEST_URL ACTIONS_ID_TOKEN_REQUEST_TOKEN; do
   [ -n "${!v:-}" ] || fail "$v is not set (the job needs pages: write, id-token: write and actions: read)"
 done
 repo=$GITHUB_REPOSITORY
 [[ $repo =~ ^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$ ]] || fail "bad GITHUB_REPOSITORY"
-[[ $GITHUB_SHA =~ ^[0-9a-f]{40}$ && $GITHUB_RUN_ID =~ ^[0-9]+$ && $GITHUB_RUN_ATTEMPT =~ ^[0-9]+$ ]] || fail "bad run context"
-version="$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+[[ $GITHUB_RUN_ID =~ ^[0-9]+$ ]] || fail "bad run context"
+[[ $PAGES_BUILD_COMMIT =~ ^[0-9a-f]{40}$ ]] || fail "PAGES_BUILD_COMMIT is not a commit SHA"
+version=$PAGES_BUILD_COMMIT
 timeout=${DEPLOY_TIMEOUT_SECONDS:-600}
 
 # The one github-pages artifact of this run.

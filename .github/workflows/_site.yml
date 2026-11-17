@@ -186,10 +186,36 @@ jobs:
         with:
           path: ${{ runner.temp }}/site
 
-  deploy:
-    name: Deploy site
+  # The commit this run's Pages deployment is recorded under: Pages ignores
+  # a second deployment of a build version it has seen and refuses one that
+  # is not a commit (tools/pages-build-commit.sh). Its only permission is
+  # writing the empty commit to the branch pages-builds; it runs no
+  # repository code but that script and has no secret.
+  pages-build:
+    name: Pages build commit
     needs: compose
     if: always() && needs.compose.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: tools
+      - id: commit
+        name: Append an empty build commit to pages-builds
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: tools/pages-build-commit.sh
+
+  deploy:
+    name: Deploy site
+    needs: [compose, pages-build]
+    if: always() && needs.compose.result == 'success' && needs.pages-build.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment:
@@ -205,13 +231,14 @@ jobs:
         with:
           persist-credentials: false
           sparse-checkout: tools
-      # Not actions/deploy-pages: it deploys with the commit as the build
-      # version, and Pages keeps the content of an earlier deployment of the
-      # same commit (tools/deploy-pages.sh).
+      # Not actions/deploy-pages: it deploys under the run's commit, and
+      # Pages keeps the content of an earlier deployment of the same commit
+      # (tools/deploy-pages.sh, tools/pages-build-commit.sh).
       - id: deployment
-        name: Deploy to Pages (build version unique to this run attempt)
+        name: Deploy to Pages under the build commit
         env:
           GH_TOKEN: ${{ github.token }}
+          PAGES_BUILD_COMMIT: ${{ needs.pages-build.outputs.sha }}
         run: tools/deploy-pages.sh
 
   verify:

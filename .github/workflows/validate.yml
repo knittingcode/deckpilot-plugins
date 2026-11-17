@@ -37,6 +37,8 @@ jobs:
         run: tools/tests/test-release-gates.sh
       - name: Tests of the Pages deployment
         run: tools/tests/test-deploy-pages.sh
+      - name: Tests of the Pages build commit
+        run: tools/tests/test-pages-build-commit.sh
 
   submission:
     name: Submission rules
