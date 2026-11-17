@@ -79,7 +79,7 @@ validate_registry() {
   summary "### Registry submissions" ""
   summary "| Plugin | Version | sha256 | Size | Permissions |" "| --- | --- | --- | --- | --- |"
 
-  local id version record count=0
+  local id version record count=0 mismatch=0
   mkdir -p "$VAL/newest"
   while read -r id version record; do
     [ -n "$id" ] || continue
@@ -118,7 +118,9 @@ validate_registry() {
         '```json' "$(cat "$derived")" '```'
       echo "derived record (reference build):" >&2
       cat "$derived" >&2
-      die "$record does not match the package built from its source (diff above: - built, + recorded)"
+      echo "::error::$record does not match the package built from its source (diff above: - built, + recorded)" >&2
+      mismatch=$((mismatch + 1))
+      continue
     fi
     summary "| \`$id\` | $version | \`$(jq -r .package.sha256 "$record")\` | $(jq -r .package.size "$record") | $(jq -c '[.permissions[] | .kind + (if .hosts then ":" + (.hosts | join(",")) else "" end)]' "$record") |"
     local url rel
@@ -128,6 +130,7 @@ validate_registry() {
     cp "$pkg" "$site/releases/$rel"
     printf '%s\n' "$pkg" >"$VAL/newest/$id"   # ascending: the last one wins
   done <<<"$list"
+  [ "$mismatch" = 0 ] || die "$mismatch version record(s) do not match the packages built from their sources"
   [ "$count" -gt 0 ] || summary "| — | no versions recorded yet | | | |"
 
   # plugins/<id>/manifest.json is the newest version's manifest, so reviewers

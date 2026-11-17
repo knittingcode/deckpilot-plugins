@@ -1,0 +1,29 @@
+{
+  "version": "0.1.0",
+  "published_at": "2026-11-17T20:51:54.207123Z",
+  "engines": {
+    "deckpilot": ">=0.6.0 <1.0.0",
+    "pluginApi": "^1.2",
+    "sdk": "0.1.0"
+  },
+  "permissions": [
+    {
+      "justification": "Shows each card, and the score, on the keys you bound to the game.",
+      "kind": "device",
+      "state": true
+    }
+  ],
+  "manifest_sha256": "776687141037a65b385435d9e34fcf9d313fdcd7cf0a8803373f79e5733df283",
+  "source": {
+    "repository": "knittingcode/deckpilot-plugins",
+    "tag": "first-party/memory/v0.1.0",
+    "commit": "c7e54be30d014a199ee26f536f29d0d947d93456",
+    "path": "first-party/memory"
+  },
+  "package": {
+    "url": "https://github.com/knittingcode/deckpilot-plugins/releases/download/deckpilot.memory--v0.1.0/deckpilot.memory-0.1.0.dpplugin",
+    "sha256": "e7878916af23689a94f04939d9c3deeda856fb79bbec2971eb405e9bffeae07a",
+    "size": 103508
+  },
+  "builder": "1.0.0"
+}

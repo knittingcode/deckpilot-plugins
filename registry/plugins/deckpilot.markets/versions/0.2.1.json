@@ -1,0 +1,47 @@
+{
+  "version": "0.2.1",
+  "published_at": "2026-11-17T20:51:32.157598Z",
+  "engines": {
+    "deckpilot": ">=0.6.0 <1.0.0",
+    "pluginApi": "^1.2",
+    "sdk": "0.1.0"
+  },
+  "permissions": [
+    {
+      "hosts": [
+        "api.frankfurter.dev"
+      ],
+      "justification": "Asks Frankfurter for the ECB reference rates of the currency pairs you choose. Only the two currency codes and a start date are sent.",
+      "kind": "network",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "justification": "Check alert notifies you once when a rate crosses your threshold, on the desktop or in the status bar as you choose in this plugin's settings.",
+      "kind": "notifications",
+      "routing": {
+        "desktop": "desktop",
+        "statusBar": "statusBar"
+      }
+    },
+    {
+      "justification": "Shows the pair's latest reference rate, its date and a sparkline on the keys you bound to Exchange rate.",
+      "kind": "device",
+      "state": true
+    }
+  ],
+  "manifest_sha256": "8149485f0bbe94877a0c9e3d8c8b352481f110f3428d680c4843515a5affd394",
+  "source": {
+    "repository": "knittingcode/deckpilot-plugins",
+    "tag": "first-party/markets/v0.2.1",
+    "commit": "c7e54be30d014a199ee26f536f29d0d947d93456",
+    "path": "first-party/markets"
+  },
+  "package": {
+    "url": "https://github.com/knittingcode/deckpilot-plugins/releases/download/deckpilot.markets--v0.2.1/deckpilot.markets-0.2.1.dpplugin",
+    "sha256": "a2feda2f3b0cb887ed4bfeba35e1aca16a17f33677facc13b0545f97f8668147",
+    "size": 155395
+  },
+  "builder": "1.0.0"
+}
