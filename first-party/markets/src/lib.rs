@@ -49,7 +49,7 @@ use provider::{Pair, Provider, currency};
 
 /// Must equal `manifest.json` (`id`, `version`).
 pub const ID: &str = "deckpilot.markets";
-pub const VERSION: &str = "0.2.0";
+pub const VERSION: &str = "0.2.1";
 
 /// Error codes of this plugin, each declared in `contributes.errorCodes`.
 pub const UNKNOWN_CURRENCY: &str = "unknown-currency";

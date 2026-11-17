@@ -20,7 +20,7 @@ English: [README.md](README.md).
 
 *Od wersji 0.2.0; wymaga DeckPilota z API wtyczek 1.2.* Klawisz przypisany
 do akcji **Aktualna pogoda** pokazuje temperaturę i warunki, na przykład
-`12 C` nad `Czesciowe zachmurzenie`, na kolorze dla rodzaju pogody:
+`12 °C` nad `Częściowe zachmurzenie`, na kolorze dla rodzaju pogody:
 bursztynowym dla słońca, fioletowym dla bezchmurnej nocy, szarym dla
 chmur i mgły, niebieskim dla deszczu, morskim dla śniegu, czerwonym dla
 burzy.
@@ -35,10 +35,10 @@ odświeżaj według harmonogramu ([niżej](#odświeżanie-według-harmonogramu))
 aby pobrać nowy.
 
 Przed pierwszym raportem albo gdy miejsce nie jest ustawione, klawisz
-pokazuje nadany przez Ciebie tytuł. Teksty na klawiszach są w czcionce
-DeckPilota, która nie ma `°` ani polskich liter: `12 C` i `Mgla` zamiast
-`Mgła`. Komunikat i wyjścia akcji zachowują pełny tekst. Urządzenie bez
-wyświetlaczy nic nie pokazuje.
+pokazuje nadany przez Ciebie tytuł. Teksty na klawiszach wyglądają tak,
+jak są (`12 °C`, `Mgła`), w DeckPilocie, który rysuje litery z
+diakrytykami (od DeckPilot #307; ma go każde wydanie z API wtyczek 1.2).
+Urządzenie bez wyświetlaczy nic nie pokazuje.
 
 ## Czego wtyczka nie robi
 

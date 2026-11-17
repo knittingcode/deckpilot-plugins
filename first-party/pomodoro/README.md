@@ -166,7 +166,7 @@ the next phase to one that runs or is paused.
 
 *Since 0.2.0; needs DeckPilot with plugin API 1.2.* A key bound to
 **Status** shows the minutes left (`12 min`), the phase on the second line
-(`Focus 2/4`, `Short break`, `Long break`, with `- paused` or `- ready`;
+(`Focus 2/4`, `Short break`, `Long break`, with `· paused` or `· ready`;
 in Polish when the language setting says so), a bar of the phase's
 progress, a mark along the top while the countdown runs, and a colour for
 the phase: red for focus, green for a short break, teal for a long one.
@@ -182,8 +182,9 @@ pretend to count: it adds a warning and the time since the last tick as a
 badge (`12m`, `2h`), or `?` before the first tick. The next tick brings
 the timer up to date as it always did.
 
-Key texts are in DeckPilot's key font, which has no Polish letters
-(`Krotka przerwa`). Pressing the key runs Status, which changes nothing; put
+Key texts appear as they are (`Krótka przerwa`) with a DeckPilot that
+draws accented letters (since DeckPilot #307; every release with plugin
+API 1.2 has it). Pressing the key runs Status, which changes nothing; put
 **Start, pause or resume** on another key, or on this key's long press.
 A device without displays shows nothing.
 

@@ -41,7 +41,7 @@ use units::{Units, compass};
 
 /// Must equal `manifest.json` (`id`, `version`).
 pub const ID: &str = "deckpilot.weather";
-pub const VERSION: &str = "0.2.0";
+pub const VERSION: &str = "0.2.1";
 
 /// Error codes of this plugin, each declared in `contributes.errorCodes`.
 pub const NO_LOCATION: &str = "no-location";

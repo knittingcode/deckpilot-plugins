@@ -142,8 +142,9 @@ Changing an interval, or turning a reminder on, starts that countdown again.
 A reminder that is turned off is left out; both off: `Off`. While
 counting, a bar shows how much of the countdown to the sooner reminder is
 over, and a mark runs along the top. The texts follow the language
-setting, without Polish letters (DeckPilot's key font has none):
-`Przerwa 12 min`, `Woda 4 min`, `Pauza`, `Godziny ciszy`.
+setting: `Przerwa 12 min`, `Woda 4 min`, `Pauza`, `Wyłączone`, with
+their Polish letters in a DeckPilot that draws them (since DeckPilot #307;
+every release with plugin API 1.2 has it).
 
 The key shows the minutes **as of the last tick**: the countdowns move
 only when the every-minute workflow runs. When they should be counting but

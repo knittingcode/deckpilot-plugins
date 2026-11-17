@@ -13,7 +13,9 @@
 //! fetch, or `?` when unknown.
 //!
 //! The colour follows the change since the previous rate: green up, red
-//! down, none when flat or unknown. Texts are ASCII (DeckPilot's key font).
+//! down, none when flat or unknown. Texts go through [`key_text`]: what
+//! DeckPilot's key font draws (DeckPilot #307) passes, the rest is folded
+//! or dropped, never shown as `?`.
 
 use deckpilot_plugin_sdk::prelude::*;
 
@@ -21,6 +23,62 @@ use crate::cache::{MAX_RATE_LAG_DAYS, PairEntry, age};
 use crate::history::{self, Direction, Snapshot};
 use crate::provider::Pair;
 use crate::time::{day_number, utc_day};
+
+/// Whether DeckPilot's key font draws `c` (DeckPilot #307): ASCII, the
+/// Latin-1 Supplement, Latin Extended-A but `Ĳ ĳ ĸ Ŋ ŋ Œ œ ſ`, and `…`,
+/// `€`, `•`, typographic quotes, primes and dashes. Anything else would be
+/// drawn as `?`.
+pub fn drawn(c: char) -> bool {
+    match u32::from(c) {
+        0x20..=0x7E | 0xA0..=0xFF => true,
+        0x100..=0x17F => !matches!(c, 'Ĳ' | 'ĳ' | 'ĸ' | 'Ŋ' | 'ŋ' | 'Œ' | 'œ' | 'ſ'),
+        _ => matches!(
+            c,
+            '…' | '€'
+                | '•'
+                | '‘'
+                | '’'
+                | '‚'
+                | '′'
+                | '“'
+                | '”'
+                | '„'
+                | '″'
+                | '‐'
+                | '‑'
+                | '‒'
+                | '–'
+                | '—'
+                | '−'
+        ),
+    }
+}
+
+/// A key text: what [`drawn`] passes as it is, the letters it lacks folded
+/// to ASCII (`Œ` as `OE`), anything else dropped, so nothing becomes `?`;
+/// cut to `max` characters.
+pub fn key_text(text: &str, max: usize) -> String {
+    let mut out = String::new();
+    for c in text.chars() {
+        let folded: &str = match c {
+            c if drawn(c) => {
+                out.push(c);
+                continue;
+            }
+            'Ĳ' => "IJ",
+            'ĳ' => "ij",
+            'ĸ' => "k",
+            'Ŋ' => "N",
+            'ŋ' => "n",
+            'Œ' => "OE",
+            'œ' => "oe",
+            'ſ' => "s",
+            _ => "",
+        };
+        out.push_str(folded);
+    }
+    out.chars().take(max).collect()
+}
 
 /// An age as a badge of at most 4 characters: `40m`, `3h`, `2d`.
 pub fn age_badge(seconds: u64) -> String {
@@ -52,15 +110,9 @@ pub fn rate(entry: Option<&PairEntry>, pair: &Pair, now_unix: u64) -> KeyState {
         series: history::series(&entry.points),
     }
     .key();
-    let ascii = |text: &str| -> String {
-        text.chars()
-            .filter(|c| c.is_ascii() && !c.is_ascii_control())
-            .take(32)
-            .collect()
-    };
     let mut state = KeyState::new()
-        .label(ascii(&face.label))
-        .detail(ascii(&face.detail));
+        .label(key_text(&face.label, 32))
+        .detail(key_text(&face.detail, 32));
     if face.series.len() >= 2 {
         state = state.series(face.series);
     }

@@ -9,8 +9,8 @@
 //! last tick as a badge. With the time (`time.now`) it can tell; nothing
 //! stored is changed.
 //!
-//! Texts are ASCII (DeckPilot's key font): Polish words lose their
-//! diacritics.
+//! Texts keep their Polish letters, which DeckPilot's key font draws
+//! (DeckPilot #307).
 
 use deckpilot_plugin_sdk::prelude::*;
 
@@ -76,7 +76,7 @@ pub fn status(snapshot: &Snapshot, state: &State, config: &Config, now: i64) -> 
         lines.push(countdown(false, left, language));
     }
     if lines.is_empty() {
-        lines.push(if pl { "Wylaczone" } else { "Off" }.to_owned());
+        lines.push(if pl { "Wyłączone" } else { "Off" }.to_owned());
     }
     let mut key = match snapshot.phase {
         Phase::Waiting => KeyState::new()

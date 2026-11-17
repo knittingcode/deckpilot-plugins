@@ -34,7 +34,7 @@ use serde_json::Value;
 
 /// Must equal `manifest.json` (`id`, `version`).
 pub const ID: &str = "deckpilot.break-reminder";
-pub const VERSION: &str = "0.2.0";
+pub const VERSION: &str = "0.2.1";
 
 /// The storage key of the whole state: one value, written once per action.
 pub const STATE_KEY: &str = "state";

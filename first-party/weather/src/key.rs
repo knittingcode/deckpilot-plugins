@@ -9,8 +9,9 @@
 //! them, with the age as a badge and a warning mark. It never shows old
 //! data as current.
 //!
-//! DeckPilot draws key texts in an ASCII font, so the texts here are
-//! ASCII: `12 C`, and Polish condition names without diacritics.
+//! Key texts are drawn by DeckPilot's key font: `12 °C`, and Polish
+//! condition names as they are (DeckPilot #307); a character the font
+//! lacks is folded or dropped ([`key_text`]), never shown as `?`.
 
 use deckpilot_plugin_sdk::prelude::*;
 
@@ -18,32 +19,60 @@ use crate::cache::{CURRENT_TTL_SECONDS, WeatherEntry, age};
 use crate::conditions::{Language, condition};
 use crate::units::Units;
 
-/// The text with Polish letters folded to ASCII and anything else outside
-/// ASCII dropped, cut to `max` characters.
-pub fn ascii(text: &str, max: usize) -> String {
-    text.chars()
-        .filter_map(|c| match c {
-            'ą' => Some('a'),
-            'ć' => Some('c'),
-            'ę' => Some('e'),
-            'ł' => Some('l'),
-            'ń' => Some('n'),
-            'ó' => Some('o'),
-            'ś' => Some('s'),
-            'ź' | 'ż' => Some('z'),
-            'Ą' => Some('A'),
-            'Ć' => Some('C'),
-            'Ę' => Some('E'),
-            'Ł' => Some('L'),
-            'Ń' => Some('N'),
-            'Ó' => Some('O'),
-            'Ś' => Some('S'),
-            'Ź' | 'Ż' => Some('Z'),
-            c if c.is_ascii() && !c.is_ascii_control() => Some(c),
-            _ => None,
-        })
-        .take(max)
-        .collect()
+/// Whether DeckPilot's key font draws `c` (DeckPilot #307): ASCII, the
+/// Latin-1 Supplement, Latin Extended-A but `Ĳ ĳ ĸ Ŋ ŋ Œ œ ſ`, and `…`,
+/// `€`, `•`, typographic quotes, primes and dashes. Anything else would be
+/// drawn as `?`.
+pub fn drawn(c: char) -> bool {
+    match u32::from(c) {
+        0x20..=0x7E | 0xA0..=0xFF => true,
+        0x100..=0x17F => !matches!(c, 'Ĳ' | 'ĳ' | 'ĸ' | 'Ŋ' | 'ŋ' | 'Œ' | 'œ' | 'ſ'),
+        _ => matches!(
+            c,
+            '…' | '€'
+                | '•'
+                | '‘'
+                | '’'
+                | '‚'
+                | '′'
+                | '“'
+                | '”'
+                | '„'
+                | '″'
+                | '‐'
+                | '‑'
+                | '‒'
+                | '–'
+                | '—'
+                | '−'
+        ),
+    }
+}
+
+/// A key text: what [`drawn`] passes as it is, the letters it lacks folded
+/// to ASCII (`Œ` as `OE`), anything else dropped, so nothing becomes `?`;
+/// cut to `max` characters.
+pub fn key_text(text: &str, max: usize) -> String {
+    let mut out = String::new();
+    for c in text.chars() {
+        let folded: &str = match c {
+            c if drawn(c) => {
+                out.push(c);
+                continue;
+            }
+            'Ĳ' => "IJ",
+            'ĳ' => "ij",
+            'ĸ' => "k",
+            'Ŋ' => "N",
+            'ŋ' => "n",
+            'Œ' => "OE",
+            'œ' => "oe",
+            'ſ' => "s",
+            _ => "",
+        };
+        out.push_str(folded);
+    }
+    out.chars().take(max).collect()
 }
 
 /// An age as a badge of at most 4 characters: `40m`, `3h`, `2d`.
@@ -86,14 +115,14 @@ pub fn current(
     };
     let c = &entry.report.current;
     let kind = condition(c.code);
-    let unit = if units.temperature_unit().ends_with('F') {
-        "F"
-    } else {
-        "C"
-    };
+    let label = format!(
+        "{} {}",
+        units.temperature(c.temperature),
+        units.temperature_unit()
+    );
     let mut state = KeyState::new()
-        .label(format!("{} {unit}", units.temperature(c.temperature)))
-        .detail(ascii(kind.text(language), 32));
+        .label(key_text(&label, 32))
+        .detail(key_text(kind.text(language), 32));
     if let Some(accent) = accent(kind.name, c.is_day) {
         state = state.accent(accent);
     }

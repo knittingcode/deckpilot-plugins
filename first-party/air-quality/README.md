@@ -38,9 +38,9 @@ and the age of the measurement as a badge (`4h`, `2d`), or `?` when it is
 unknown. They are never shown as current.
 
 Before the first reading, or without a chosen station, the key shows the
-title you gave it. Key texts are in DeckPilot's key font, which has no
-Polish letters: `Zly` for `Zły`. The action's message and outputs keep the
-full text. A device without displays shows nothing.
+title you gave it. Key texts appear as they are (`Zły`) with a DeckPilot
+that draws accented letters (since DeckPilot #307; every release with
+plugin API 1.2 has it). A device without displays shows nothing.
 
 ## What it does not do
 

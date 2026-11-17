@@ -10,7 +10,7 @@ checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
 
 [[package]]
 name = "deckpilot-air-quality"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "deckpilot-plugin-sdk",
  "serde",
@@ -19,7 +19,7 @@ dependencies = [
 
 [[package]]
 name = "deckpilot-break-reminder"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "deckpilot-plugin-sdk",
  "serde",
@@ -28,7 +28,7 @@ dependencies = [
 
 [[package]]
 name = "deckpilot-markets"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "deckpilot-plugin-sdk",
  "serde",
@@ -76,7 +76,7 @@ dependencies = [
 
 [[package]]
 name = "deckpilot-pomodoro"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "deckpilot-plugin-sdk",
  "serde",
@@ -93,7 +93,7 @@ dependencies = [
 
 [[package]]
 name = "deckpilot-weather"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "deckpilot-plugin-sdk",
  "serde",

@@ -2012,14 +2012,14 @@ fn freshly_fetched_but_long_measured_is_not_current() {
         (old.badge.as_deref(), old.indicator),
         (Some("5h"), Some(Indicator::Warning))
     );
-    // The categories: colours and ASCII texts in both languages.
+    // The categories: colours and texts in both languages, as drawn.
     for (index, en, pl, accent) in [
         (0, "Very good", "Bardzo dobry", Accent::Teal),
         (1, "Good", "Dobry", Accent::Green),
         (2, "Moderate", "Umiarkowany", Accent::Amber),
         (3, "Sufficient", "Dostateczny", Accent::Amber),
-        (4, "Bad", "Zly", Accent::Red),
-        (5, "Very bad", "Bardzo zly", Accent::Purple),
+        (4, "Bad", "Zły", Accent::Red),
+        (5, "Very bad", "Bardzo zły", Accent::Purple),
     ] {
         let e = entry(Some(index), HOUR);
         let shown = show(&e, texts::Language::En);
