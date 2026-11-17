@@ -161,10 +161,10 @@ Repozytorium DeckPilota dokumentuje ręczne sprawdzenie całej ścieżki na macO
    ```
 
 2. **Utwórz lokalny rejestr** z jednorazowymi kluczami. Skrypt z przewodnika generuje klucz główny (root), klucz indeksu i klucz znacznika czasu (timestamp) poleceniem `deckpilot-registry keys generate`, inicjalizuje i podpisuje zestaw kluczy, dodaje wydawcę, pakuje wtyczkę, a następnie uruchamia `add-version`, `build-index`, `sign-index`, `timestamp` i `verify-site`.
-3. **Uruchom agenta** z włączonymi wtyczkami, wskazując hosta, lokalny rejestr i jego klucze główne:
+3. **Uruchom agenta**, wskazując hosta, lokalny rejestr i jego klucze główne. Agent zbudowany z funkcją `plugins` ma włączone wtyczki, chyba że zostanie uruchomiony z flagą `--disable-plugins` lub ze zmienną `DECKPILOT_ENABLE_PLUGINS=0`:
 
    ```sh
-   target/debug/deckpilot-agent --headless --no-usb --enable-plugins \
+   target/debug/deckpilot-agent --headless --no-usb \
      --plugin-host "$DECKPILOT_PLUGIN_HOST" \
      --plugin-registry "$REG" --plugin-registry-roots "$KEYS/roots.json"
    ```

@@ -7,7 +7,7 @@ order: 14
 
 Autorzy wtyczek niczego nie podpisują. Nie ma klucza autora, certyfikatu do kupienia ani pliku podpisu w pakiecie. Podpisywany jest rejestr: niewielki zbiór statycznych dokumentów, które przypinają każdy opublikowany pakiet przez jego sha256 i rozmiar. Ta strona wyjaśnia, kto co podpisuje i co klient DeckPilota weryfikuje, zanim zainstaluje wtyczkę.
 
-> **Status:** Klucze produkcyjne jeszcze nie istnieją. Ceremonia kluczy nie została przeprowadzona, katalog `keys/` repozytorium rejestru nie zawiera żadnych kluczy, żaden build DeckPilota nie ma wbudowanych kluczy głównych rejestru i nic nie zostało opublikowane. Procesy podpisywania były dotąd uruchamiane wyłącznie z jednorazowymi kluczami w testach.
+> **Status:** Rejestr produkcyjny pod adresem `https://knittingcode.github.io/deckpilot-plugins/v1/` jest podpisany zestawem kluczy 1: dwoma kluczami głównymi przechowywanymi offline, z progiem 1 z 2, oraz osobnymi kluczami indeksu i znacznika czasu. Znacznik czasu jest codziennie podpisywany na nowo. Publiczne klucze główne znajdują się w pliku [`keys/roots.json`](https://github.com/knittingcode/deckpilot-plugins/blob/main/keys/roots.json) repozytorium rejestru, z identyfikatorami kluczy `131875735F6B6F06` i `9D7D888C7D407086`. Następne wydanie DeckPilota będzie miało je wbudowane; DeckPilot 0.6.0 nie obsługuje wtyczek.
 
 ## Co dostarcza autor
 
@@ -33,7 +33,7 @@ Zaufany komentarz (trusted comment) każdego podpisu podaje jego rolę, a dla in
 | Rola | Podpisuje | Gdzie ma się znajdować klucz prywatny | Co oznaczałoby jego przejęcie |
 | --- | --- | --- | --- |
 | root | Zestawy kluczy | Wyłącznie offline, nigdy na GitHubie | Pełne zaufanie do rejestru, dopóki wydanie DeckPilota nie dostarczy nowych kluczy głównych |
-| index | Indeks | Sekret chronionego środowiska, które uruchamia się tylko dla tagów wydań i wymaga recenzenta | Złośliwe wpisy wtyczek do czasu rotacji klucza |
+| index | Indeks | Sekret chronionego środowiska, które uruchamia się tylko dla tagów wydań, a te mogą tworzyć wyłącznie administratorzy | Złośliwe wpisy wtyczek do czasu rotacji klucza |
 | timestamp | Znacznik czasu | Sekret środowiska publikowania i środowiska codziennego odświeżania | Wyłącznie zamrożenie lub opóźnienie: nie może wskazać indeksu, którego nie podpisał klucz indeksu |
 
 Zestaw kluczy, w którym dwie role współdzielą klucz, jest odrzucany, więc działający bez nadzoru klucz znacznika czasu nigdy nie może wystąpić w roli klucza indeksu ani klucza głównego.
@@ -81,9 +81,9 @@ Agent zapisuje integralność zainstalowanych plików. Przed każdym uruchomieni
 
 `deckpilot-registry keys generate` tworzy pary kluczy do użytku lokalnego, dzięki czemu możesz zbudować prywatny rejestr na własnej maszynie i przetestować cały przebieg instalacji; zobacz [Testowanie](../testing/#z-prawdziwym-agentem). Agent ufa takiemu rejestrowi tylko wtedy, gdy został uruchomiony z opcją `--plugin-registry-roots` wskazującą plik `roots.json` tego rejestru. Te klucze nie mają żadnego związku z publicznym rejestrem.
 
-## Co pozostało, zanim cokolwiek zostanie podpisane produkcyjnie
+## Co pozostało przed otwarciem rejestru dla innych wydawców
 
-Według repozytorium rejestru nie istnieje jeszcze nic z poniższych: ceremonia kluczy offline, która tworzy klucze root, indeksu i znacznika czasu, chronione środowiska i ich sekrety ani publiczne klucze główne wbudowane w build DeckPilota. Do tego czasu procesy publikowania odmawiają działania, a publiczna witryna udostępnia jedynie stronę startową i informację o statusie. Lista kontrolna właściciela repozytorium to [docs/production-readiness.md](https://github.com/knittingcode/deckpilot-plugins/blob/main/docs/production-readiness.md).
+Klucze produkcyjne istnieją, a procesy publikowania podpisują nimi działający rejestr. DeckPilot będzie z niego korzystać od następnego wydania, które ma wbudowane klucze główne. To, czego według repozytorium rejestru brakuje przed otwarciem go dla wtyczek innych wydawców, opisuje lista kontrolna właściciela repozytorium, [docs/production-readiness.md](https://github.com/knittingcode/deckpilot-plugins/blob/main/docs/production-readiness.md), w sekcji „Before opening the registry to the public”.
 
 ## Dokumentacja źródłowa
 

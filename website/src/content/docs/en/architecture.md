@@ -7,7 +7,7 @@ order: 2
 
 A plugin is untrusted code. DeckPilot never runs it inside the application or the background agent: it runs in a separate, sandboxed process, and everything it wants from the outside world is a request that the agent checks against what the user approved. This page describes the pieces and how they fit.
 
-> **Status:** Everything here describes the `main` branch of DeckPilot. Plugin support is experimental and off in every release build, and no signed registry is live. See [Compatibility](../compatibility/#current-status).
+> **Status:** Everything here describes the `main` branch of DeckPilot. Plugin support ships with the next DeckPilot release; DeckPilot 0.6.0, the current release, does not include it. The signed registry is live. See [Compatibility](../compatibility/#current-status).
 
 ## The pieces
 

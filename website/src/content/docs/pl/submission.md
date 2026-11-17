@@ -7,7 +7,7 @@ order: 15
 
 Wtyczki zgłasza się do repozytorium rejestru, [knittingcode/deckpilot-plugins](https://github.com/knittingcode/deckpilot-plugins), przez pull request. Rejestr nigdy nie przechowuje twojego kodu źródłowego: zapisuje, który tag i commit twojego własnego repozytorium zbudować, sam buduje pakiet ponownie, a właściciel repozytorium przeprowadza przegląd i publikuje.
 
-> **Status:** Rejestr nie jest jeszcze otwarty na publikacje. Klucze produkcyjne nie istnieją, więc niczego nie można opublikować i żadna wtyczka nie została opublikowana. Zgłoszenie możesz już przygotować i zwalidować; według przewodnika dla współtwórców rejestru zostanie ono przejrzane i opublikowane, gdy rejestr zostanie otwarty.
+> **Status:** Podpisany rejestr działa i publikuje własne wtyczki DeckPilota. Nie jest jeszcze otwarty dla innych wydawców. Zgłoszenie możesz już przygotować i zwalidować; według przewodnika dla współtwórców rejestru zostanie ono przejrzane i opublikowane, gdy rejestr zostanie otwarty.
 
 ## Zanim zaczniesz
 
@@ -139,7 +139,7 @@ Nie ma gwarantowanych czasów odpowiedzi.
 
 ## Scalenie to nie publikacja
 
-Scalony pull request niczego nie publikuje. Właściciel repozytorium publikuje wersję, tworząc jej tag wydania, `<id>--v<version>`, na scalonym commicie. Uruchamia to proces publikowania, który ponownie buduje pakiet, podpisuje nowy indeks i znacznik czasu, tworzy wydanie GitHub Release z pakietem i wdraża metadane. Ten proces nie był dotąd uruchamiany z kluczami produkcyjnymi.
+Scalony pull request niczego nie publikuje. Właściciel repozytorium publikuje wersję, tworząc jej tag wydania, `<id>--v<version>`, na scalonym commicie. Uruchamia to proces publikowania, który ponownie buduje pakiet, podpisuje nowy indeks i znacznik czasu, tworzy wydanie GitHub Release z pakietem i wdraża metadane. W ten sposób opublikowano wtyczki wymienione na tej witrynie.
 
 Współtwórcy nigdy nie otrzymują praw do publikowania: ani przez scalenie ich wtyczki, ani przez status zweryfikowanego wydawcy, ani przez regularny wkład. Tagi, wydania, środowiska, klucze i sekrety należą do właściciela repozytorium. Odznaka zweryfikowanego wydawcy jest decyzją właściciela repozytorium podjętą w ramach przeglądu, a nie uprawnieniem.
 

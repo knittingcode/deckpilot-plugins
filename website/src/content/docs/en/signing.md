@@ -7,7 +7,7 @@ order: 14
 
 Plugin authors do not sign anything. There is no author key, no certificate to buy and no signature file in a package. What is signed is the registry: a small set of static documents that pin every published package by its sha256 and size. This page explains who signs what and what a DeckPilot client verifies before it installs a plugin.
 
-> **Status:** No production keys exist yet. The key ceremony has not been run, the registry repository's `keys/` directory holds no keys, no DeckPilot build embeds registry root keys, and nothing is published. The signing workflows have only ever run with throwaway keys inside tests.
+> **Status:** The production registry at `https://knittingcode.github.io/deckpilot-plugins/v1/` is signed with key set 1: two offline root keys with a threshold of 1 of 2, and separate index and timestamp keys. The timestamp is re-signed daily. The root public keys are in [`keys/roots.json`](https://github.com/knittingcode/deckpilot-plugins/blob/main/keys/roots.json) of the registry repository, with the key ids `131875735F6B6F06` and `9D7D888C7D407086`. The next DeckPilot release has them built in; DeckPilot 0.6.0 does not include plugin support.
 
 ## What an author provides
 
@@ -33,7 +33,7 @@ Each signature's trusted comment names its role, and for the index and timestamp
 | Role | Signs | Where the private key is meant to live | What a compromise would mean |
 | --- | --- | --- | --- |
 | root | Key sets | Offline only, never on GitHub | Full registry trust, until a DeckPilot release ships new roots |
-| index | The index | A secret of a protected environment that runs only for release tags and requires a reviewer | Malicious listings until the key is rotated |
+| index | The index | A secret of a protected environment that runs only for release tags, which only administrators can create | Malicious listings until the key is rotated |
 | timestamp | The timestamp | A secret of the publishing and the daily refresh environments | Freezing or delaying only: it cannot point at an index the index key did not sign |
 
 A key set in which two roles share a key is refused, so the unattended timestamp key can never act as the index key or as a root.
@@ -81,9 +81,9 @@ The agent records the integrity of the installed files. Before every start of a 
 
 `deckpilot-registry keys generate` creates key pairs for local use, so that you can build a private registry on your own machine and test the complete install flow; see [Testing](../testing/#against-a-real-agent). An agent trusts such a registry only when it is started with `--plugin-registry-roots` pointing at that registry's `roots.json`. These keys have no relation to the public registry.
 
-## What remains before anything is signed for production
+## What remains before the registry opens to other publishers
 
-According to the registry repository, none of the following exists yet: the offline key ceremony that creates the root, index and timestamp keys, the protected environments and their secrets, and the public root keys embedded in a DeckPilot build. Until then the publishing workflows refuse to run, and the public site serves only a landing page and a status note. The owner's checklist is [docs/production-readiness.md](https://github.com/knittingcode/deckpilot-plugins/blob/main/docs/production-readiness.md).
+The production keys exist, and the publishing workflows sign the live registry with them. DeckPilot uses it starting with the next DeckPilot release, which has the root keys built in. What the registry repository lists before it opens to plugins from other publishers is in the owner's checklist, [docs/production-readiness.md](https://github.com/knittingcode/deckpilot-plugins/blob/main/docs/production-readiness.md), section "Before opening the registry to the public".
 
 ## Canonical reference
 

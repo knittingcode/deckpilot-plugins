@@ -38,8 +38,8 @@ export const en = {
   },
 
   status: {
-    badge: 'Experimental preview',
-    short: 'The Marketplace is experimental. Plugin support is switched off in every DeckPilot release build, and no plugin has been published yet.',
+    badge: 'Registry live',
+    short: 'The signed plugin registry is live. Installing plugins needs the next DeckPilot release: DeckPilot 0.6.0, the current release, does not include plugin support.',
   },
 
   footer: {
@@ -72,7 +72,7 @@ export const en = {
   home: {
     title: 'DeckPilot Plugin Marketplace: make your Stream Deck work your way',
     description:
-      'Extend DeckPilot with independently installable plugins. A signed registry, sandboxed WebAssembly plugins and permissions you approve one by one. Experimental preview.',
+      'Extend DeckPilot with independently installable plugins: a signed registry, sandboxed WebAssembly plugins, explicit permissions. Coming with the next DeckPilot release.',
     hero: {
       headline: 'Make your Stream Deck work your way.',
       lead: 'The Marketplace extends DeckPilot with independently installable plugins: new actions for the services and tools you use, each one sandboxed and limited to the permissions you approve.',
@@ -87,17 +87,17 @@ export const en = {
       label: 'Search plugins',
       placeholder: 'Search plugins by name or description',
       submit: 'Search',
-      emptyHint: 'The registry is empty for now. Search will return results as soon as the first plugins are published.',
+      emptyHint: 'This build of the site lists no plugins, so search has nothing to return.',
     },
     featured: {
       eyebrow: 'Integrations',
       title: 'Featured integrations',
       lead: 'The plugins most recently published to the registry.',
       viewAll: 'View all plugins',
-      emptyTitle: 'The first plugins are on their way',
+      emptyTitle: 'No plugins in this build',
       emptyText:
-        'No plugin has been published yet. The registry opens once its signing keys are created; until then there is nothing to install, and nothing here is invented to fill the space.',
-      emptyPrimary: 'Build the first one',
+        'The catalog is generated from the signed registry when the site is deployed. This build contains no plugins, and nothing here is invented to fill the space.',
+      emptyPrimary: 'Build a plugin',
       emptySecondary: 'Follow the registry on GitHub',
     },
     categories: {
@@ -183,7 +183,7 @@ export const en = {
       cards: [
         {
           title: 'Submit a plugin',
-          text: 'Prepare and validate a submission today. It is reviewed and published once the registry opens.',
+          text: 'Prepare and validate a submission today. The registry publishes DeckPilot’s own plugins for now; other submissions are reviewed and published once it opens to other publishers.',
           link: 'How submission works',
         },
         {
@@ -208,11 +208,11 @@ export const en = {
         },
         {
           q: 'Can I install plugins today?',
-          a: 'Not in a released build. Plugin support is experimental and switched off in every DeckPilot release build, the registry has no production signing keys, and no plugin has been published. DeckPilot itself is in early development: its only public version is the pre-release v0.6.0-alpha.3.',
+          a: 'Not yet. The signed registry is live and the plugins listed on this site are published, but installing them needs the next DeckPilot release, which brings the Marketplace screen and plugin support. DeckPilot 0.6.0, the current release and the first stable one, does not include plugin support.',
         },
         {
           q: 'How will installing a plugin work?',
-          a: 'From the Marketplace screen inside DeckPilot, in builds that have plugin support enabled. You pick a plugin, review the permissions it requests and approve the install. This website is a catalog and documentation: it has no install button, and DeckPilot has no install links.',
+          a: 'From the Marketplace screen inside DeckPilot, starting with the next DeckPilot release. You pick a plugin, review the permissions it requests and approve the install. This website is a catalog and documentation: it has no install button, and DeckPilot has no install links.',
         },
         {
           q: 'How are plugins reviewed?',
@@ -283,7 +283,7 @@ export const en = {
     searchPlaceholder: 'Name or description',
     category: 'Category',
     platform: 'Platform',
-    compatibility: 'Works with',
+    compatibility: 'DeckPilot version',
     anyCategory: 'All categories',
     anyPlatform: 'All platforms',
     anyVersion: 'Any DeckPilot version',
@@ -299,18 +299,18 @@ export const en = {
     listLabel: 'Plugins',
     noResultsTitle: 'No plugins match these filters',
     noResultsText: 'Try a different search term or remove a filter.',
-    emptyTitle: 'No plugins published yet',
+    emptyTitle: 'No plugins in this build',
     emptyText:
-      'The registry is not open for publication yet: its signing keys have not been created, so there is nothing to list. Plugins appear here automatically once they are published and signed.',
+      'The catalog is generated from the signed registry when the site is deployed, and this build contains no plugins. On the published site, every plugin the registry offers is listed here.',
     emptyPrimary: 'Build a plugin',
     emptySecondary: 'How submission works',
     emptyStatusTitle: 'Where things stand',
     emptyStatus: [
-      'The submission format, the validation pipeline and the publishing workflows exist and are tested with throwaway keys.',
-      'No production signing keys exist and no plugin has been published.',
-      'Plugin support in DeckPilot is experimental and switched off in every release build.',
+      'The signed production registry is live, and its timestamp is re-signed daily.',
+      'It publishes DeckPilot’s own plugins. It is not open to other publishers yet.',
+      'DeckPilot 0.6.0 does not include plugin support. Plugin support comes with the next DeckPilot release.',
     ],
-    emptyStatusLink: 'What remains before the first publication',
+    emptyStatusLink: 'What remains before the registry opens to other publishers',
     errorTitle: 'Search is unavailable',
     errorText: 'The search index could not be loaded, so every plugin is listed. Reload the page to try again.',
     registryInfo: 'Registry index {seq}, generated {date}.',
@@ -343,7 +343,7 @@ export const en = {
     noPermissions: 'This plugin requests no permissions. Its actions run entirely inside the sandbox.',
     install: 'How to install',
     installSteps: [
-      'Use a DeckPilot build with plugin support enabled. Plugin support is experimental and switched off in every released build today.',
+      'Install the next DeckPilot release, the first with plugin support. It is not published yet, and DeckPilot 0.6.0 cannot install plugins.',
       'Open the Marketplace screen in DeckPilot and find {name}.',
       'Review the requested permissions and install. DeckPilot verifies the registry’s signatures and the package’s sha256 and size before installing.',
       'Enable the plugin and grant its permissions. A plugin is installed disabled and can do nothing until then.',
@@ -366,8 +366,8 @@ export const en = {
     platforms: 'Platforms',
     allPlatforms: 'macOS, Windows and Linux',
     compatibility: 'DeckPilot versions',
-    compatibleWith: 'Includes the current pre-release {version}',
-    notCompatibleWith: 'Does not include the current pre-release {version}',
+    compatibleWith: 'Includes the current release {version}, which does not include plugin support yet. Plugins need the next DeckPilot release.',
+    notCompatibleWith: 'Does not include the current release {version}.',
     pluginApi: 'Plugin API',
     license: 'License',
     publisher: 'Publisher',
@@ -461,9 +461,9 @@ export const en = {
     previous: 'Previous',
     next: 'Next',
     pagination: 'Previous and next page',
-    statusTitle: 'Experimental',
+    statusTitle: 'Plugins come with the next DeckPilot release',
     status:
-      'Plugin support is experimental and off in every DeckPilot release build. The SDK is not published as a package, and the registry is not open for publication yet. APIs described here can still change.',
+      'DeckPilot 0.6.0, the current release, does not include plugin support. The signed registry is live and publishes DeckPilot’s own plugins; it is not open to other publishers yet. The SDK is 0.x and not published as a package, so its Rust API can still change.',
     verified: 'Checked against DeckPilot at commit {commit}.',
     source: 'Canonical SDK documentation in the DeckPilot repository',
   },
@@ -524,9 +524,9 @@ export const en = {
     description:
       'How to submit a plugin to the DeckPilot registry, how review works, licensing, versioning, updates, revocation and how to report a vulnerability.',
     lead: 'The registry is run in the open, in one GitHub repository. This page summarises its rules. The documents it links to are authoritative; if this page and a document disagree, the document wins.',
-    statusTitle: 'Not open for publication yet',
+    statusTitle: 'Not open to other publishers yet',
     status:
-      'No production signing keys exist, so nothing can be published. You can already prepare and validate a submission; it will be reviewed and published once the registry opens.',
+      'The signed registry is live and publishes DeckPilot’s own plugins. Plugins from other publishers are not published yet. You can already prepare and validate a submission; according to the contributing guide, it will be reviewed and published once the registry opens.',
     toc: 'On this page',
     submit: {
       title: 'Submit a plugin',
@@ -621,7 +621,7 @@ export const en = {
       dont: 'Do not open a public issue or pull request for a suspected malicious plugin or vulnerability, do not post exploit details publicly, and do not test against other users’ installations.',
       scope: 'Vulnerabilities in the DeckPilot app or agent, the plugin sandbox and host, the SDK or the client-side verification code belong to the DeckPilot repository instead. For a non-security problem with a plugin, use the Plugin report issue form.',
       after: 'There are no guaranteed response times; reports are handled before any other work. Reporters are credited in the advisory unless they prefer otherwise.',
-      caveat: 'The registry is a foundation under construction and has not had an independent security review.',
+      caveat: 'The registry has not had an independent security review.',
       primary: 'Report a vulnerability',
       policy: 'SECURITY.md',
       appPolicy: 'Report a DeckPilot vulnerability',

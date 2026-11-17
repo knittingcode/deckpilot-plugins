@@ -161,10 +161,10 @@ The DeckPilot repository documents a manual end-to-end check on macOS or Linux i
    ```
 
 2. **Create a local registry** with throwaway keys. The guide's script generates root, index and timestamp keys with `deckpilot-registry keys generate`, initializes and signs a key set, adds a publisher, packages the plugin, and then runs `add-version`, `build-index`, `sign-index`, `timestamp` and `verify-site`.
-3. **Start the agent** with plugins enabled, pointing at the host, the local registry and its roots:
+3. **Start the agent**, pointing at the host, the local registry and its roots. An agent built with the `plugins` feature has plugins on unless it is started with `--disable-plugins` or `DECKPILOT_ENABLE_PLUGINS=0`:
 
    ```sh
-   target/debug/deckpilot-agent --headless --no-usb --enable-plugins \
+   target/debug/deckpilot-agent --headless --no-usb \
      --plugin-host "$DECKPILOT_PLUGIN_HOST" \
      --plugin-registry "$REG" --plugin-registry-roots "$KEYS/roots.json"
    ```

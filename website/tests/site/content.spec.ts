@@ -22,10 +22,10 @@ test.describe('homepage', () => {
     );
   });
 
-  test('states the experimental status and shows no invented plugins', async ({ page }) => {
+  test('states the release status and shows no invented plugins', async ({ page }) => {
     await page.goto('en/');
-    await expect(page.locator('#status')).toContainText('switched off in every DeckPilot release build');
-    await expect(page.locator('#featured')).toContainText('No plugin has been published yet');
+    await expect(page.locator('#status')).toContainText('Installing plugins needs the next DeckPilot release');
+    await expect(page.locator('#featured')).toContainText('No plugins in this build');
     await expect(page.locator('[data-plugin]')).toHaveCount(0);
   });
 
@@ -40,13 +40,13 @@ test.describe('homepage', () => {
 test.describe('empty registry', () => {
   test('the directory explains that nothing is published', async ({ page, request }) => {
     await page.goto('en/plugins/');
-    await expect(page.locator('#empty-registry')).toContainText('No plugins published yet');
+    await expect(page.locator('#empty-registry')).toContainText('No plugins in this build');
     await expect(page.locator('[data-plugin-item]')).toHaveCount(0);
     await expect(page.locator('[data-fixture-banner]')).toHaveCount(0);
     const index = await (await request.get('en/plugins/search.json')).json();
     expect(index.plugins).toEqual([]);
     await page.goto('pl/plugins/');
-    await expect(page.locator('#empty-registry')).toContainText('Nie opublikowano jeszcze żadnej wtyczki');
+    await expect(page.locator('#empty-registry')).toContainText('Ta wersja witryny nie zawiera wtyczek');
   });
 });
 
