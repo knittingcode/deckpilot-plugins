@@ -28,7 +28,7 @@ publish = false
 # The SDK is not published to crates.io: a git dependency on the pinned
 # DeckPilot commit (plugins/runtime/guest/plugin-sdk, SDK 0.1.0, plugin
 # API 1.0, guest ABI 1).
-deckpilot-plugin-sdk = { git = "https://github.com/knittingcode/deckpilot", rev = "49d3f86776b917006dcb3d8814032252c6e6b272" }
+deckpilot-plugin-sdk = { git = "https://github.com/knittingcode/deckpilot", rev = "70490125ea18ee4986b3b9d674e2d9688c1c304c" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 

@@ -46,6 +46,34 @@ thresholds are 1.
    it is unpacked; then the package checks of `deckpilot-plugin-package`
    (manifest digest, permissions byte-for-byte, `plugin.wasm` ABI 1).
 
+## First-party plugins (`deckpilot.*`)
+
+`deckpilot` is DeckPilot's own publisher, reserved everywhere else
+(DeckPilot B6, `crates/deckpilot-plugin-registry/PUBLISHING.md`, "First-party
+plugins"). A client installs a `deckpilot.*` plugin from this registry only
+when, before any download:
+
+1. the current key set, signed by the **root** role, carries
+   `"first_party": {"namespaces": ["deckpilot"]}` (`keyset init
+   --first-party` or `keyset rotate --first-party`); and
+2. the verified index lists the publisher `deckpilot` with `verified: true`
+   (`registry/publishers/knittingcode.json`); and
+3. the package passes the first-party manifest rules
+   (`Manifest::validate_first_party`).
+
+The online index key alone therefore cannot open the namespace: it takes
+the offline root ceremony. Every other reserved publisher stays refused.
+The plugins the application bundles (`deckpilot.github`,
+`deckpilot.gitlab`, `deckpilot.jira`, `deckpilot.notifications`) keep
+their pinned-digest trust as their only source: the agent refuses them
+from any registry, and *Submission rules* refuses records for them. Only
+the owner's pull requests may change `deckpilot.*` records.
+
+Withdrawing the authorization is `keyset rotate --no-first-party`, signed
+by a root, published together with a `revoke` (or `yank`) of every offered
+`deckpilot.*` version; installed copies keep running unless revoked with
+`disable`.
+
 ## Freshness and expiry
 
 The **timestamp governs freshness**. It is signed for 7 days and re-signed
@@ -97,6 +125,7 @@ they are enforced offline from then on.
 | Timestamp-key compromise | as above for `--timestamp`; the impact was limited to freezing |
 | Root rotation | `keyset rotate --root …`, signed by the current and the new roots |
 | Root loss or compromise | a DeckPilot application release with new embedded roots (outside this repository) |
+| Withdraw the first-party authorization | `keyset rotate --no-first-party`, signed by a root; `revoke` (or `yank`) the offered `deckpilot.*` versions; publish with a `registry--v…` tag |
 
 ## Repository protections this relies on
 
@@ -113,7 +142,9 @@ they are enforced offline from then on.
 
 ## Current status
 
-No production keys exist. `keys/` is empty, `registry-release` and
+No production keys exist. The first key set must be made with
+`keyset init --first-party` ([production-readiness.md](production-readiness.md)
+§2.4). `keys/` is empty, `registry-release` and
 `registry-timestamp` do not exist, and the public site serves only the
 Marketplace website and `/v1/README.txt`. Registries signed with throwaway keys
 exist only inside CI jobs and are discarded.

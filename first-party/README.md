@@ -13,11 +13,13 @@ what its keys show). There are still no timers. A plugin that needs a
 later level declares it in `engines.pluginApi` and with
 `Plugin::requires_api` (see `memory/`).
 
-> **Status.** Nothing here is published, and nothing here can be installed
-> from a registry yet: DeckPilot accepts the publisher `deckpilot` only in
-> plugins bundled with the application (B6), and there are no production
-> registry keys (B1). CI builds, tests and packages every plugin, the
-> packages under a throwaway test publisher and throwaway keys.
+> **Status.** Nothing here is published yet. Since DeckPilot B6 (pinned) a
+> registry may serve `deckpilot.*` plugins when its root-signed key set
+> authorizes the namespace and it lists `deckpilot` as a verified
+> publisher; there are no production registry keys yet (B1). CI builds,
+> tests and packages every plugin as `deckpilot.<name>` (`--first-party`)
+> into a registry signed with throwaway keys whose key set authorizes the
+> namespace, and checks it with the client's rules.
 
 ## Layout
 
@@ -38,12 +40,16 @@ first-party/
     src/tests.rs        native unit tests against the SDK's MockHost
 ```
 
-This directory is not a registry submission. A version that is to be
-published is submitted like any other plugin, with
-`plugins/<id>/build.json` (`"workspace": "first-party"`) and a version
-record whose `source` names this repository, a tag, the commit and
-`first-party/<name>` ([docs/publishing.md](../docs/publishing.md)). That
-step is blocked by B6 today.
+This directory is not a registry submission. Each plugin to be published
+has `registry/plugins/deckpilot.<name>/plugin.json` and
+`plugins/deckpilot.<name>/build.json` (`"workspace": "first-party"`); a
+published version adds a version record whose `source` names this
+repository, a source tag, the commit and `first-party/<name>`, made with
+`--first-party` by the owner ([docs/publishing.md](../docs/publishing.md),
+"First-party plugins"). The plugins the application bundles
+(`deckpilot.github`, `deckpilot.gitlab`, `deckpilot.jira`,
+`deckpilot.notifications`) never come here: `tools/first-party.sh check`
+refuses their ids.
 
 ## Commands
 

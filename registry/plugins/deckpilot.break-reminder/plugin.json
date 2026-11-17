@@ -1,0 +1,12 @@
+{
+  "id": "deckpilot.break-reminder",
+  "name": "Break & Hydration",
+  "summary": "Reminds you to take breaks and drink water, with snooze, skip, pause and quiet hours. It has no timer of its own: a workflow you add runs its Tick action every minute.",
+  "description": "Reminds you to take breaks and drink water, with snooze, skip, pause and quiet hours. It has no timer of its own: a workflow you add runs its Tick action every minute.",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/knittingcode/deckpilot-plugins/tree/main/first-party/break-reminder",
+  "source_repository": "knittingcode/deckpilot-plugins",
+  "categories": [
+    "productivity"
+  ]
+}

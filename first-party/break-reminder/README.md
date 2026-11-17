@@ -193,9 +193,9 @@ Not in this version, because the plugin API has no call for it:
   only a pause between ticks counts as time away.
 - **No sound and no action buttons** in the notification: snooze and skip
   are keys or workflow nodes.
-- **Not installable from the Marketplace yet**: DeckPilot accepts the
-  publisher `deckpilot` only in plugins bundled with the application
-  ([docs/plugin-factory.md](../../docs/plugin-factory.md), B6).
+- **Not installable from the Marketplace yet**: no version is published;
+  the registry has no production keys yet
+  ([docs/plugin-factory.md](../../docs/plugin-factory.md), B1).
 
 ## Building and testing
 

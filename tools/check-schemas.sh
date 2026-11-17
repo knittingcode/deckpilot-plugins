@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # schemas/*.json must be byte-identical to DeckPilot's at the pinned commit,
 # rust-toolchain.toml must name the same channel, and the reserved publisher
-# ids of tools/check-submission.py must equal DeckPilot's.
+# ids and bundled plugin ids of tools/check-submission.py (bundled ids also
+# of tools/check-first-party.py) must equal DeckPilot's.
 . "$(dirname "$0")/lib/common.sh"
 fetch_commit "$DECKPILOT_DIR" "$DECKPILOT_REPOSITORY" "$DECKPILOT_COMMIT"
 
@@ -38,10 +39,10 @@ else
 fi
 if python3 -I "$REPO_ROOT/tools/tests/test_check_submission.py" --deckpilot "$DECKPILOT_DIR" \
   MirrorsDeckPilot >/dev/null 2>"$WORK/reserved.log"; then
-  note "ok: tools/check-submission.py RESERVED_PUBLISHERS = DeckPilot's"
+  note "ok: RESERVED_PUBLISHERS and BUNDLED_PLUGIN_IDS = DeckPilot's"
 else
   cat "$WORK/reserved.log" >&2
-  echo "error: tools/check-submission.py RESERVED_PUBLISHERS differs from DeckPilot at $DECKPILOT_COMMIT" >&2
+  echo "error: RESERVED_PUBLISHERS or BUNDLED_PLUGIN_IDS of tools/ differ from DeckPilot at $DECKPILOT_COMMIT" >&2
   status=1
 fi
 exit $status

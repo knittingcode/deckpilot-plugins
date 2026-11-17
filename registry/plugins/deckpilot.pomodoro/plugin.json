@@ -1,0 +1,12 @@
+{
+  "id": "deckpilot.pomodoro",
+  "name": "Pomodoro",
+  "summary": "A focus timer with short and long breaks, notifications at the end of each phase and session statistics. It has no timer of its own: a workflow you add runs its Tick action every minute. A key cannot show the countdown yet.",
+  "description": "A focus timer with short and long breaks, notifications at the end of each phase and session statistics. It has no timer of its own: a workflow you add runs its Tick action every minute. A key cannot show the countdown yet.",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/knittingcode/deckpilot-plugins/tree/main/first-party/pomodoro",
+  "source_repository": "knittingcode/deckpilot-plugins",
+  "categories": [
+    "productivity"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "id": "deckpilot.weather",
+  "name": "Weather",
+  "summary": "Current weather and a forecast of up to 7 days for one place, as messages, workflow outputs and variables. Weather data by Open-Meteo.com (CC BY 4.0), for non-commercial use.",
+  "description": "Current weather and a forecast of up to 7 days for one place, as messages, workflow outputs and variables. Weather data by Open-Meteo.com (CC BY 4.0), for non-commercial use.",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/knittingcode/deckpilot-plugins/tree/main/first-party/weather",
+  "source_repository": "knittingcode/deckpilot-plugins",
+  "categories": [
+    "monitoring"
+  ]
+}

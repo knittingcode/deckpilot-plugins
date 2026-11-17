@@ -5,6 +5,9 @@
 
 Reads both trees with git; never runs anything from the pull request.
 
+* Maintainers: a pull request whose author's login and numeric GitHub id
+  both equal an entry of MAINTAINERS (the repository owner). Everything else
+  is a contributor.
 * Path guard: a contributor who is not a maintainer may change only
   registry/publishers/<their login>.json, registry/plugins/<ns>.*/** and
   plugins/<ns>.*/** for namespaces their publisher record owns (at the base,
@@ -16,9 +19,14 @@ Reads both trees with git; never runs anything from the pull request.
 * Reserved publishers: a contributor can never use a publisher id DeckPilot
   reserves (RESERVED_PUBLISHERS, mirrored from deckpilot-plugin-manifest):
   not as a namespace, not in a plugin path, not as a manifest's
-  publisher.id. `deckpilot` is DeckPilot's first-party publisher; whether
-  the registry itself reserves it is an open owner decision (B6), so this
-  blocks community pull requests only.
+  publisher.id.
+* First-party plugins (DeckPilot B6): `deckpilot` is DeckPilot's own
+  publisher, served by this registry because its root-signed key set
+  authorizes the namespace. Only a maintainer changes `deckpilot.*` records,
+  and the publisher record of `deckpilot` must be FIRST_PARTY_OWNER's,
+  verified. Every other reserved publisher stays refused for everyone (no
+  client installs its plugins), and so do the plugin ids the application
+  bundles (BUNDLED_PLUGIN_IDS: the agent never takes them from a registry).
 * Versions are append-only: a recorded registry/plugins/<id>/versions/<v>.json
   is never changed or deleted (a maintainer may only add "yanked"), and a new
   version must be greater than every recorded one.
@@ -36,14 +44,18 @@ import re
 import subprocess
 import sys
 
-MAINTAINERS = {"knittingcode"}
+# login -> numeric GitHub id. Both must match the pull request author.
+MAINTAINERS = {"knittingcode": 109468044}
+# The only publisher record that may own the namespace `deckpilot`.
+FIRST_PARTY_OWNER = ("knittingcode", 109468044)
 # Documentation anyone may propose (still code-owner reviewed). The policy
 # documents (SECURITY.md, CONTRIBUTING.md, CODE_OF_CONDUCT.md) are not here.
 DOC_PATHS = {"README.md", "plugins/README.md", "registry/README.md"}
 # DeckPilot's RESERVED_PUBLISHERS (crates/deckpilot-plugin-manifest/src/
-# identity.rs at the pinned commit): Manifest::validate refuses all of them,
-# and only first-party plugins bundled with the application may use
-# FIRST_PARTY_PUBLISHER. Keep in step when tools/deckpilot.env moves.
+# identity.rs at the pinned commit): Manifest::validate refuses all of them;
+# FIRST_PARTY_PUBLISHER is accepted only from the application bundle and,
+# since B6, from a registry whose root-signed key set authorizes it. Keep in
+# step when tools/deckpilot.env moves (tools/check-schemas.sh compares).
 FIRST_PARTY_PUBLISHER = "deckpilot"
 RESERVED_PUBLISHERS = frozenset({
     "deckpilot", "knittingcode", "core", "system", "plugin", "plugins", "builtin",
@@ -52,6 +64,12 @@ RESERVED_PUBLISHERS = frozenset({
     "general", "projects", "git", "docker", "http", "notifications", "github",
     "gitlab", "jira", "workspace", "work-session",
 })
+# DeckPilot's BUNDLED_PLUGIN_IDS (crates/deckpilot-plugin-bundled/src/lib.rs
+# at the pinned commit): the agent refuses them from any registry.
+BUNDLED_PLUGIN_IDS = frozenset({
+    "deckpilot.github", "deckpilot.gitlab", "deckpilot.jira", "deckpilot.notifications",
+})
+PLUGIN_PATH = re.compile(r"^(?:registry/plugins|plugins)/([^/]+)/")
 SEMVER_CORE = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$")
 VERSION_PATH = re.compile(r"^registry/plugins/([^/]+)/versions/([^/]+)\.json$")
 
@@ -121,7 +139,7 @@ def main():
     parser.add_argument("--author-id", required=True, type=int)
     args = parser.parse_args()
     base, head = args.base, args.head
-    maintainer = args.author in MAINTAINERS
+    maintainer = MAINTAINERS.get(args.author) == args.author_id
 
     changes = []
     for line in git("diff", "--name-status", "--no-renames", f"{base}...{head}").decode().splitlines():
@@ -184,6 +202,33 @@ def main():
                 pub_id = pub.get("id") if isinstance(pub, dict) else None
                 if pub_id in RESERVED_PUBLISHERS:
                     problem(f"{path}: {reserved_why(pub_id)}")
+
+    # Reserved publishers in maintainer pull requests: only `deckpilot`, and
+    # only with the owner's verified record.
+    if maintainer:
+        for status, path in changes:
+            if status == "D":
+                continue
+            m = re.match(r"^(?:registry/plugins|plugins)/([^/.]+)\.[^/]+/", path)
+            if m and m.group(1) in RESERVED_PUBLISHERS and m.group(1) != FIRST_PARTY_PUBLISHER:
+                problem(f"{path}: {reserved_why(m.group(1))}")
+            if re.match(r"^registry/publishers/[^/]+\.json$", path):
+                rec = show(head, path)
+                ns = rec.get("namespace") if isinstance(rec, dict) else None
+                if ns == FIRST_PARTY_PUBLISHER:
+                    owner = (rec.get("login"), rec.get("github_id"))
+                    if owner != FIRST_PARTY_OWNER or rec.get("verified") is not True:
+                        problem(f"{path}: the publisher {ns!r} must be {FIRST_PARTY_OWNER[0]} "
+                                f"({FIRST_PARTY_OWNER[1]}), verified")
+                elif ns in RESERVED_PUBLISHERS:
+                    problem(f"{path}: {reserved_why(ns)}")
+
+    # Bundled plugins: never from the registry, whoever proposes them.
+    for status, path in changes:
+        m = PLUGIN_PATH.match(path)
+        if status != "D" and m and m.group(1) in BUNDLED_PLUGIN_IDS:
+            problem(f"{path}: {m.group(1)} is bundled with DeckPilot; the agent never installs it "
+                    "from a registry")
 
     # Version history: append-only.
     summary("### Permission changes", "")
