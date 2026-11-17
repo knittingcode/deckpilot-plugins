@@ -20,12 +20,13 @@
 //! break: both countdowns start again and nothing is sent for the time
 //! missed. A clock that went backwards takes nothing off.
 //!
-//! **No key state.** ABI 1 has no state call, so a key cannot show the
-//! countdown or whether the reminders are paused. [`Snapshot`] is the one
-//! place that turns the stored state into what a user sees (the `status`
-//! outputs and the variables today); a later version can return the same
-//! snapshot from a state call without changing what is stored.
+//! **Key state** (plugin API 1.2). [`Snapshot`] is the one place that
+//! turns the stored state into what a user sees: the `status` outputs, the
+//! variables and, through [`key`], a key bound to `status`, which shows
+//! the countdowns as of the last tick and marks ticks that stopped.
 #![deny(unsafe_code)]
+
+pub mod key;
 
 use deckpilot_plugin_sdk::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -33,7 +34,7 @@ use serde_json::Value;
 
 /// Must equal `manifest.json` (`id`, `version`).
 pub const ID: &str = "deckpilot.break-reminder";
-pub const VERSION: &str = "0.1.0";
+pub const VERSION: &str = "0.2.0";
 
 /// The storage key of the whole state: one value, written once per action.
 pub const STATE_KEY: &str = "state";
@@ -67,6 +68,7 @@ const WHICH_OR_LAST: [&str; 4] = ["last", "break", "hydration", "both"];
 /// must equal `manifest.json`; a unit test compares them.
 pub fn plugin() -> Plugin {
     Plugin::new(ID, VERSION)
+        .requires_api(deckpilot_plugin_sdk::ApiLevel { major: 1, minor: 2 })
         .action(Action::new("tick", tick).param(Param::text("firedAt").required().max_length(32)))
         .action(
             Action::new("snooze", snooze)
@@ -93,7 +95,7 @@ pub fn plugin() -> Plugin {
         )
         .action(Action::new("resume", resume))
         .action(Action::new("toggle-pause", toggle_pause))
-        .action(Action::new("status", status))
+        .action(Action::new("status", status).state(key::status_state))
 }
 
 deckpilot_plugin_sdk::plugin!(plugin);
@@ -702,8 +704,7 @@ pub enum Note {
 }
 
 /// What the user sees of the state: the outputs of every action and the
-/// plugin's variables today, and what a key would show once a plugin can
-/// provide key state.
+/// plugin's variables, and what a key bound to `status` shows ([`key`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Snapshot {
     pub phase: Phase,

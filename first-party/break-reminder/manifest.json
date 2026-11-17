@@ -3,7 +3,7 @@
   "manifestVersion": 1,
   "id": "deckpilot.break-reminder",
   "name": "Break & Hydration",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": {
     "id": "deckpilot",
     "name": "DeckPilot",
@@ -28,7 +28,7 @@
   ],
   "engines": {
     "deckpilot": ">=0.6.0 <1.0.0",
-    "pluginApi": "^1.0",
+    "pluginApi": "^1.2",
     "sdk": "0.1.0"
   },
   "runtime": {
@@ -50,6 +50,11 @@
         "statusBar": "statusBar"
       },
       "justification": "Shows the break and hydration reminders, on the desktop or in the status bar as you choose in this plugin's settings."
+    },
+    {
+      "kind": "device",
+      "state": true,
+      "justification": "Shows the minutes to the next break and glass of water, or that the reminders are paused, on the keys you bound to Status."
     }
   ],
   "contributes": {
@@ -505,6 +510,10 @@
           "retrySafe": true,
           "idempotent": true,
           "effect": "readOnly"
+        },
+        "state": {
+          "refresh": "every",
+          "intervalSeconds": 60
         }
       }
     ],

@@ -2,7 +2,8 @@
   "name": "Przerwy i nawodnienie",
   "description": "Przypomina o przerwach i piciu wody, z odkładaniem, pomijaniem, wstrzymywaniem i godzinami ciszy. Nie ma własnego zegara: dodany przez Ciebie przepływ pracy uruchamia akcję Takt co minutę.",
   "permissions": {
-    "notifications": "Pokazuje przypomnienia o przerwie i o wodzie, na pulpicie lub na pasku stanu, zgodnie z ustawieniami tej wtyczki."
+    "notifications": "Pokazuje przypomnienia o przerwie i o wodzie, na pulpicie lub na pasku stanu, zgodnie z ustawieniami tej wtyczki.",
+    "device": "Pokazuje minuty do następnej przerwy i szklanki wody albo to, że przypomnienia są wstrzymane, na klawiszach przypisanych do akcji Stan."
   },
   "actions": {
     "tick": {

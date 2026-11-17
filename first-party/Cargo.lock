@@ -19,7 +19,7 @@ dependencies = [
 
 [[package]]
 name = "deckpilot-break-reminder"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "deckpilot-plugin-sdk",
  "serde",
