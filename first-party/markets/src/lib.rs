@@ -14,10 +14,12 @@
 //! (`rateDate`), where it is from (`source`, `attribution`), and carries
 //! `delayed` (always true here) and `stale` (not known to be current).
 //!
-//! What plugin API 1.0 does not have, and this plugin therefore does not
-//! do: it cannot draw on a key (no rate, no chart: [`history::Snapshot`]
-//! is ready for a key-state call), it cannot refresh by itself (no timers),
-//! and it has no clock ([`cache`] explains what that means).
+//! A key bound to `rate` shows the pair's newest rate, its change, its date
+//! and a sparkline of the stored rates (plugin API 1.2, [`key`]), with a
+//! warning and a badge whenever they are not known to be current; never
+//! as live. What the plugin still does not do: it cannot refresh by itself
+//! (no timers; a key shows what the last run fetched), and its actions
+//! read the time only from `at` and the answers' `Date` ([`cache`]).
 //!
 //! Not in this version: cryptocurrency prices (CoinGecko's API terms ask
 //! for more than a plugin can promise; README) and stock quotes (no
@@ -28,12 +30,14 @@
 //! storage and the notification, and never into the log or a request.
 #![deny(unsafe_code)]
 
+use deckpilot_plugin_sdk::ApiLevel;
 use deckpilot_plugin_sdk::prelude::*;
 use serde::Serialize;
 
 pub mod cache;
 pub mod frankfurter;
 pub mod history;
+pub mod key;
 pub mod numbers;
 pub mod provider;
 pub mod time;
@@ -45,7 +49,7 @@ use provider::{Pair, Provider, currency};
 
 /// Must equal `manifest.json` (`id`, `version`).
 pub const ID: &str = "deckpilot.markets";
-pub const VERSION: &str = "0.1.0";
+pub const VERSION: &str = "0.2.0";
 
 /// Error codes of this plugin, each declared in `contributes.errorCodes`.
 pub const UNKNOWN_CURRENCY: &str = "unknown-currency";
@@ -91,12 +95,14 @@ pub fn plugin() -> Plugin {
     let quote = || Param::text("quote").required().max_length(3);
     let at = || Param::text("at").max_length(16);
     Plugin::new(ID, VERSION)
+        .requires_api(ApiLevel { major: 1, minor: 2 })
         .action(
             Action::new("rate", rate)
                 .param(base())
                 .param(quote())
                 .param(Param::text("amount").max_length(32))
-                .param(at()),
+                .param(at())
+                .state(key::rate_state),
         )
         .action(
             Action::new("change", change)

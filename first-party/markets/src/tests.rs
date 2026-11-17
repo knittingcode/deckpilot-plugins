@@ -116,13 +116,20 @@ struct Agent {
     notify: Notify,
     cleared: usize,
     deny_network: bool,
+    /// The agent's clock for `time.now` (Unix seconds); the default is
+    /// the canned answers' `Date`.
+    now: u64,
 }
 
 type Shared = Rc<RefCell<Agent>>;
 
+/// `DATE` as Unix seconds.
+const DATE_UNIX: u64 = 1_794_855_809;
+
 fn agent() -> Shared {
     Rc::new(RefCell::new(Agent {
         settings: json!({"language": "en", "desktop": true, "statusBar": true}),
+        now: DATE_UNIX,
         ..Agent::default()
     }))
 }
@@ -222,6 +229,9 @@ fn host(agent: &Shared) -> MockHost {
                     None => panic!("an HTTP request the test did not expect"),
                 }
             }
+            CapabilityRequest::TimeNow(_) => CallResult::Ok(json!({
+                "unixMs": a.now * 1000, "utcOffsetMinutes": 60
+            })),
             other => panic!("an unexpected capability call: {other:?}"),
         }
     })
@@ -373,7 +383,13 @@ fn the_manifest_declares_what_the_code_uses_and_nothing_more() {
     assert_eq!(m["publisher"]["id"], "deckpilot");
 
     let permissions = m["permissions"].as_array().unwrap();
-    assert_eq!(permissions.len(), 2);
+    assert_eq!(permissions.len(), 3);
+    // Key state for Exchange rate (plugin API 1.2).
+    assert_eq!(permissions[2]["kind"], "device");
+    assert_eq!(permissions[2]["state"], true);
+    assert!(permissions[2].get("icons").is_none());
+    assert_eq!(m["engines"]["pluginApi"], "^1.2");
+    assert_eq!(plugin().api_level().to_string(), "1.2");
     assert_eq!(permissions[0]["kind"], "network");
     assert_eq!(permissions[0]["hosts"], json!([frankfurter::HOST]));
     assert_eq!(permissions[0]["methods"], json!(["GET"]));
@@ -1250,4 +1266,131 @@ fn forget_deletes_everything_stored() {
     assert!(agent.borrow().store.is_empty());
     assert_eq!(agent.borrow().cleared, 1);
     assert_eq!(requests(&agent), 0);
+}
+
+// ---- Key state ------------------------------------------------------------
+
+/// What a key bound to Exchange rate for `params` shows.
+fn key_for(agent: &Shared, params: Value) -> deckpilot_plugin_sdk::StateOutcome {
+    host(agent).key_state(&plugin(), "rate", params)
+}
+
+fn key(agent: &Shared) -> KeyState {
+    match key_for(agent, json!({"quote": "USD"})) {
+        deckpilot_plugin_sdk::StateOutcome::Ok(state) => state,
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn only_rate_shows_key_state_and_it_fetches_nothing() {
+    let m = manifest();
+    for action in m["contributes"]["actions"].as_array().unwrap() {
+        let id = action["id"].as_str().unwrap();
+        let declared = action.get("state").is_some();
+        assert_eq!(declared, id == "rate", "{id}");
+        if declared {
+            assert_eq!(action["node"]["effect"], "readOnly");
+            assert_eq!(
+                action["state"],
+                json!({"refresh": "every", "intervalSeconds": 300})
+            );
+        }
+        assert_eq!(plugin().find(id).unwrap().has_state(), declared, "{id}");
+    }
+    let agent = seeded(None);
+    let store = agent.borrow().store.clone();
+    key(&agent);
+    assert_eq!(requests(&agent), 0);
+    assert_eq!(agent.borrow().store, store);
+}
+
+#[test]
+fn the_key_shows_the_rate_its_date_and_a_sparkline_never_as_live() {
+    // No rates for the pair yet: the user's title.
+    assert_eq!(key(&agent()), KeyState::new());
+    let agent = seeded(None);
+    let fresh = key(&agent);
+    assert_eq!(fresh.label.as_deref(), Some("1.1014 -0.34%"));
+    assert_eq!(fresh.detail.as_deref(), Some("EUR/USD 11-16"));
+    assert_eq!(fresh.accent, Some(Accent::Red));
+    assert_eq!(fresh.series.as_ref().map(Vec::len), Some(7));
+    // Current rates get no "ok": they are daily reference rates.
+    assert_eq!((fresh.badge.as_deref(), fresh.indicator), (None, None));
+    fresh.validate().expect("within the bounds of key state");
+    // Within the answer's lifetime (max-age 17768 s).
+    agent.borrow_mut().now = DATE_UNIX + 17_767;
+    assert_eq!(key(&agent), fresh);
+    // Past it: kept, with the age of the fetch and a warning.
+    agent.borrow_mut().now = DATE_UNIX + 17_768;
+    let old = key(&agent);
+    assert_eq!(old.label, fresh.label);
+    assert_eq!(
+        (old.badge.as_deref(), old.indicator),
+        (Some("4h"), Some(Indicator::Warning))
+    );
+    // A newest rate six days old: its lag in days is the reason given.
+    agent.borrow_mut().now = DATE_UNIX + 6 * 86_400;
+    let lagging = key(&agent);
+    assert_eq!(
+        (lagging.badge.as_deref(), lagging.indicator),
+        (Some("6d"), Some(Indicator::Warning))
+    );
+    // A clock behind the fetch: the age is unknown, and said so.
+    agent.borrow_mut().now = DATE_UNIX - 60;
+    let unknown = key(&agent);
+    assert_eq!(
+        (unknown.badge.as_deref(), unknown.indicator),
+        (Some("?"), Some(Indicator::Warning))
+    );
+}
+
+#[test]
+fn every_key_shows_its_own_pair_and_a_bad_pair_is_an_error() {
+    let agent = seeded(None);
+    // Another pair: nothing stored for it.
+    let other = key_for(&agent, json!({"quote": "PLN"}));
+    assert_eq!(
+        other,
+        deckpilot_plugin_sdk::StateOutcome::Ok(KeyState::new())
+    );
+    // A pair that is not one: the action's error on the key.
+    for params in [
+        json!({"quote": "US"}),
+        json!({"base": "USD", "quote": "USD"}),
+    ] {
+        let deckpilot_plugin_sdk::StateOutcome::Error(e) = key_for(&agent, params.clone()) else {
+            panic!("{params}")
+        };
+        assert_eq!(e.code, codes::INVALID_PARAMETERS, "{params}");
+    }
+    // Up is green, flat has no colour.
+    use crate::cache::PairEntry;
+    use crate::provider::{Pair, Point};
+    let pair = Pair {
+        base: "EUR".into(),
+        quote: "USD".into(),
+    };
+    let entry = |rates: &[f64]| PairEntry {
+        v: 1,
+        pair: pair.id(),
+        fetched_at: Some(DATE_UNIX),
+        fetched_local: None,
+        ttl: 3_600,
+        points: rates
+            .iter()
+            .enumerate()
+            .map(|(i, r)| Point {
+                d: format!("2026-11-{:02}", 13 + i),
+                r: *r,
+            })
+            .collect(),
+    };
+    let up = key::rate(Some(&entry(&[1.10, 1.12])), &pair, DATE_UNIX);
+    assert_eq!(up.accent, Some(Accent::Green));
+    let flat = key::rate(Some(&entry(&[1.10, 1.10])), &pair, DATE_UNIX);
+    assert_eq!(flat.accent, None);
+    // One rate: no change, no sparkline.
+    let one = key::rate(Some(&entry(&[1.10])), &pair, DATE_UNIX);
+    assert_eq!((one.accent, one.series.clone()), (None, None));
 }

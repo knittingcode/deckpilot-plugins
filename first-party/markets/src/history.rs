@@ -1,13 +1,10 @@
 //! What the stored rates of a pair say: the change over some days, the
 //! lowest and highest rate, the trend, and what a key would show.
 //!
-//! **No chart.** Plugin API 1.0 cannot put anything on a key
-//! (`docs/plugin-factory.md`, "Dynamic key images"). The history kept for
-//! each pair is what a sparkline would be drawn from; [`Snapshot::key`]
-//! turns it into the members of the proposed key state (6.1), `series`
-//! included, so that a later version can return it from a state call
-//! without changing what is stored. This version does not deliver it to a
-//! key.
+//! The history kept for each pair is what a key's sparkline is drawn
+//! from: [`Snapshot::key`] turns it into the members of key state (plugin
+//! API 1.2), `series` included, and [`crate::key`] returns them from the
+//! state call of `rate`.
 
 use crate::provider::Point;
 
@@ -141,7 +138,7 @@ pub struct Snapshot {
 
 /// The members of DeckPilot's `ButtonState` plus `series`, which the
 /// proposed key-state call for plugins returns (`docs/plugin-factory.md`,
-/// 6.1). Not delivered to a key by this version.
+/// 6.1), returned from `rate`'s state call by [`crate::key`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeyFace {
     /// The title: the rate, at most 32 characters.
