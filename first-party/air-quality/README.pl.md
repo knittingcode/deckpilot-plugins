@@ -18,16 +18,35 @@ English: [README.md](README.md).
 > ([first-party/README.md](../README.md)). Przed publikacją trzeba ponownie
 > przeczytać warunki dostawcy ([niżej](#warunki-dostawców)).
 
+## Na klawiszu
+
+*Od wersji 0.2.0; wymaga DeckPilota z API wtyczek 1.2.* Klawisz przypisany
+do akcji **Aktualna jakość powietrza** pokazuje kategorię indeksu, na
+przykład `Dobry`, na jej kolorze, a pod nią wartości PM (`PM2.5 12 PM10
+20`, w µg/m³). Kolory odpowiadają skali indeksu tak dokładnie, jak
+pozwala paleta DeckPilota: morski dla bardzo dobrego, zielony dla
+dobrego, bursztynowy dla umiarkowanego i dostatecznego, czerwony dla
+złego, fioletowy dla bardzo złego. Odczyt bez indeksu pokazuje `Brak
+indeksu` bez koloru.
+
+Klawisz pokazuje **ostatni odczyt pobrany przez uruchomienie akcji**
+(naciśnięcie klawisza albo przepływ z harmonogramem). Samo pokazywanie
+nigdy nie pyta dostawcy. Stosuje regułę [aktualności](#aktualność)
+wtyczki do chwili obecnej: jeśli odczyt nie został pobrany w ciągu 30
+minut **i** zmierzony w ciągu 3 godzin, wartości zostają, ale są
+oznaczone znacznikiem ostrzeżenia i wiekiem pomiaru jako plakietką (`4h`,
+`2d`), albo `?`, gdy jest nieznany. Nigdy nie są pokazywane jako aktualne.
+
+Przed pierwszym odczytem albo bez wybranej stacji klawisz pokazuje
+nadany przez Ciebie tytuł. Teksty na klawiszach są w czcionce DeckPilota,
+która nie ma polskich liter: `Zly` zamiast `Zły`. Komunikat i wyjścia
+akcji zachowują pełny tekst. Urządzenie bez wyświetlaczy nic nie pokazuje.
+
 ## Czego wtyczka nie robi
 
-API wtyczek 1.0 nie pozwala wtyczce rysować na klawiszu, uruchamiać się
-samodzielnie ani poznać czasu. Dlatego ta wersja **nie**:
+API wtyczek 1.2 pozwala wtyczce opisać, co pokazuje klawisz (wyżej), ale
+nie uruchamiać się samodzielnie ani mieć timera. Dlatego ta wersja **nie**:
 
-- **pokazuje jakości powietrza na klawiszu.** Żadnej wartości, koloru ani
-  zmieniającej się ikony. Klawisz przypisany do akcji uruchamia ją;
-  wynikiem jest komunikat akcji. Wyjścia `categoryName` i `index` to te, na
-  podstawie których dobierany byłby kolor klawisza, gdy wtyczki będą mogły
-  ustawiać jego zawartość.
 - **odświeża się sama.** Działa, gdy naciśniesz klawisz albo gdy uruchomi
   ją przepływ pracy. Aby zmienne były aktualne, użyj przepływu z
   harmonogramem ([niżej](#odświeżanie-według-harmonogramu)).
@@ -207,6 +226,7 @@ wartości PM.
 | Uprawnienie | Po co |
 | --- | --- |
 | `network`: `api.gios.gov.pl`, tylko `GET` | Lista stacji, stanowiska wybieranej stacji oraz jej indeks i wartości PM |
+| `device`: `state` | Indeks i wartości PM na klawiszach przypisanych do akcji Aktualna jakość powietrza ([Na klawiszu](#na-klawiszu)) |
 
 Nic więcej: żadnych poświadczeń, powiadomień ani otwierania stron. Pamięć
 wtyczki (najwyżej kilkadziesiąt kilobajtów) nie wymaga uprawnienia.
