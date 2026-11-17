@@ -3,7 +3,8 @@
   "description": "Dzienne kursy referencyjne euro EBC przez Frankfurter, nigdy bieżące ceny: przeliczenia, zmiany, zakres ostatnich kursów i alerty progowe jako komunikaty, wyjścia i zmienne. Informacja, nie porada finansowa.",
   "permissions": {
     "network": "Pyta Frankfurter o kursy referencyjne EBC wybranych par walut. Wysyłane są tylko dwa kody walut i data początkowa.",
-    "notifications": "Sprawdź alert powiadamia raz, gdy kurs przekroczy Twój próg, na pulpicie lub na pasku stanu, zgodnie z ustawieniami wtyczki."
+    "notifications": "Sprawdź alert powiadamia raz, gdy kurs przekroczy Twój próg, na pulpicie lub na pasku stanu, zgodnie z ustawieniami wtyczki.",
+    "device": "Pokazuje najnowszy kurs referencyjny pary, jego datę i wykres na klawiszach przypisanych do akcji Kurs wymiany."
   },
   "actions": {
     "rate": {

@@ -193,6 +193,13 @@ fn save(ctx: &mut Context<'_>, key: &str, value: &impl Serialize) {
     }
 }
 
+/// The stored rates of `pair`, without asking the provider: what a key
+/// shows (`crate::key`). Absent, empty or of another format: `None`.
+pub fn stored_rates(ctx: &mut Context<'_>, pair: &Pair) -> Result<Option<PairEntry>, PluginError> {
+    Ok(read::<PairEntry>(ctx, &pair_key(pair))?
+        .filter(|e| e.v == FORMAT && e.pair == pair.id() && !e.points.is_empty()))
+}
+
 pub fn pair_key(pair: &Pair) -> String {
     format!("{PAIR_PREFIX}{}", pair.id())
 }

@@ -33,13 +33,6 @@ English: [README.md](README.md).
   najnowszy kurs pochodzi z poprzedniego dnia roboczego; komunikat to mówi.
 - **Bez cen kryptowalut** w tej wersji ([niżej](#kryptowaluty-odłożone)).
 - **Bez notowań akcji** ([niżej](#notowania-akcji-niedostępne)).
-- **Bez wykresu i niczego na klawiszu.** API wtyczek 1.0 nie pozwala
-  rysować na klawiszu ani ustawiać jego tytułu. Wtyczka przechowuje krótką
-  historię kursów każdej pary (najwyżej 32) i podaje minimum, maksimum oraz
-  trend; sam wykres czeka na możliwość stanu klawisza proponowaną dla
-  DeckPilota ([docs/plugin-factory.md](../../docs/plugin-factory.md) §6.1).
-  Kod, który by go dostarczał, jest gotowy (`history::Snapshot::key`) i nie
-  trafia na klawisz.
 - **Bez samodzielnego odświeżania** (brak timerów) i **bez zegara**
   ([niżej](#pamięć-podręczna-i-czas)). Odświeża ją przepływ według
   harmonogramu.
@@ -177,12 +170,37 @@ W API wtyczek 1.0 wtyczka **nie ma zegara**. Skutki, wprost:
 `time.now` i timery (docs/plugin-factory.md §6.2, §6.3) usunęłyby te
 ograniczenia.
 
+## Na klawiszu
+
+*Od wersji 0.2.0; wymaga DeckPilota z API wtyczek 1.2.* Klawisz przypisany
+do akcji **Kurs wymiany** pokazuje najnowszy kurs referencyjny pary ze
+zmianą od poprzedniego dnia roboczego (`4.2731 +0.12%`), pod nim parę i
+datę kursu (`EUR/PLN 11-16`), a w tle wykres zapisanych kursów (do 32 dni
+roboczych). Kolor jest zielony, gdy kurs wzrósł, czerwony, gdy spadł,
+brak koloru, gdy się nie zmienił.
+
+**Nigdy jako notowanie na żywo.** To dzienne kursy referencyjne i klawisz
+zawsze podaje dzień, którego kurs dotyczy. Gdy kursy są aktualne, nie
+dodaje znacznika „ok”. Gdy nie wiadomo, czy są aktualne, kursy zostają,
+ale klawisz dodaje znacznik ostrzeżenia i plakietkę:
+
+- pobrane dawniej niż czas ważności odpowiedzi: wiek pobrania, np. `5h`;
+- najnowszy kurs starszy niż 5 dni: jego opóźnienie w dniach, np. `9d`;
+- nieznany wiek: `?`.
+
+Klawisz pokazuje **kursy pobrane przez ostatnie uruchomienie akcji**
+(naciśnięcie klawisza albo przepływ z harmonogramem); samo pokazywanie
+nigdy nie pyta Frankfurtera. Każdy klawisz pokazuje własną parę. Przed
+pierwszym uruchomieniem dla pary klawisz pokazuje nadany przez Ciebie
+tytuł. Urządzenie bez wyświetlaczy nic nie pokazuje.
+
 ## Uprawnienia
 
 | Uprawnienie | Po co |
 | --- | --- |
 | `network`: `api.frankfurter.dev`, `GET` | Kursy EBC par, o które pytasz |
 | `notifications` (kierowane ustawieniami *Powiadomienia na pulpicie* i *Pasek stanu*) | *Sprawdź alert* |
+| `device`: `state` | Kurs, jego data i wykres na klawiszach przypisanych do akcji *Kurs wymiany* ([Na klawiszu](#na-klawiszu)) |
 
 Nic więcej. Bez danych uwierzytelniających: Frankfurter nie ma klucza, a
 wtyczka żadnego nie zawiera.

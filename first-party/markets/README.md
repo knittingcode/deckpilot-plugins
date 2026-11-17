@@ -34,13 +34,6 @@ Polish: [README.pl.md](README.pl.md).
 - **No cryptocurrency prices** in this version
   ([below](#cryptocurrencies-deferred)).
 - **No stock quotes** ([below](#stock-quotes-not-provided)).
-- **No chart and nothing on a key.** Plugin API 1.0 cannot draw on a key or
-  set a key's title. The plugin keeps a short history of rates per pair
-  (at most 32) and reports its lowest, highest and trend; the sparkline
-  itself waits for the key-state capability proposed for DeckPilot
-  ([docs/plugin-factory.md](../../docs/plugin-factory.md) §6.1). The code
-  that would provide it is ready (`history::Snapshot::key`) and not
-  delivered to a key.
 - **No refresh by itself** (no timers) and **no clock**
   ([below](#the-cache-and-time)). A scheduled workflow refreshes it.
 
@@ -171,12 +164,37 @@ A plugin has **no clock** in plugin API 1.0. Consequences, said plainly:
 `time.now` and timers (docs/plugin-factory.md §6.2, §6.3) would remove
 these limits.
 
+## On a key
+
+*Since 0.2.0; needs DeckPilot with plugin API 1.2.* A key bound to
+**Exchange rate** shows the pair's newest reference rate with its change
+since the previous working day (`4.2731 +0.12%`), the pair and the rate's
+date below it (`EUR/PLN 11-16`), and a sparkline of the stored rates (up to
+32 working days) behind them. Its colour is green when the rate went up,
+red when it went down, none when it is flat.
+
+**Never shown as live.** These are daily reference rates, and the key
+always names the day the rate is for. When the rates are current it adds
+no "ok" mark. When they are not known to be current, the rates stay but
+the key adds a warning and a badge:
+
+- fetched longer ago than the answer's lifetime: the age of the fetch, such
+  as `5h`;
+- a newest rate more than 5 days old: its lag in days, such as `9d`;
+- an unknown age: `?`.
+
+The key shows the **rates the last run of the action fetched** (a press of
+the key, or a scheduled workflow); showing them never asks Frankfurter.
+Each key shows its own pair. Before the first run for a pair, the key shows
+the title you gave it. A device without displays shows nothing.
+
 ## Permissions
 
 | Permission | Why |
 | --- | --- |
 | `network`: `api.frankfurter.dev`, `GET` | The ECB rates of the pairs you ask for |
 | `notifications` (routed by the settings *Desktop notifications* and *Status bar*) | *Check alert* |
+| `device`: `state` | The rate, its date and a sparkline on the keys bound to *Exchange rate* ([On a key](#on-a-key)) |
 
 Nothing else. No credential: Frankfurter has no key, and the plugin
 contains none.
