@@ -1,0 +1,30 @@
+{
+  "_type": "deckpilot-registry-keys",
+  "spec_version": 1,
+  "version": 1,
+  "root": {
+    "keys": [
+      "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXkgMTMxODc1NzM1RjZCNkYwNgpSV1FHYjJ0ZmMzVVlFL0NVWWwzcG1sbVRYTzFsclhjazNFQ2FOczkvZnl5Y2U4ZjZlcUZJME11Swo=",
+      "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXkgOUQ3RDg4OEM3RDQwNzA4NgpSV1NHY0VCOWpJaDluZXQxVUJUOXNob1dIallWaXFZbDZ4OThCUTBnSFZDWkRqMzRtaVdrR3ZITgo="
+    ],
+    "threshold": 1
+  },
+  "index": {
+    "keys": [
+      "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXkgNkExMTU3NzlBRjdDQ0JBMgpSV1NpeTN5dmVWY1JhdVRrdytVeGJQUEhTdDE0SUNwYlowclRGYzFQcW9oUkVHOTdVc0swck1VaQo="
+    ],
+    "threshold": 1
+  },
+  "timestamp": {
+    "keys": [
+      "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXkgNzQyNjA2Mzk2OUM3NkJFOQpSV1RwYThkcE9RWW1kT1R0MFdlZXEwaTlTY2lkU3pPNjVqampveWs3Z2tiOS9TQmVqdUo3OXhsUgo="
+    ],
+    "threshold": 1
+  },
+  "seq_floor": 0,
+  "first_party": {
+    "namespaces": [
+      "deckpilot"
+    ]
+  }
+}
