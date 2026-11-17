@@ -8,6 +8,15 @@ plugin of the planned catalog needs, and where the sources of DeckPilot's
 own independently installable plugins live. It changes nothing in
 DeckPilot. Paths without a repository are DeckPilot's.
 
+**Update, 2026-11-17.** Three of the proposals of section 6 are now in
+DeckPilot (design: `docs/marketplace/plugin-key-state.md`): the time (6.3)
+and randomness (6.4) as plugin API 1.1 (#291), and key state (6.1) as
+plugin API 1.2: the renderer's marks (#292), the runtime and SDK (#293),
+and the agent asking for it (#294). All four are on DeckPilot's `main`,
+and the commit pinned here (`tools/deckpilot.env`) includes them. Sections 1 to 5 are the audit as
+taken; where a row of the matrix says **Missing** for one of these, read
+its section in 6.
+
 The rule for everything below: a plugin uses only capabilities that exist.
 Where one is missing, the plugin waits for a narrow, permission-controlled
 capability that is reviewed on its own; nothing here asks for unrestricted
@@ -41,10 +50,10 @@ built as described without it.
 | Persistent plugin state | **Supported** | `storage.get/set/delete/keys/usage` (`Context::storage_*`); `apps/agent/src/plugins/data.rs`, `crates/deckpilot-plugin-store/src/data.rs` | 256 KiB and 1,000 keys (to 10 MiB with the `storage` permission); key 128 characters, value 64 KiB of JSON; 100 calls/s; per computer, deleted on uninstall, never exported | none |
 | Network requests | **Supported** (request and response; no streaming, no WebSocket) | `http.fetch` (`Context::fetch`); manifest `permissions[kind=network]` `hosts`, `methods`, `userOrigins`; `plugins/runtime/crates/broker/src/lib.rs` `Session::authorize`, `apps/agent/src/plugins/executor.rs` | `https` only, exact hosts (no wildcard), public addresses; 60 requests/min; 15 s for all hops; 5 redirects; URL 8 KiB; request body 32 KiB of text; response 512 KiB of text; 32 response headers from an allowlist | none for weather, air-quality, markets. Binary bodies and streams are not possible |
 | Secure credentials | **Supported** (handles only) | `contributes.credentials[]`, `permissions[kind=credentials]`; `http.fetch` `auth`, `credentials.has` (`SecretHandle`, `Request::bearer`, `Request::credential`) | 8 slots; schemes bearer, basic, header, query; secret 1 byte to 16 KiB, never readable by the plugin, redacted in responses; sent only to the slot's granted hosts | none (Airly's user key fits a `header` slot) |
-| Dynamic key images | **Missing** | `permissions[kind=device]` `icons` and `assets.keyIcons` validate; no operation uses them (`sdk/permissions.md`: "Nothing yet"). The agent's renderer draws a typed `KeyFace` only (`crates/deckpilot-core/src/face.rs`) | — | memory, minesweeper, snake, system-monitor (charts), weather (condition icon), markets (sparkline) |
-| Dynamic key titles | **Missing** for plugins | The host has it for built-in modules: `ButtonState { label, detail, indicator, progress, toggle }` (`crates/deckpilot-core/src/button_state.rs`), pulled by `apps/agent/src/service/states.rs`. A plugin action never provides one: `contributes.actions[].state` validates, "ABI 1 has no state call" (`sdk/manifest.md`); the plugin handler in `apps/agent/src/plugins/engine.rs` has no `state_policy`. Key labels expand only `{profile}`, `{project.key}`, `{project.name}` (`face.rs` `render_label`), never a plugin variable | Built-ins: label and detail 32 characters, progress 0-100, refresh 1 s to 24 h, 4 providers at a time, 20 s per call | break-reminder (countdown, state), pomodoro, system-monitor, weather, air-quality, markets, all games |
+| Dynamic key images | **Missing**; key state (6.1, API 1.2) draws 16 built-in glyphs, a colour from a fixed palette and a sparkline, never a plugin's image | `permissions[kind=device]` `icons` and `assets.keyIcons` validate; no operation uses them (`sdk/permissions.md`: "Nothing yet"). The agent's renderer draws a typed `KeyFace` only (`crates/deckpilot-core/src/face.rs`) | — | memory, minesweeper, snake, system-monitor (charts), weather (condition icon), markets (sparkline) |
+| Dynamic key titles | **Missing** for plugins; **implemented** as key state (6.1, API 1.2) | The host has it for built-in modules: `ButtonState { label, detail, indicator, progress, toggle }` (`crates/deckpilot-core/src/button_state.rs`), pulled by `apps/agent/src/service/states.rs`. A plugin action never provides one: `contributes.actions[].state` validates, "ABI 1 has no state call" (`sdk/manifest.md`); the plugin handler in `apps/agent/src/plugins/engine.rs` has no `state_policy`. Key labels expand only `{profile}`, `{project.key}`, `{project.name}` (`face.rs` `render_label`), never a plugin variable | Built-ins: label and detail 32 characters, progress 0-100, refresh 1 s to 24 h, 4 providers at a time, 20 s per call | break-reminder (countdown, state), pomodoro, system-monitor, weather, air-quality, markets, all games |
 | Key press and release events | **Partly**: a press runs an action | A key bound to `<plugin id>.<action>` invokes it on click, double click or long press (`crates/deckpilot-core/src/gesture/`); the plugin learns the trigger (`run.context`: `key`, `gesture`). No release event, no key position, no device id reach the plugin; a key is told apart only by its action parameters | Lane of 8 queued invocations per plugin, then `busy`; default 30 s per invocation | snake (held keys, timing). Enough for memory and minesweeper (one parameter per cell) once keys can show state |
-| Timers | **Missing** | No operation; no clock (`SystemTime::now()` fails in the guest), no sleep (`module-migration.md` G10 `time.sleep`: sketched, not implemented). A scheduled workflow can pass its firing time to an action parameter: `EventField::FiredAt`, local `YYYY-MM-DD HH:MM` (`trigger.rs`) | — | break-reminder, pomodoro, snake; cache ages in weather, air-quality, markets (today: the response's `date` header) |
+| Timers | **Missing** (the time itself: 6.3, API 1.1) | No operation; no clock (`SystemTime::now()` fails in the guest), no sleep (`module-migration.md` G10 `time.sleep`: sketched, not implemented). A scheduled workflow can pass its firing time to an action parameter: `EventField::FiredAt`, local `YYYY-MM-DD HH:MM` (`trigger.rs`) | — | break-reminder, pomodoro, snake; cache ages in weather, air-quality, markets (today: the response's `date` header) |
 | Notifications | **Supported** | `notify` (`Context::notify`, `notify_with`, `notify_delivered`); `permissions[kind=notifications]` with optional `routing` to the plugin's own settings | Title 64, body 300 characters; 5 per minute; desktop or status bar is the agent's and the user's decision | none |
 | Device capabilities | **Missing** | `supports.device` and `actions[].device.requires` (`keys`, `keyDisplays`, `dials`, `touchStrip`, `brightness`) validate; "Accepted, not used" (`sdk/manifest.md`). No operation reports a device, its grid or its image size | — | games (grid size), anything that draws |
 | System metrics | **Missing** | No operation. The built-in `system.process-status` reads `sysinfo` inside the agent; G11 (`process.query`) is sketched as "possible, low value" | — | system-monitor |
@@ -53,7 +62,8 @@ built as described without it.
 
 Also missing and needed by the catalog: **randomness** (no operation;
 `getrandom` cannot be linked, the package check refuses every other
-import) blocks memory and minesweeper, which must shuffle; and **localized
+import) blocks memory and minesweeper, which must shuffle (now
+`random.bytes`, 6.4, API 1.1); and **localized
 metadata** (the manifest, the registry's `plugin.json` and the app have one
 language) blocks nothing but is why Polish texts are kept beside the source
 (`first-party/README.md`).
@@ -94,7 +104,7 @@ designed here.
 
 | Plugin | Verdict | What is missing |
 | --- | --- | --- |
-| `deckpilot.memory` | **Blocked on key state and randomness** | The game logic, the board in storage and one action per cell (`flip` with a `cell` parameter) work today. Showing a card on a key (6.1) and shuffling (6.4) do not exist. Without them the game is not playable on the deck |
+| `deckpilot.memory` | **Buildable** with plugin API 1.2 (was: blocked on key state and randomness) | The game logic, the board in storage and one action per cell (`flip` with a `cell` parameter) work today. Showing a card on a key (6.1) and shuffling (6.4) are implemented; the manifest declares `"pluginApi": "^1.2"` |
 | `deckpilot.minesweeper` | **Blocked**, the same two | As memory; long press as "flag" works |
 | `deckpilot.snake` | **Blocked; not with the capabilities proposed here** | It needs several frames per second and key timing. The proposed timers (at least 15 s) and pulled key state are deliberately too slow. A turn-based variant (one step per press) is possible with 6.1 and 6.4; a real-time one needs its own decision about an interactive mode and its budget |
 
@@ -210,30 +220,35 @@ data in a request beyond the coordinates or station the user chose.
 
 ## 6. Proposals: the narrow capabilities the catalog waits for
 
-None is implemented. Each is one reviewable DeckPilot change with its own
-permission, in the order the catalog needs them. 6.1 answers the request
-for a reusable mechanism for dynamic key content: **none exists for
-plugins**, while the host already has one for built-in modules.
+6.1, 6.3 and 6.4 are **implemented**; 6.2, 6.5 and 6.6 are not. Each is
+one reviewable DeckPilot change with its own permission, in the order the
+catalog needs them. 6.1 answers the request for a reusable mechanism for
+dynamic key content. Where the implementation differs from the proposal,
+its section says so.
 
 ### 6.1 Key state for plugin actions (dynamic key content)
 
+**Implemented** as plugin API 1.2, all of it on DeckPilot's `main`: #292
+(the renderer's marks), #293 (runtime and SDK) and #294 (the agent asks
+for key state and draws it, for keys shown on a device). Reference:
+`docs/marketplace/plugin-key-state.md` section 4 and
+`docs/marketplace/sdk/actions.md`, "Key state".
+
 Principle: **the plugin describes, the host draws.** A plugin never sends
-pixels and never learns the device. It returns a small typed description;
-the agent's renderer, which already knows every device's resolution and
-image format, draws it or drops it. That gives device independence and a
-fallback for free, and keeps image decoding of untrusted bytes out of the
-agent.
+pixels and never learns the device. It returns a small typed `KeyState`;
+the agent's renderer, which knows every device's resolution and image
+format, draws it or drops it. No image, font or markup of a plugin is
+decoded.
 
-ABI shape (compatible within ABI 1, like `dp_init`):
-
-- A new optional export `dp_state(ptr, len) -> packed`, with the SDK's
-  `Action::state(fn(&mut Context, &Args) -> Result<KeyState, PluginError>)`.
-  The agent calls it only for an action whose manifest entry has `state`
-  (already in the schema: `refresh: "onEvents" | "every"`,
-  `intervalSeconds`), for a key that is **shown on a device now**, with the
-  key's normalized parameters. This is the existing pull model of
-  `apps/agent/src/service/states.rs`, with the plugin as one more provider.
-- `KeyState` is `ButtonState` extended by two members, all optional:
+- **ABI**: the optional export `dp_state(ptr, len) -> packed`; SDK
+  `Action::state(fn(&mut Context, &Args) -> Result<KeyState, PluginError>)`
+  and `MockHost::key_state` for tests. The agent asks only for an action
+  whose manifest entry has `state` (`refresh: "onEvents" | "every"`,
+  `intervalSeconds`), for a key **shown on a device now**, with the key's
+  normalized parameters: the pull model of built-in modules
+  (`apps/agent/src/service/states.rs`), with the plugin as one more
+  provider.
+- **`KeyState`**, every member optional:
 
   | Member | Bound | Drawn as |
   | --- | --- | --- |
@@ -241,36 +256,44 @@ ABI shape (compatible within ABI 1, like `dp_init`):
   | `indicator` | `ok`, `warning`, `error`, `running`, `unknown` | corner mark |
   | `progress` | 0-100 | bar along the bottom |
   | `toggle` | boolean | mark along the top |
-  | `icon` (new) | a name of the package's `assets.keyIcons` (at most 64 PNGs, verified at install) | the key's icon; unknown name: ignored |
-  | `series` (new) | at most 32 integers 0-100 | a sparkline behind the title |
+  | `accent` | `blue`, `green`, `amber`, `red`, `purple`, `teal`, `grey` | the key's background; the user's own colours win |
+  | `glyph` | one of 16 built-in shapes (`check`, `cross`, `play`, `pause`, `stop`, `timer`, `bell`, `up`, `down`, `dot`, `circle`, `square`, `diamond`, `triangle`, `star`, `heart`) | above the title; the user's own icon wins |
+  | `badge` | 4 characters | top left corner |
+  | `series` | at most 32 integers 0-100 | a sparkline behind the texts |
 
-  No colours beyond what the user's key appearance sets, no free drawing.
-- One new operation, `state.invalidate {}`: "my keys may have changed".
-  The agent then pulls the shown keys of that plugin again, coalesced. An
-  action that flips a card calls it; nothing is pushed.
-- Inside `dp_state` only `storage.get`, `storage.keys`, `settings.get` and
-  `log` are allowed (the broker refuses the rest): a state call cannot
-  reach the network, notify, or write. Data that needs the network is
-  fetched by an action or a timer (6.2) and read from storage here.
-- Permission: the existing `device` kind, `state: true` (low tier) for
-  texts, marks and bars, `icons: true` for `icon` and `series`.
-
-Limits and budgets (per plugin unless stated):
+- **Read only**: inside `dp_state` only `storage.get`, `storage.keys`,
+  `settings.get`, `time.now` and `log` answer, whatever else is granted.
+  Data that needs the network is fetched by an action and read from
+  storage here.
+- **Permission**: the existing `device` kind with `state: true` (low
+  tier). The manifest rule that `state` needs a `readOnly` action stays.
 
 | What | Bound | When exceeded |
 | --- | --- | --- |
-| Refresh interval (`every`) | at least 5 s for a plugin (built-ins keep 1 s), at most 24 h | clamped |
-| Invalidations | 4 per second, burst 8 | coalesced into one pull; `throttled` |
-| State calls running | 1 per plugin, on a lane of their own below the action lane, so a key press is never queued behind a redraw; they also count in the agent's global limit of 4 providers | the pull waits; a newer one replaces a queued one for the same key |
-| One state call | 2 s wall clock, 50 ms CPU between host calls, 1/20 of an action's fuel, 8 capability calls, 2 KiB of output | the call is dropped; the key keeps its last state with an error mark |
-| Keys pulled per plugin | 32 shown keys | the rest show the static face |
-| Repeated failures | 3 in a row for a key: back off 5 s, 10 s … 5 min | error mark; after 20 failures in 10 minutes the plugin's state calls stop until it is re-enabled (the crash-loop breaker already covers crashes) |
-| Redraws | the agent redraws only when the typed state changed (states are comparable today) | nothing is sent to the device |
+| Refresh | at most every 5 s per key (built-ins keep 1 s), at most 24 h | clamped |
+| State calls running | 1 per plugin; its keys take turns. Never queued behind an action, so a key press finds at most one state call ahead of it | the key keeps what it showed |
+| One state call | 2 s wall clock, 250 ms CPU between host calls, 1/10 of an action's fuel, 8 capability calls, 4 KiB of output | invalid or late: error mark; a crash counts for the breaker |
+| Repeated failures | 3 in a row for a key: asked again after 5 s, 10 s … 5 min | the static face with the error mark |
+| Redraws | only when the typed state changed | nothing is sent to the device |
 
-Fallback: a device or control without a display gets no state call. An
-agent without the feature ignores `state` as today; a module without
-`dp_state` is never asked. A denied or revoked `device` permission leaves
-the key with its static face.
+Fallback: a control without a display gets no state call; a plugin that
+is not granted `device:state`, disabled, uninstalled or stopped by the
+crash-loop breaker leaves its keys as the user designed them; an agent
+below API 1.2 never asks. A plugin whose keys only look better with state
+keeps `"pluginApi": "^1.0"`.
+
+**Differences from the proposal**:
+- No `state.invalidate`. The agent pulls again after anything happens in
+  DeckPilot, a key press included, which covers an action that flips a
+  card. Kept as a follow-up.
+- Packaged key icons (`icon`, `assets.keyIcons`, `device:icons`) are not
+  implemented; the 16 glyphs and the accent stand in for them.
+- `accent` and `badge` are new.
+- The output cap is 4 KiB, not 2 KiB.
+- There is no separate lane; state calls share the plugin's one lane and
+  never queue behind an action.
+- No 32-key cap per plugin; the 5 s floor and one call at a time bound
+  the work.
 
 ### 6.2 Timers (the `background` permission, made effective)
 
@@ -286,14 +309,24 @@ not a real-time loop and must not become one.
 
 ### 6.3 Time
 
-`time.now {}` → `{ unixMs, utcOffsetMinutes }`, always allowed. No risk
-beyond what every response's `date` header already tells a plugin. With it:
-snooze "for 10 minutes" at a key press, quiet hours, cache ages.
+**Implemented** as plugin API 1.1 (DeckPilot #291), as proposed:
+`time.now {}` → `{ unixMs, utcOffsetMinutes }`, always allowed, 20 calls per
+second. SDK: `Context::now()` → `Now` (`unix_seconds`, `local_minutes_of_day`,
+`local_weekday`, `millis_since`). No risk beyond what every response's
+`date` header already tells a plugin. With it: snooze "for 10 minutes" at a
+key press, quiet hours, cache ages. A plugin that cannot work without it
+declares `"pluginApi": "^1.1"` and `Plugin::requires_api`.
 
 ### 6.4 Randomness
 
-`random.bytes { n ≤ 64 }` from the agent's CSPRNG, always allowed, counted
-in the 200/s overall limit. Games shuffle with it; nothing else needs it.
+**Implemented** as plugin API 1.1 (DeckPilot #291): `random.bytes { length }`,
+1 to 64 bytes from the operating system's CSPRNG, always allowed. SDK:
+`Context::random_bytes`, `random_u64`, `random_below` (unbiased). Games
+shuffle with it; nothing else needs it.
+
+**Difference from the proposal**: besides the 200/s overall limit, a
+budget of 4,096 bytes per minute per plugin; seed a generator in the
+plugin rather than asking per card.
 
 ### 6.5 Localized metadata
 
@@ -314,7 +347,7 @@ under which consent tier. They are listed in section 3 and stop there.
 | --- | --- | --- | --- |
 | Break & Hydration | `first-party/break-reminder/` | 0.1.0: tick-driven reminders, snooze, skip, pause, quiet hours, counters, notifications, variables; a README that shows the one workflow the user adds | nothing new. 6.1-6.3 later turn the workflow into the plugin's own timer and put the countdown on a key |
 | Weather | `first-party/weather/` | 0.1.0: current conditions and a short forecast from Open-Meteo for a place from settings, a cache, outputs and variables, attribution | nothing new; 6.1 for the key |
-| Memory | `first-party/memory/` | the game core as a library with exhaustive tests, the actions (`new-game`, `flip`), the board in storage. **Not shippable** as a game until 6.1 and 6.4 exist: until then a new game takes a seed from the user, and the board is only visible in the action's message | 6.1, 6.4 |
+| Memory | `first-party/memory/` | the game core as a library with exhaustive tests, the actions (`new-game`, `flip`), the board in storage, the cards on their keys (6.1) and a shuffle from `random.bytes` (6.4) | 6.1, 6.4 (implemented; `"pluginApi": "^1.2"`) |
 
 Each plugin is one pull request that adds its directory, one line in
 `first-party/Cargo.toml` (`members`) and its `Cargo.lock` entries; they
