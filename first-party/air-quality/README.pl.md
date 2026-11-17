@@ -13,7 +13,7 @@ tłumaczy nazwy kategorii indeksu.
 
 English: [README.md](README.md).
 
-> **Status.** Wersja 0.1.0 jest budowana, testowana i pakowana przez CI i
+> **Status.** Wersja 0.2.2 jest budowana, testowana i pakowana przez CI i
 > **nie jest opublikowana**. Nie da się jej jeszcze zainstalować z rejestru
 > ([first-party/README.md](../README.md)). Przed publikacją trzeba ponownie
 > przeczytać warunki dostawcy ([niżej](#warunki-dostawców)).
@@ -51,8 +51,6 @@ nie uruchamiać się samodzielnie ani mieć timera. Dlatego ta wersja **nie**:
 - **odświeża się sama.** Działa, gdy naciśniesz klawisz albo gdy uruchomi
   ją przepływ pracy. Aby zmienne były aktualne, użyj przepływu z
   harmonogramem ([niżej](#odświeżanie-według-harmonogramu)).
-- **zna czas przy naciśnięciu klawisza**, więc nie wie, jak stara jest jej
-  pamięć podręczna, zanim zapyta ([niżej](#aktualność)).
 - **korzysta z Airly** ani z żadnego dostawcy poza GIOŚ
   ([niżej](#airly-nie-w-tej-wersji)). Nie ma klucza do wpisania ani
   miejsca na poświadczenia.
@@ -69,8 +67,8 @@ nie uruchamiać się samodzielnie ani mieć timera. Dlatego ta wersja **nie**:
 | `select-station` (Wybierz stację) | Zapisuje stację o numerze `station` jako tę, dla której działa `current` |
 | `forget-station` (Zapomnij stację) | Usuwa wybraną stację i jej zapisane wartości oraz czyści zmienne |
 
-`current` przyjmuje opcjonalne `at`, czas uruchomienia
-([niżej](#odświeżanie-według-harmonogramu)).
+`current` przyjmuje opcjonalne `at`, czas uruchomienia z harmonogramu
+([niżej](#odświeżanie-według-harmonogramu)); nie jest ono potrzebne.
 
 ### Wyjścia akcji `current`
 
@@ -87,7 +85,7 @@ nie uruchamiać się samodzielnie ani mieć timera. Dlatego ta wersja **nie**:
 | `station` | tekst | `Warszawa, Al. Niepodległości (mazowieckie)` |
 | `provider` | tekst | `gios` |
 | `measuredAt` | tekst | `2026-11-16 19:00`: **najstarszy** z powyższych czasów, czas polski |
-| `measurementAgeMinutes` | liczba całkowita | `42`: od `measuredAt` do teraz; brak, gdy wtyczka nie zna bieżącego czasu |
+| `measurementAgeMinutes` | liczba całkowita | `42`: od `measuredAt` do teraz według zegara komputera; brak, gdy `measuredAt` jest późniejszy, niż ten zegar dopuszcza |
 | `stale` | wartość logiczna | `true`, chyba że wtyczka potrafi wykazać, że wartości są świeże ([niżej](#aktualność)) |
 | `source` | tekst | `network` albo `cache` |
 | `fetchedAt` | tekst | `2026-11-16T18:42:09Z`; brak, gdy nieznany |
@@ -148,26 +146,37 @@ wtyczki nie ma jeszcze tłumaczeń; polskie znajdują się w
 
 ## Odświeżanie według harmonogramu
 
-Aby zmienne były aktualne, dodaj przepływ pracy z **wyzwalaczem
-harmonogramu**, który uruchamia *Aktualną jakość powietrza* co 30 albo 60
-minut: dane są godzinowe, a GIOŚ prosi o pobieranie nie częściej niż dwa
-razy na godzinę. Przekaż czas wyzwolenia (pole zdarzenia `firedAt`,
-`RRRR-MM-DD GG:MM`) do parametru *Czas uruchomienia* (`at`) akcji przez
-wejście przepływu. Ten czas to jedyny zegar, jaki wtyczka może mieć, zanim
-zapyta sieć, i dzięki niemu pamięć podręczna działa zgodnie z zamierzeniem:
+Warunki GIOŚ zobowiązują użytkowników API do pobierania danych nie częściej
+niż dwa razy na godzinę i wtyczka przestrzega tego przy **każdym**
+uruchomieniu, zarówno po naciśnięciu klawisza, jak i w przepływie pracy. Od
+wersji 0.2.2 przed zapytaniem odczytuje zegar komputera (`time.now` z API
+wtyczek 1.1; wtyczka wymaga 1.2):
 
 - odczyt pobrany mniej niż 30 minut temu jest używany ponownie bez
   żądania;
+- o odczyt stacji wtyczka nie pyta ponownie wcześniej niż 30 minut po
+  ostatnim żądaniu, które mogło dotrzeć do GIOŚ, nawet jeśli się nie
+  powiodło (błąd, przekroczony czas); w tym czasie pokazuje zapisany
+  odczyt, oznaczony jako `stale`, gdy ma ponad 30 minut, a gdy nic nie jest
+  zapisane, akcja kończy się błędem `throttled`. Żądanie, które nie
+  opuściło komputera (brak połączenia, błąd DNS), się nie liczy;
 - gdy GIOŚ odpowie „za dużo żądań” (HTTP 429), żadne żądanie nie jest
   wysyłane, dopóki nie minie czas, o który poprosił (15 minut, jeśli go nie
   podał).
 
-Uruchomienie bez `at`, na przykład naciśnięcie klawisza, nie wie, jak stary
-jest zapisany odczyt, i za każdym razem pyta GIOŚ (trzy małe żądania).
-**Wtyczka nie potrafi wymusić dwóch pobrań na godzinę przy naciśnięciach
-klawisza**; to ograniczenie API wtyczek 1.0 (brak zegara) i do czasu, aż go
-dostanie, pilnujesz tego Ty. Najprościej: niech pyta przepływ z
-harmonogramem, a Ty odczytuj zmienne.
+Każdy odczyt to trzy małe żądania (indeks, PM2.5, PM10). Naciśnięcie
+klawisza częściej niż co 30 minut pokazuje zapisany odczyt wraz z jego
+wiekiem.
+
+Aby zmienne były aktualne bez naciskania klawisza, dodaj przepływ pracy z
+**wyzwalaczem harmonogramu**, który uruchamia *Aktualną jakość powietrza*
+co 30 albo 60 minut. Parametr *Czas uruchomienia* (`at`), czyli czas
+wyzwolenia (pole zdarzenia `firedAt`, `RRRR-MM-DD GG:MM`), nie jest już
+potrzebny. Jeśli zostanie przekazany, nadal się liczy: odczyt młodszy niż
+30 minut według zegara albo według `at` pochodzi z pamięci podręcznej. Gdy
+zegar komputera zostanie cofnięty, wiek wcześniejszego żądania jest
+nieznany i nie wstrzymuje następnego, więc jedno żądanie może przyjść za
+wcześnie.
 
 ## Aktualność
 
@@ -188,12 +197,12 @@ publikację. Stacja z niedziałającym analizatorem dalej podaje ostatnie
 wartości: przychodzą one ze `stale` równym prawda i komunikatem
 zaczynającym się od „Nieaktualne”.
 
-Wtyczka nie ma zegara. Jej „chwilą obecną” jest nagłówek `Date` odpowiedzi
-GIOŚ w tym uruchomieniu albo czas pobrania zapisanego odczytu powiększony o
-minuty między dwiema wartościami `at`. Gdy żadna nie jest znana (nie udało
-się połączyć z GIOŚ i nie ma `at`), zapisane wartości są pokazywane ze
-`stale` równym prawda, z czasem pobrania i bez wieku; komunikat mówi, że
-wtyczka nie wie, jak są stare.
+„Chwilą obecną” jest zegar komputera. Czas pomiaru późniejszy od niego o
+ponad godzinę nie jest uznawany: wartości są pokazywane ze `stale` równym
+prawda i bez `measurementAgeMinutes`. Gdy zegar wskazuje czas wcześniejszy
+niż pobranie zapisanego odczytu (został cofnięty), wiek tego odczytu jest
+nieznany i komunikat to mówi. Jeśli DeckPilot nie poda wtyczce czasu,
+*Aktualna jakość powietrza* kończy się błędem, nie pytając GIOŚ.
 
 Czasy w wyjściach i komunikatach to czas polski, tak jak podaje je GIOŚ
 (`fetchedAt` jest w UTC). Aby porównać je z chwilą obecną, wtyczka
@@ -245,15 +254,16 @@ wtyczki (najwyżej kilkadziesiąt kilobajtów) nie wymaga uprawnienia.
   z listy stacji GIOŚ są odrzucane przy jej odczycie i nigdy nie są
   zapisywane.
 - Żądania nie zawierają klucza, ciasteczek ani identyfikatora; nagłówek
-  `User-Agent` to `DeckPilot-AirQuality/0.1.0`. GIOŚ widzi Twój adres IP,
+  `User-Agent` to `DeckPilot-AirQuality/` i wersja wtyczki (`/0.2.2`). GIOŚ widzi Twój adres IP,
   jak każda witryna.
 - *Zapomnij stację* usuwa wybór i zapisane wartości; odinstalowanie wtyczki
   usuwa wszystko, co zapisała.
 
 ## Warunki dostawców
 
-Przeczytane 16 listopada 2026 r. Przed publikacją wtyczki trzeba
-przeczytać je ponownie.
+Przeczytane 16 listopada 2026 r.; regulamin GIOŚ przeczytany ponownie 17
+listopada 2026 r., bez zmian. Przed publikacją wtyczki trzeba przeczytać je
+ponownie.
 
 ### GIOŚ
 
@@ -270,7 +280,7 @@ przeczytać je ponownie.
 | Należy wskazać, czy informacje są wykorzystywane w całości, czy we fragmentach, i w jakich | `attribution` mówi, że to fragment; ten plik mówi, jaki |
 | Przetworzenie (zmianę) informacji należy zaznaczyć | `attribution` informuje o zaokrągleniu, a po angielsku także o przetłumaczonych nazwach kategorii |
 | „Udostępniane dane nie są na bieżąco weryfikowane, zatem mogą ulec zmianie”; wartości są w µg/m³; zdarzają się przerwy | Wartości są podawane tak, jak przyszły; o brakującej wartości wtyczka informuje |
-| Użytkownik API „zobowiązuje się do pobierania danych nie częściej niż dwa razy na godzinę” | 30-minutowa pamięć podręczna, której uruchomienia z harmonogramu nie obejdą; **naciśnięcia klawisza mogą** ([wyżej](#odświeżanie-według-harmonogramu)) |
+| Użytkownik API „zobowiązuje się do pobierania danych nie częściej niż dwa razy na godzinę” | Według zegara komputera o odczyt stacji wtyczka pyta najwyżej raz na 30 minut, przy naciśnięciach klawisza i w przepływach, licząc też nieudane żądania ([wyżej](#odświeżanie-według-harmonogramu)) |
 | Limity: 1500 żądań na minutę dla bieżących pomiarów i indeksu; „2 i 1500” dla listy stacji i stanowisk; 2 na minutę dla metadanych, archiwów i statystyk | Lista stacji to jedno żądanie (dwa, gdyby GIOŚ miał ponad 500 stacji), przechowywana tydzień; o stanowiska stacji wtyczka pyta raz, przy wyborze; odczyt to trzy żądania |
 | Wersje usług sprzed `v1` wycofano 30 czerwca 2025 r. | Używa wyłącznie `/pjp-api/v1/rest/` |
 
@@ -329,7 +339,7 @@ oraz sposobu na pokazanie logo. Kod jest przygotowany na drugiego dostawcę
 | `invalid-response` | Odpowiedzi GIOŚ nie udało się odczytać |
 | `response-too-large` | Odpowiedź GIOŚ była większa, niż wtyczka przyjmuje |
 | `timed-out` | GIOŚ nie odpowiedział na czas |
-| `throttled` (wspólny) | GIOŚ odpowiedział HTTP 429 albo uruchomienie z harmonogramu nastąpiło przed upływem czasu, o który poprosił |
+| `throttled` (wspólny) | GIOŚ odpowiedział HTTP 429 albo uruchomienie nastąpiło przed upływem czasu, o który poprosił, lub w ciągu 30 minut od ostatniego żądania do GIOŚ, a nie ma zapisanego odczytu do pokazania |
 | `not-permitted` (wspólny) | Uprawnienie sieciowe nie zostało przyznane |
 | `invalid-parameters` (wspólny) | Zapytanie krótsze niż dwie litery, numer stacji spoza zakresu, `at` w formacie innym niż `RRRR-MM-DD GG:MM` |
 | `connection-failed`, `dns-failed`, `tls-failed`, … (wspólne) | Żądanie nie dotarło do GIOŚ |

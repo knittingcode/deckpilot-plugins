@@ -1,7 +1,7 @@
 //! What the plugin needs from an air quality provider, and the data it
 //! keeps.
 //!
-//! Version 0.1.0 has one provider, [`crate::gios::Gios`]. The actions and
+//! This version has one provider, [`crate::gios::Gios`]. The actions and
 //! the cache know only this module, so another provider is one more
 //! implementation of [`Provider`] plus its hosts (and, for a provider with
 //! a key, its credential slot) in the manifest. Airly was read for this
@@ -138,7 +138,7 @@ pub const NO_LEVEL: Level = Level {
 };
 
 /// An answer with the time the provider's server gave it (its `Date`
-/// header, Unix seconds), which is the plugin's only clock for that moment.
+/// header, Unix seconds).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Fetched<T> {
     pub value: T,
@@ -157,6 +157,9 @@ pub struct Failure {
     /// Whether saved data may be served instead. Not when the user denied
     /// the network.
     pub fallback: bool,
+    /// Whether the request may have reached the provider, and so counts
+    /// against its limit: false only when it never left this computer.
+    pub reached: bool,
 }
 
 impl Failure {
@@ -166,6 +169,7 @@ impl Failure {
             date: None,
             retry_after: None,
             fallback: true,
+            reached: true,
         }
     }
 
@@ -181,6 +185,11 @@ impl Failure {
 
     pub fn final_answer(mut self) -> Self {
         self.fallback = false;
+        self
+    }
+
+    pub fn unreached(mut self) -> Self {
+        self.reached = false;
         self
     }
 }

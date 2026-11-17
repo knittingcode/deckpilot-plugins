@@ -14,7 +14,7 @@ translates the names of the index categories.
 
 Polish: [README.pl.md](README.pl.md).
 
-> **Status.** Version 0.1.0 is built, tested and packaged by CI and is
+> **Status.** Version 0.2.2 is built, tested and packaged by CI and is
 > **not published**. It cannot be installed from a registry yet
 > ([first-party/README.md](../README.md)). Read the provider's terms again
 > before it is published ([below](#the-providers-terms)).
@@ -50,8 +50,6 @@ run by itself or keep a timer. So this version does **not**:
 - **refresh by itself.** It runs when a key is pressed or a workflow runs
   it. A workflow with a schedule is the way to keep the variables current
   ([below](#refreshing-on-a-schedule)).
-- **know the time on a key press**, and therefore how old its cache is
-  before it asks ([below](#freshness)).
 - **use Airly**, or any provider other than GIOŚ
   ([below](#airly-not-in-this-version)). There is no key to enter and no
   credential slot.
@@ -68,8 +66,8 @@ run by itself or keep a timer. So this version does **not**:
 | `select-station` (Select station) | Stores the station with the number `station` as the one `current` reports |
 | `forget-station` (Forget station) | Deletes the chosen station and its saved values, and clears the variables |
 
-`current` takes an optional `at`, the run's time
-([below](#refreshing-on-a-schedule)).
+`current` takes an optional `at`, a scheduled run's time
+([below](#refreshing-on-a-schedule)); it is not needed.
 
 ### Outputs of `current`
 
@@ -86,7 +84,7 @@ run by itself or keep a timer. So this version does **not**:
 | `station` | text | `Warszawa, Al. Niepodległości (mazowieckie)` |
 | `provider` | text | `gios` |
 | `measuredAt` | text | `2026-11-16 19:00`: the **oldest** of the times above, Polish time |
-| `measurementAgeMinutes` | integer | `42`: from `measuredAt` to the present; absent when the plugin does not know the present time |
+| `measurementAgeMinutes` | integer | `42`: from `measuredAt` to the present by the computer's clock; absent when `measuredAt` is later than that clock allows |
 | `stale` | boolean | `true` unless the plugin can show that the values are recent ([below](#freshness)) |
 | `source` | text | `network` or `cache` |
 | `fetchedAt` | text | `2026-11-16T18:42:09Z`; absent when unknown |
@@ -148,24 +146,34 @@ plugin's manifest has no translations yet; the Polish ones are in
 
 ## Refreshing on a schedule
 
-To keep the variables current, add a workflow with a **schedule trigger**
-that runs *Current air quality* every 30 or 60 minutes: the data is hourly,
-and GIOŚ asks for no more than two pulls an hour. Pass the trigger's firing
-time (the event field `firedAt`, `YYYY-MM-DD HH:MM`) to the action's *Run
-time* (`at`) parameter through a workflow input. That time is the only
-clock the plugin can get before it asks the network, and with it the cache
-works as intended:
+GIOŚ's terms ask API users to pull data no more often than twice an hour,
+and the plugin keeps to that for **every** run, a key press as much as a
+workflow. Since 0.2.2 it reads the computer's clock (plugin API 1.1
+`time.now`; the plugin requires 1.2) before it asks:
 
 - a reading fetched less than 30 minutes ago is used again without a
   request;
+- a station's reading is not asked for again less than 30 minutes after
+  the last request that may have reached GIOŚ, even when that request
+  failed (an error, a time-out); the saved reading is shown meanwhile,
+  marked `stale` once it is older than 30 minutes, or the action fails
+  with `throttled` when nothing is saved. A request that never left the
+  computer (no connection, a DNS failure) does not count;
 - after GIOŚ answers "too many requests" (HTTP 429), no request is sent
   until the time it asked to wait (15 minutes if it named none) is over.
 
-A run without `at`, such as a key press, cannot know how old the saved
-reading is and asks GIOŚ every time (three small requests). **The plugin
-cannot enforce the two pulls an hour for key presses**; that is a limit of
-plugin API 1.0 (no clock), and yours to keep until it has one. The simplest
-way: let the scheduled workflow do the asking, and read the variables.
+Each reading is three small requests (the index, PM2.5, PM10). Pressing a
+key more often than every 30 minutes shows the saved reading, with its
+age.
+
+To keep the variables current without pressing a key, add a workflow with
+a **schedule trigger** that runs *Current air quality* every 30 or 60
+minutes. Its *Run time* (`at`) parameter, the trigger's firing time (the
+event field `firedAt`, `YYYY-MM-DD HH:MM`), is no longer needed. When it
+is passed it still counts: a reading younger than 30 minutes by either the
+clock or `at` is served from the cache. If the computer's clock is set
+back, an earlier request has an unknown age and does not hold the next
+one back, so one request may come early.
 
 ## Freshness
 
@@ -184,12 +192,12 @@ stays below two hours; three allow one missed publication. A
 station whose analyser is down keeps reporting its last values: those come
 with `stale` true and a message that starts with "Not current".
 
-The plugin has no clock. Its "present time" is the `Date` header of GIOŚ's
-answer in this run, or the time a saved reading was fetched plus the
-minutes between two `at` values. When neither is known (GIOŚ could not be
-reached and there is no `at`), saved values are shown with `stale` true,
-the time they were fetched and no age; the message says that the plugin
-cannot tell how old they are.
+The "present time" is the computer's clock. A measurement time more than
+an hour after it is not believed: the values are shown with `stale` true
+and without `measurementAgeMinutes`. When the clock is earlier than the
+time a saved reading was fetched (it was set back), that reading's age is
+unknown, and the message says so. If DeckPilot cannot tell the plugin the
+time, *Current air quality* fails without asking GIOŚ.
 
 Times in outputs and messages are Polish time, as GIOŚ gives them
 (`fetchedAt` is UTC). The plugin converts them with the European summer
@@ -242,7 +250,7 @@ plugin's storage (at most a few dozen kilobytes) needs no permission.
   street addresses in GIOŚ's station list are dropped when the list is
   read and are never stored.
 - Requests carry no key, no cookie and no identifier; the `User-Agent` is
-  `DeckPilot-AirQuality/0.1.0`. GIOŚ sees your IP address, as any site
+  `DeckPilot-AirQuality/` and the plugin's version (`/0.2.2`). GIOŚ sees your IP address, as any site
   does.
 - *Forget station* deletes the choice and the saved values; uninstalling
   the plugin deletes everything it stored.
@@ -250,7 +258,8 @@ plugin's storage (at most a few dozen kilobytes) needs no permission.
 ## The providers' terms
 
 Read on 2026-11-16; quotations are translated from the providers' words at
-that date. Read them again before the plugin is published.
+that date. GIOŚ's terms of use were read again on 2026-11-17, unchanged.
+Read them again before the plugin is published.
 
 ### GIOŚ
 
@@ -267,7 +276,7 @@ portal's [terms of use](https://powietrze.gios.gov.pl/pjp/content/terms_of_servi
 | Say whether the information is used in whole or in part, and which part | `attribution` says it is an excerpt; this README says which |
 | A change of the information must be noted | `attribution` notes rounding and, in English, translated category names |
 | "Data is not verified on an ongoing basis and may change later"; values are in µg/m³; gaps happen | Values are reported as given; a missing value is said to be missing |
-| Users of the API "undertake to pull data no more often than twice an hour" | A 30-minute cache that scheduled runs cannot bypass; **key presses can** ([above](#refreshing-on-a-schedule)) |
+| Users of the API "undertake to pull data no more often than twice an hour" | By the computer's clock, a station's reading is asked for at most once in 30 minutes, by key presses and workflows alike, failed requests included ([above](#refreshing-on-a-schedule)) |
 | Limits: 1,500 requests a minute for current measurements and the index; "2 and 1,500" for the list of stations and sensors; 2 a minute for metadata, archives and statistics | The station list is one request (two if GIOŚ ever has more than 500 stations), kept for a week; a station's sensors are asked once, when it is selected; a reading is three requests |
 | Versions of the services before `v1` were withdrawn on 2025-06-30 | Uses `/pjp-api/v1/rest/` only |
 
@@ -323,7 +332,7 @@ way to show its logo. The code is ready for a second provider
 | `invalid-response` | GIOŚ's answer could not be read |
 | `response-too-large` | GIOŚ's answer was larger than the plugin accepts |
 | `timed-out` | GIOŚ did not answer in time |
-| `throttled` (shared) | GIOŚ answered HTTP 429, or a scheduled run came before the time it asked to wait was over |
+| `throttled` (shared) | GIOŚ answered HTTP 429, or a run came before the time it asked to wait was over, or within 30 minutes of the last request to GIOŚ, with no saved reading to show |
 | `not-permitted` (shared) | The network permission is not granted |
 | `invalid-parameters` (shared) | A query shorter than two letters, a station number out of range, an `at` that is not `YYYY-MM-DD HH:MM` |
 | `connection-failed`, `dns-failed`, `tls-failed`, … (shared) | The request did not reach GIOŚ |

@@ -1,12 +1,11 @@
 //! The little calendar arithmetic the plugin needs.
 //!
-//! A guest has no clock (plugin API 1.0). The plugin learns a time from
-//! three places only, and all are parsed here: the `Date` header of an HTTP
-//! answer (UTC, to the second); the `at` parameter of an action, which a
-//! scheduled workflow fills with the firing time of its trigger (the
-//! computer's local time, to the minute, without a zone); and the time of a
-//! measurement in the provider's answer, which GIOŚ writes in Polish local
-//! time.
+//! The present comes from the agent's clock (`time.now`, Unix seconds).
+//! The texts parsed here are: the `Date` header of an HTTP answer (UTC, to
+//! the second); the `at` parameter of an action, which a scheduled workflow
+//! fills with the firing time of its trigger (the computer's local time, to
+//! the minute, without a zone); and the time of a measurement in the
+//! provider's answer, which GIOŚ writes in Polish local time.
 
 /// Days from 1970-01-01 to the given civil date (proleptic Gregorian).
 fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {

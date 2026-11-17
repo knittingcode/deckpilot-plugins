@@ -276,13 +276,26 @@ fn fetch_failure(e: &CapabilityError) -> Failure {
             codes::NOT_PERMITTED,
             "DeckPilot did not let the plugin reach GIOŚ: allow its network permission (api.gios.gov.pl) on the plugin's page",
         )
-        .final_answer();
+        .final_answer()
+        .unreached();
     }
+    // A request that failed before it was sent never reached GIOŚ; one
+    // that timed out or failed otherwise may have, and counts.
+    let reached = !matches!(
+        e.network_kind(),
+        Some(
+            NetworkErrorKind::DnsFailed
+                | NetworkErrorKind::ConnectionFailed
+                | NetworkErrorKind::TlsFailed
+                | NetworkErrorKind::BlockedAddress
+        )
+    );
     Failure {
         error: PluginError::from(e.clone()),
         date: None,
         retry_after: None,
         fallback: true,
+        reached,
     }
 }
 

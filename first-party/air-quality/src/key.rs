@@ -139,8 +139,13 @@ pub fn current(
         .and_then(|t| provider.unix(t))
         .filter(|measured| *measured <= now_unix.saturating_add(FUTURE_TOLERANCE_SECONDS))
         .map(|measured| now_unix.saturating_sub(measured));
-    let fetched_fresh = age(entry.fetched_at, None, Some(now_unix), None)
-        .is_some_and(|age| age < READING_TTL_SECONDS);
+    let fetched_fresh = age(
+        entry.pulled_at.or(entry.fetched_at),
+        None,
+        Some(now_unix),
+        None,
+    )
+    .is_some_and(|age| age < READING_TTL_SECONDS);
     let measured_fresh = measured_age.is_some_and(|age| age <= STALE_AFTER_SECONDS);
     if fetched_fresh && measured_fresh {
         return state;

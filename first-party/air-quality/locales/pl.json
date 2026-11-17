@@ -13,7 +13,7 @@
       "parameters": {
         "at": {
           "label": "Czas uruchomienia",
-          "description": "Opcjonalne. W przepływie uruchamianym według harmonogramu: czas wyzwolenia (RRRR-MM-DD GG:MM). Dzięki niemu wtyczka używa pamięci podręcznej zamiast pytać ponownie."
+          "description": "Opcjonalne. W przepływie uruchamianym według harmonogramu: czas wyzwolenia (RRRR-MM-DD GG:MM). Niepotrzebne: wtyczka trzyma 30-minutową pamięć podręczną według zegara komputera."
         }
       },
       "outputs": {

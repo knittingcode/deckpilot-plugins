@@ -3,7 +3,7 @@
   "manifestVersion": 1,
   "id": "deckpilot.air-quality",
   "name": "Air Quality",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "publisher": {
     "id": "deckpilot",
     "name": "DeckPilot",
@@ -70,7 +70,7 @@
           {
             "key": "at",
             "label": "Run time",
-            "description": "Optional. In a scheduled workflow, the trigger's firing time (YYYY-MM-DD HH:MM): it lets the plugin use its cache instead of asking again.",
+            "description": "Optional. In a scheduled workflow, the trigger's firing time (YYYY-MM-DD HH:MM). Not needed: the plugin keeps its 30-minute cache by the computer's clock.",
             "required": false,
             "kind": {
               "type": "text",

@@ -1,28 +1,32 @@
 //! The plugin's storage: the chosen station, the last reading and the
 //! provider's station list, and the rules for how long each is used.
 //!
-//! # Time without a clock
+//! # Time and GIOŚ's two pulls an hour
 //!
-//! Plugin API 1.0 gives a guest no clock, so "how old is this" has no
-//! answer by itself. The plugin has two sources of the present time and
-//! uses only these:
+//! GIOŚ's terms ask API users to pull data no more often than twice an
+//! hour. Every run of `current` reads the agent's clock (`time.now`, plugin
+//! API 1.1; the plugin requires 1.2), so the rule holds for a key press as
+//! much as for a scheduled run:
 //!
-//! * `at`, an optional parameter of `current` that a scheduled workflow
-//!   fills with its trigger's firing time. With it the age of the cache is
-//!   known **before** a request, and a reading younger than its lifetime is
-//!   served without one. The value is the computer's local time to the
-//!   minute; two of them are subtracted, which is wrong by the shift when
-//!   the UTC offset changes in between (an apparent negative age is treated
-//!   as unknown).
-//! * the `Date` header of an answer from the provider. It dates what is
-//!   stored, it is the "now" a measurement's own time is compared with, and
-//!   when the provider answers with an error it tells how old the stored
-//!   data is.
+//! * a reading pulled less than [`READING_TTL_SECONDS`] ago is served
+//!   without a request;
+//! * a request for a station's reading is never sent less than
+//!   [`READING_TTL_SECONDS`] after the last one that may have reached
+//!   GIOŚ, whatever it brought back (an answer, an error or a time-out);
+//!   only a request that never left this computer (a DNS or connection
+//!   failure, a denied permission) does not count;
+//! * after an HTTP 429 nothing is asked before the time GIOŚ named.
 //!
-//! A run without `at` (a key press) therefore cannot know the age before
-//! it asks, and asks. When that request gets no answer at all (offline, a
-//! time-out), the stored reading is served as stale, with the time it was
-//! fetched and no age. `time.now` would remove all of this.
+//! The clock is the system's and can be set back. A pull that appears to
+//! be in the future has an unknown age and does not hold a request back,
+//! so a clock set back allows one request early, once.
+//!
+//! `at`, the optional firing time a scheduled workflow passes, works as in
+//! 0.2.1: two of them are subtracted (wrong by the shift when the UTC
+//! offset changes in between; an apparent negative age is unknown), and a
+//! reading younger than its lifetime by either the clock or `at` is served
+//! from the cache. The `Date` header of an answer dates what GIOŚ sent
+//! (`fetchedAt`).
 //!
 //! # Sizes
 //!
@@ -30,6 +34,8 @@
 //! 2026-11-16) is kept as rows of id, name, city and voivodeship, without
 //! coordinates and streets, in chunks of [`CHUNK`] stations: about 3 KiB a
 //! chunk, and below 64 KiB even if every text had its full length.
+
+use std::collections::BTreeMap;
 
 use deckpilot_plugin_sdk::prelude::*;
 use serde::de::DeserializeOwned;
@@ -90,6 +96,10 @@ pub struct ReadingEntry {
     pub fetched_at: Option<u64>,
     /// The `at` of the run that fetched it ([`crate::time::local_minutes`]).
     pub fetched_local: Option<i64>,
+    /// The agent's clock when it was fetched, Unix seconds (since 0.2.2;
+    /// absent in a reading stored by an older version).
+    #[serde(default)]
+    pub pulled_at: Option<u64>,
     pub reading: Reading,
 }
 
@@ -116,11 +126,38 @@ pub struct State {
     /// After an HTTP 429: no reading request before this local minute.
     #[serde(default)]
     pub wait_until_local: Option<i64>,
+    /// After an HTTP 429: no reading request before this time of the
+    /// agent's clock (Unix seconds).
+    #[serde(default)]
+    pub wait_until: Option<u64>,
+    /// Station number to the agent's clock (Unix seconds) of the last
+    /// reading request that may have reached the provider. Only entries
+    /// younger than [`READING_TTL_SECONDS`] are kept.
+    #[serde(default)]
+    pub pulls: BTreeMap<i64, u64>,
 }
 
 impl State {
     fn saw(&mut self, date: Option<u64>) {
         self.last_seen = self.last_seen.max(date);
+    }
+
+    /// Seconds since the last request for `station`'s reading, when the
+    /// clock says so.
+    fn since_pull(&self, station: i64, clock: u64) -> Option<u64> {
+        let pulled = *self.pulls.get(&station)?;
+        clock.checked_sub(pulled)
+    }
+
+    /// Records a reading request at `clock` and drops the records that no
+    /// longer hold anything back.
+    fn pulled(&mut self, station: i64, clock: u64) {
+        self.pulls.retain(|_, at| {
+            clock
+                .checked_sub(*at)
+                .is_some_and(|age| age < READING_TTL_SECONDS)
+        });
+        self.pulls.insert(station, clock);
     }
 }
 
@@ -156,10 +193,9 @@ pub struct Served {
     pub age: Option<u64>,
     /// When it was fetched (the answer's `Date`).
     pub fetched_at: Option<u64>,
-    /// The best knowledge of the present time (Unix seconds): the `Date`
-    /// of this run's answer, or the fetch time plus the age. A
+    /// The present time by the agent's clock (Unix seconds). A
     /// measurement's own age is counted from it.
-    pub now: Option<u64>,
+    pub now: u64,
     /// True unless the reading is known to be younger than its lifetime.
     pub expired: bool,
     /// The error code of the request that failed, when the stored reading
@@ -188,20 +224,31 @@ fn save(ctx: &mut Context<'_>, key: &str, value: &impl Serialize) -> bool {
 }
 
 /// The reading of the chosen station: the stored one while it is known to
-/// be younger than [`READING_TTL_SECONDS`], otherwise a new one, otherwise
-/// the stored one marked as expired. `at` is the run's local time
-/// ([`crate::time::local_minutes`]).
+/// be younger than [`READING_TTL_SECONDS`], otherwise a new one unless
+/// GIOŚ's limit holds the request back, otherwise the stored one marked as
+/// expired. `at` is the run's local time ([`crate::time::local_minutes`]),
+/// `clock` the agent's clock (Unix seconds).
 pub fn reading(
     ctx: &mut Context<'_>,
     provider: &dyn Provider,
     chosen: &Chosen,
     at: Option<i64>,
+    clock: u64,
 ) -> Result<Served, PluginError> {
     let station = chosen.station.id;
     let entry = read::<ReadingEntry>(ctx, READING_KEY)?
         .filter(|e| e.v == FORMAT && e.provider == provider.id() && e.station == station);
+    let entry_age = |e: &ReadingEntry| {
+        let by_clock = age(e.pulled_at.or(e.fetched_at), None, Some(clock), None);
+        let by_at = age(None, e.fetched_local, None, at);
+        match (by_clock, by_at) {
+            // Either time source saying "young" keeps the request back.
+            (Some(c), Some(l)) => Some(c.min(l)),
+            (c, l) => c.or(l),
+        }
+    };
     if let Some(e) = &entry
-        && let Some(age) = age(None, e.fetched_local, None, at)
+        && let Some(age) = entry_age(e)
         && age < READING_TTL_SECONDS
     {
         return Ok(Served {
@@ -209,14 +256,18 @@ pub fn reading(
             source: Source::Cache,
             age: Some(age),
             fetched_at: e.fetched_at,
-            now: e.fetched_at.map(|fetched| fetched.saturating_add(age)),
+            now: clock,
             expired: false,
             problem: None,
         });
     }
 
     let mut state = read::<State>(ctx, STATE_KEY)?.unwrap_or_default();
-    let waiting = matches!((at, state.wait_until_local), (Some(now), Some(until)) if now < until);
+    let waiting = state.wait_until.is_some_and(|until| clock < until)
+        || matches!((at, state.wait_until_local), (Some(now), Some(until)) if now < until);
+    let recent = state
+        .since_pull(station, clock)
+        .is_some_and(|since| since < READING_TTL_SECONDS);
     let failure = if waiting {
         Failure::new(
             codes::THROTTLED,
@@ -226,11 +277,22 @@ pub fn reading(
             ),
         )
         .retryable()
+    } else if recent {
+        Failure::new(
+            codes::THROTTLED,
+            format!(
+                "{} was asked less than 30 minutes ago, and its terms allow two pulls an hour; it is not asked again yet",
+                provider.name()
+            ),
+        )
+        .retryable()
     } else {
         match provider.reading(ctx, station, chosen.sensors) {
             Ok(fetched) => {
                 state.saw(fetched.date);
+                state.pulled(station, clock);
                 state.wait_until_local = None;
+                state.wait_until = None;
                 save(
                     ctx,
                     READING_KEY,
@@ -240,6 +302,7 @@ pub fn reading(
                         station,
                         fetched_at: fetched.date,
                         fetched_local: at,
+                        pulled_at: Some(clock),
                         reading: fetched.value.clone(),
                     },
                 );
@@ -249,18 +312,24 @@ pub fn reading(
                     source: Source::Network,
                     age: Some(0),
                     fetched_at: fetched.date,
-                    now: fetched.date,
+                    now: clock,
                     expired: false,
                     problem: None,
                 });
             }
             Err(failure) => {
                 state.saw(failure.date);
-                if let (Some(wait), Some(now)) = (failure.retry_after, at) {
-                    let minutes = i64::try_from(wait.div_ceil(60)).unwrap_or(i64::MAX);
-                    state.wait_until_local = Some(now.saturating_add(minutes));
+                if failure.reached {
+                    state.pulled(station, clock);
                 }
-                if failure.date.is_some() || failure.retry_after.is_some() {
+                if let Some(wait) = failure.retry_after {
+                    state.wait_until = Some(clock.saturating_add(wait));
+                    if let Some(now) = at {
+                        let minutes = i64::try_from(wait.div_ceil(60)).unwrap_or(i64::MAX);
+                        state.wait_until_local = Some(now.saturating_add(minutes));
+                    }
+                }
+                if failure.reached || failure.date.is_some() {
                     save(ctx, STATE_KEY, &state);
                 }
                 failure
@@ -269,16 +338,13 @@ pub fn reading(
     };
     match entry {
         Some(e) if failure.fallback => {
-            let age = age(e.fetched_at, e.fetched_local, failure.date, at);
-            let now = failure
-                .date
-                .or_else(|| Some(e.fetched_at?.saturating_add(age?)));
+            let age = entry_age(&e);
             Ok(Served {
                 reading: e.reading,
                 source: Source::Cache,
                 age,
                 fetched_at: e.fetched_at,
-                now,
+                now: clock,
                 expired: !age.is_some_and(|a| a < READING_TTL_SECONDS),
                 problem: Some(failure.error.code().to_owned()),
             })
