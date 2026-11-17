@@ -45,7 +45,7 @@ step below cannot be done as written until the decision is taken.
 | U-10 | Root threshold: 1-of-2 or 2-of-2 | 1-of-2 in v1 | §2 (how many root keys, `--root-threshold`) |
 | U-12 | Timestamp role, or an index signed monthly for 30 days | Timestamp role | §2 to §5. The workflows implement only the timestamp role (`refresh-timestamp.yml`, environment `registry-timestamp`). Choosing the 30-day index means changing the workflows first. |
 | U-11 | If reproducibility (spike S6) fails: accept "the registry's own trusted job builds it, without three-way hash agreement" | Don't launch without reproducibility | §6, the first publication. Today CI's rebuild must match the committed record byte for byte, but a contributor may copy that record from the CI summary. That is two-way agreement, not three-way. S6 is still open in DeckPilot (`docs/marketplace/spike-findings.md`). |
-| U-8 | Single maintainer: PR-only admin bypass, or a second maintainer | A second maintainer; bypass only for revocations | §3 (who reviews `registry-release`). The ruleset uses the PR-only admin bypass today. Until U-8 is decided, keep "Prevent self-review" off on `registry-release`, or the only reviewer cannot approve. |
+| U-8 | Single maintainer: PR-only admin bypass, or a second maintainer | A second maintainer; bypass only for revocations | §3. The ruleset uses the PR-only admin bypass today. `registry-release` has no reviewer (owner's decision of 2026-11-17: unattended publication under tag authority, checked by `publish.yml` `gate`). |
 | B6 | Reserve the `deckpilot` publisher in the registry | **Decided** (DeckPilot #311, `70490125`, pinned) | §2.4: the first key set must carry the first-party authorization (`keyset init --first-party`); a client that predates the field refuses it, so it cannot be added later without risk. A registry serves `deckpilot.*` only when the root-signed key set carries `"first_party": {"namespaces": ["deckpilot"]}` **and** the index lists the publisher `deckpilot` verified (`registry/publishers/knittingcode.json`, committed). `package` and `add-version` need `--first-party` for `deckpilot.*` (the tools here pass it). The plugins the application bundles (`deckpilot.github`, `deckpilot.gitlab`, `deckpilot.jira`, `deckpilot.notifications`) are refused from any registry. *Submission rules* still refuses every reserved id in community pull requests; the owner (login and id) may change `deckpilot.*` records. |
 | B7 | When a legacy built-in implementation may be removed (module-migration §5.7) | (open) | Not the first publication. It decides when a registry-delivered first-party plugin can replace a built-in module (migration step P12). |
 | U-1 | Engine build: Javy plugin API or an own rquickjs build | Decide by size, start-up and maintenance cost | Not the first publication. The registry accepts only ABI 1 WebAssembly modules built from Rust (`schemas/inputs/build-recipe.schema.json`). U-1 decides whether and how JavaScript plugins come later, and with them a new recipe kind. |
@@ -184,8 +184,15 @@ line, because it ends up in shell history.
 1. Create the environment:
    - deployment branches and tags: **selected**, with exactly one tag rule
      `*--v*` and no branches;
-   - required reviewer: `knittingcode`;
-   - "Prevent self-review" off while U-8 is open;
+   - no required reviewer: publication is unattended, and creating the
+     release tag is the authorization (tag authority). Only the admin role
+     can create tags (ruleset "Protect tags"), and the `gate` job of
+     `publish.yml` refuses to reach `sign` unless that ruleset is active
+     and unbypassable by the workflow, the environment deploys `*--v*`
+     only and cannot be bypassed, and every required check of `main`
+     passed for the tagged commit (`tools/check-environment.sh`,
+     `tools/check-required-checks.sh`). A required reviewer may be added
+     back at any time; the gate accepts it as the authorization instead;
    - no wait timer, and administrators cannot bypass.
 2. Set the secrets: `REGISTRY_INDEX_KEY`, `REGISTRY_INDEX_KEY_PASSWORD`,
    `REGISTRY_TIMESTAMP_KEY`, `REGISTRY_TIMESTAMP_KEY_PASSWORD`. Each key
@@ -193,8 +200,7 @@ line, because it ends up in shell history.
 
 ```sh
 gh api -X PUT repos/$R/environments/registry-release --input - <<'JSON'
-{ "reviewers": [{ "type": "User", "id": 109468044 }], "prevent_self_review": false,
-  "can_admins_bypass": false,
+{ "reviewers": [], "can_admins_bypass": false,
   "deployment_branch_policy": { "protected_branches": false, "custom_branch_policies": true } }
 JSON
 gh api -X POST repos/$R/environments/registry-release/deployment-branch-policies -f name='*--v*' -f type=tag
@@ -338,8 +344,8 @@ that may stay listed, or yank it afterwards (step 7).
    gh run watch -R $R "$(gh run list -R $R -w publish.yml -L 1 --json databaseId -q '.[0].databaseId')"
    ```
 
-   Approve the `registry-release` deployment when *Publish* asks for it.
-   Every job must succeed: `resolve`, `build`, `sign`, `release`,
+   No approval is asked for (tag authority, §3.1). Every job must
+   succeed: `resolve`, `gate`, `build`, `sign`, `release`,
    `deploy` and `verify-published`. To retry on the same tag:
 
    ```sh

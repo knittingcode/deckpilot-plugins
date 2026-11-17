@@ -33,6 +33,8 @@ jobs:
           persist-credentials: false
       - name: No private keys, key files or generated output
         run: python3 -I tools/check-hygiene.py
+      - name: Tests of the publication and timestamp gates
+        run: tools/tests/test-release-gates.sh
 
   submission:
     name: Submission rules

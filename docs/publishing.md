@@ -186,7 +186,8 @@ are in [production-readiness.md](production-readiness.md).
    request. `roots.json` also becomes DeckPilot's
    `DECKPILOT_REGISTRY_ROOT_PUBKEYS`.
 2. **Environment `registry-release`**: deployment rule "selected tags"
-   `*--v*`, a required reviewer, and the secrets
+   `*--v*`, no reviewer (tag authority, see trust-model.md), administrators
+   cannot bypass, and the secrets
    `REGISTRY_INDEX_KEY`, `REGISTRY_INDEX_KEY_PASSWORD`,
    `REGISTRY_TIMESTAMP_KEY`, `REGISTRY_TIMESTAMP_KEY_PASSWORD`
    (the minisign secret key file's text and its password).

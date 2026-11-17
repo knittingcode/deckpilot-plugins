@@ -1,0 +1,26 @@
+{
+  "name": "registry-release",
+  "can_admins_bypass": false,
+  "deployment_branch_policy": {
+    "protected_branches": false,
+    "custom_branch_policies": true
+  },
+  "protection_rules": [
+    {
+      "type": "required_reviewers",
+      "prevent_self_review": false,
+      "reviewers": [
+        {
+          "type": "User",
+          "reviewer": {
+            "login": "knittingcode",
+            "id": 109468044
+          }
+        }
+      ]
+    },
+    {
+      "type": "branch_policy"
+    }
+  ]
+}

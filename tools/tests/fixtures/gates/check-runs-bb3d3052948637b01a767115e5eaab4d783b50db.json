@@ -1,0 +1,68 @@
+{
+  "total_count": 9,
+  "check_runs": [
+    {
+      "id": 134351330559,
+      "name": "Registry preservation",
+      "head_sha": "bb3d3052948637b01a767115e5eaab4d783b50db",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 134350040871,
+      "name": "Website / Build and test website",
+      "head_sha": "bb3d3052948637b01a767115e5eaab4d783b50db",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 134350040423,
+      "name": "actionlint and zizmor",
+      "head_sha": "bb3d3052948637b01a767115e5eaab4d783b50db",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 134350038579,
+      "name": "Validate registry",
+      "head_sha": "bb3d3052948637b01a767115e5eaab4d783b50db",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 134350038482,
+      "name": "Schemas match DeckPilot",
+      "head_sha": "bb3d3052948637b01a767115e5eaab4d783b50db",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 134350038477,
+      "name": "Repository hygiene",
+      "head_sha": "bb3d3052948637b01a767115e5eaab4d783b50db",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 134350038450,
+      "name": "Submission rules",
+      "head_sha": "bb3d3052948637b01a767115e5eaab4d783b50db",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 134350038134,
+      "name": "Build, test and package first-party plugins",
+      "head_sha": "bb3d3052948637b01a767115e5eaab4d783b50db",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 134350037871,
+      "name": "Build examples",
+      "head_sha": "bb3d3052948637b01a767115e5eaab4d783b50db",
+      "status": "completed",
+      "conclusion": "success"
+    }
+  ]
+}
