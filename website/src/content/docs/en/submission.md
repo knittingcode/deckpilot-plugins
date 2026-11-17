@@ -7,7 +7,7 @@ order: 15
 
 Plugins are submitted to the registry repository, [knittingcode/deckpilot-plugins](https://github.com/knittingcode/deckpilot-plugins), by pull request. The registry never holds your source: it records which tag and commit of your own repository to build, rebuilds the package itself, and the owner reviews and publishes.
 
-> **Status:** The registry is not open for publication yet. No production keys exist, so nothing can be published, and no plugin has been published. You can already prepare and validate a submission; according to the registry's contributing guide it will be reviewed and published once the registry opens.
+> **Status:** The signed registry is live and publishes DeckPilot's own plugins. It is not open to other publishers yet. You can already prepare and validate a submission; according to the registry's contributing guide it will be reviewed and published once the registry opens.
 
 ## Before you start
 
@@ -139,7 +139,7 @@ There are no guaranteed response times.
 
 ## Merging does not publish
 
-A merged pull request publishes nothing. The owner publishes a version by creating its release tag, `<id>--v<version>`, on the merged commit. That starts the publishing workflow, which rebuilds the package, signs a new index and timestamp, creates the GitHub Release with the package, and deploys the metadata. This workflow has not run with production keys.
+A merged pull request publishes nothing. The owner publishes a version by creating its release tag, `<id>--v<version>`, on the merged commit. That starts the publishing workflow, which rebuilds the package, signs a new index and timestamp, creates the GitHub Release with the package, and deploys the metadata. The plugins listed on this site were published this way.
 
 Contributors never get publish rights: not by having a plugin merged, not by being a verified publisher, and not by contributing regularly. Tags, releases, environments, keys and secrets belong to the owner. The verified publisher badge is a review decision of the owner, not a permission.
 

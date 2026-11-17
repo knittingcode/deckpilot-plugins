@@ -37,8 +37,8 @@ export const pl: Dictionary = {
   },
 
   status: {
-    badge: 'Wersja eksperymentalna',
-    short: 'Marketplace jest eksperymentalny. Obsługa wtyczek jest wyłączona we wszystkich wydanych wersjach DeckPilota, a w rejestrze nie opublikowano jeszcze żadnej wtyczki.',
+    badge: 'Rejestr działa',
+    short: 'Podpisany rejestr wtyczek działa. Do instalowania wtyczek potrzebne jest następne wydanie DeckPilota: obecne wydanie, DeckPilot 0.6.0, nie obsługuje wtyczek.',
   },
 
   footer: {
@@ -71,7 +71,7 @@ export const pl: Dictionary = {
   home: {
     title: 'DeckPilot Plugin Marketplace: Twój Stream Deck, Twoje możliwości',
     description:
-      'Rozszerz DeckPilota o niezależnie instalowane wtyczki. Podpisany rejestr, wtyczki WebAssembly w piaskownicy i jawne uprawnienia. Wersja eksperymentalna.',
+      'Rozszerz DeckPilota o niezależnie instalowane wtyczki: podpisany rejestr, piaskownica WebAssembly, jawne uprawnienia. Dostępne od następnego wydania DeckPilota.',
     hero: {
       headline: 'Twój Stream Deck. Twoje możliwości.',
       lead: 'Marketplace rozszerza DeckPilota o niezależnie instalowane wtyczki: nowe akcje dla usług i narzędzi, z których korzystasz. Każda wtyczka działa w piaskownicy i ma tylko te uprawnienia, na które się zgodzisz.',
@@ -86,17 +86,17 @@ export const pl: Dictionary = {
       label: 'Szukaj wtyczek',
       placeholder: 'Szukaj wtyczek po nazwie lub opisie',
       submit: 'Szukaj',
-      emptyHint: 'Rejestr jest na razie pusty. Wyszukiwarka zacznie zwracać wyniki, gdy tylko pojawią się pierwsze wtyczki.',
+      emptyHint: 'Ta wersja witryny nie zawiera żadnych wtyczek, więc wyszukiwarka nie ma czego zwrócić.',
     },
     featured: {
       eyebrow: 'Integracje',
       title: 'Wyróżnione integracje',
       lead: 'Wtyczki ostatnio opublikowane w rejestrze.',
       viewAll: 'Zobacz wszystkie wtyczki',
-      emptyTitle: 'Pierwsze wtyczki są w drodze',
+      emptyTitle: 'Ta wersja witryny nie zawiera wtyczek',
       emptyText:
-        'Nie opublikowano jeszcze żadnej wtyczki. Rejestr zostanie otwarty po utworzeniu kluczy podpisujących. Do tego czasu nie ma tu nic do zainstalowania i niczego nie wymyślamy, żeby zapełnić to miejsce.',
-      emptyPrimary: 'Zbuduj pierwszą',
+        'Katalog jest generowany z podpisanego rejestru podczas wdrażania witryny. Ta wersja nie zawiera żadnej wtyczki i niczego nie wymyślamy, żeby zapełnić to miejsce.',
+      emptyPrimary: 'Zbuduj wtyczkę',
       emptySecondary: 'Obserwuj rejestr w serwisie GitHub',
     },
     categories: {
@@ -182,7 +182,7 @@ export const pl: Dictionary = {
       cards: [
         {
           title: 'Zgłoś wtyczkę',
-          text: 'Zgłoszenie możesz przygotować i sprawdzić już dziś. Zostanie przejrzane i opublikowane, gdy rejestr zostanie otwarty.',
+          text: 'Zgłoszenie możesz przygotować i sprawdzić już dziś. Na razie rejestr publikuje własne wtyczki DeckPilota; pozostałe zgłoszenia zostaną przejrzane i opublikowane, gdy rejestr otworzy się dla innych wydawców.',
           link: 'Jak wygląda zgłoszenie',
         },
         {
@@ -207,11 +207,11 @@ export const pl: Dictionary = {
         },
         {
           q: 'Czy mogę już instalować wtyczki?',
-          a: 'W wydanych wersjach jeszcze nie. Obsługa wtyczek jest eksperymentalna i wyłączona we wszystkich wydanych wersjach DeckPilota, rejestr nie ma produkcyjnych kluczy podpisujących i nie opublikowano żadnej wtyczki. Sam DeckPilot jest na wczesnym etapie rozwoju: jedyną publiczną wersją jest wydanie wstępne v0.6.0-alpha.3.',
+          a: 'Jeszcze nie. Podpisany rejestr działa, a wtyczki wymienione na tej witrynie są opublikowane, ale do ich instalacji potrzebne jest następne wydanie DeckPilota, które wprowadzi ekran Marketplace i obsługę wtyczek. DeckPilot 0.6.0, obecne i pierwsze stabilne wydanie, nie obsługuje wtyczek.',
         },
         {
           q: 'Jak będzie wyglądać instalacja wtyczki?',
-          a: 'Wtyczki instaluje się na ekranie Marketplace w DeckPilocie, w wersjach z włączoną obsługą wtyczek. Wybierasz wtyczkę, przeglądasz uprawnienia, o które prosi, i zatwierdzasz instalację. Ta witryna jest katalogiem i dokumentacją: nie ma tu przycisku instalacji, a DeckPilot nie obsługuje linków instalacyjnych.',
+          a: 'Wtyczki będzie się instalować na ekranie Marketplace w DeckPilocie, począwszy od następnego wydania DeckPilota. Wybierasz wtyczkę, przeglądasz uprawnienia, o które prosi, i zatwierdzasz instalację. Ta witryna jest katalogiem i dokumentacją: nie ma tu przycisku instalacji, a DeckPilot nie obsługuje linków instalacyjnych.',
         },
         {
           q: 'Jak sprawdzane są wtyczki?',
@@ -282,7 +282,7 @@ export const pl: Dictionary = {
     searchPlaceholder: 'Nazwa lub opis',
     category: 'Kategoria',
     platform: 'Platforma',
-    compatibility: 'Działa z',
+    compatibility: 'Wersja DeckPilota',
     anyCategory: 'Wszystkie kategorie',
     anyPlatform: 'Wszystkie platformy',
     anyVersion: 'Dowolna wersja DeckPilota',
@@ -298,18 +298,18 @@ export const pl: Dictionary = {
     listLabel: 'Wtyczki',
     noResultsTitle: 'Żadna wtyczka nie pasuje do tych filtrów',
     noResultsText: 'Spróbuj wpisać inne hasło albo usuń któryś filtr.',
-    emptyTitle: 'Nie opublikowano jeszcze żadnej wtyczki',
+    emptyTitle: 'Ta wersja witryny nie zawiera wtyczek',
     emptyText:
-      'Rejestr nie przyjmuje jeszcze publikacji: nie utworzono kluczy podpisujących, więc nie ma czego wyświetlić. Wtyczki pojawią się tutaj automatycznie, gdy zostaną opublikowane i podpisane.',
+      'Katalog jest generowany z podpisanego rejestru podczas wdrażania witryny, a ta wersja nie zawiera żadnej wtyczki. Na opublikowanej witrynie pojawia się tu każda wtyczka, którą oferuje rejestr.',
     emptyPrimary: 'Zbuduj wtyczkę',
     emptySecondary: 'Jak wygląda zgłoszenie',
     emptyStatusTitle: 'Na jakim etapie jesteśmy',
     emptyStatus: [
-      'Format zgłoszeń, proces walidacji i workflowy publikacji istnieją i są testowane z jednorazowymi kluczami.',
-      'Nie istnieją produkcyjne klucze podpisujące i nie opublikowano żadnej wtyczki.',
-      'Obsługa wtyczek w DeckPilocie jest eksperymentalna i wyłączona we wszystkich wydanych wersjach.',
+      'Podpisany rejestr produkcyjny działa, a jego znacznik czasu jest codziennie podpisywany na nowo.',
+      'Publikuje własne wtyczki DeckPilota. Nie jest jeszcze otwarty dla innych wydawców.',
+      'DeckPilot 0.6.0 nie obsługuje wtyczek. Obsługa wtyczek pojawi się w następnym wydaniu DeckPilota.',
     ],
-    emptyStatusLink: 'Co zostało do zrobienia przed pierwszą publikacją',
+    emptyStatusLink: 'Co zostało do zrobienia przed otwarciem rejestru dla innych wydawców',
     errorTitle: 'Wyszukiwanie jest niedostępne',
     errorText: 'Nie udało się wczytać indeksu wyszukiwania, dlatego widoczne są wszystkie wtyczki. Odśwież stronę, aby spróbować ponownie.',
     registryInfo: 'Indeks rejestru nr {seq}, wygenerowany {date}.',
@@ -342,7 +342,7 @@ export const pl: Dictionary = {
     noPermissions: 'Ta wtyczka nie prosi o żadne uprawnienia. Jej akcje działają w całości wewnątrz piaskownicy.',
     install: 'Jak zainstalować',
     installSteps: [
-      'Użyj wersji DeckPilota z włączoną obsługą wtyczek. Obsługa wtyczek jest eksperymentalna i obecnie wyłączona we wszystkich wydanych wersjach.',
+      'Zainstaluj następne wydanie DeckPilota, pierwsze z obsługą wtyczek. Nie zostało jeszcze opublikowane, a DeckPilot 0.6.0 nie instaluje wtyczek.',
       'Otwórz ekran Marketplace w DeckPilocie i znajdź wtyczkę {name}.',
       'Przejrzyj wymagane uprawnienia i zainstaluj wtyczkę. Przed instalacją DeckPilot weryfikuje podpisy rejestru oraz skrót sha256 i rozmiar pakietu.',
       'Włącz wtyczkę i przyznaj jej uprawnienia. Wtyczka jest instalowana jako wyłączona i do tego momentu nie może nic zrobić.',
@@ -365,8 +365,8 @@ export const pl: Dictionary = {
     platforms: 'Platformy',
     allPlatforms: 'macOS, Windows i Linux',
     compatibility: 'Wersje DeckPilota',
-    compatibleWith: 'Obejmuje bieżące wydanie wstępne {version}',
-    notCompatibleWith: 'Nie obejmuje bieżącego wydania wstępnego {version}',
+    compatibleWith: 'Obejmuje bieżące wydanie {version}, które nie obsługuje jeszcze wtyczek. Wtyczki wymagają następnego wydania DeckPilota.',
+    notCompatibleWith: 'Nie obejmuje bieżącego wydania {version}.',
     pluginApi: 'API wtyczek',
     license: 'Licencja',
     publisher: 'Wydawca',
@@ -460,9 +460,9 @@ export const pl: Dictionary = {
     previous: 'Poprzednia',
     next: 'Następna',
     pagination: 'Poprzednia i następna strona',
-    statusTitle: 'Wersja eksperymentalna',
+    statusTitle: 'Wtyczki pojawią się w następnym wydaniu DeckPilota',
     status:
-      'Obsługa wtyczek jest eksperymentalna i wyłączona we wszystkich wydanych wersjach DeckPilota. SDK nie jest opublikowane jako pakiet, a rejestr nie przyjmuje jeszcze publikacji. Opisane tu API mogą się jeszcze zmienić.',
+      'Obecne wydanie, DeckPilot 0.6.0, nie obsługuje wtyczek. Podpisany rejestr działa i publikuje własne wtyczki DeckPilota; nie jest jeszcze otwarty dla innych wydawców. SDK ma wersję 0.x i nie jest opublikowane jako pakiet, więc jego API w Ruście może się jeszcze zmienić.',
     verified: 'Sprawdzono z kodem DeckPilota w commicie {commit}.',
     source: 'Źródłowa dokumentacja SDK w repozytorium DeckPilota',
   },
@@ -523,9 +523,9 @@ export const pl: Dictionary = {
     description:
       'Jak zgłosić wtyczkę do rejestru DeckPilota, jak przebiega przegląd, jakie są zasady licencji, wersjonowania, aktualizacji i odwołań oraz jak zgłosić lukę.',
     lead: 'Rejestr jest prowadzony otwarcie, w jednym repozytorium w serwisie GitHub. Ta strona streszcza jego zasady. Wiążące są dokumenty, do których prowadzą odnośniki: jeśli ta strona i dokument się różnią, obowiązuje dokument.',
-    statusTitle: 'Rejestr nie przyjmuje jeszcze publikacji',
+    statusTitle: 'Rejestr nie jest jeszcze otwarty dla innych wydawców',
     status:
-      'Nie istnieją produkcyjne klucze podpisujące, więc niczego nie można opublikować. Zgłoszenie możesz już przygotować i sprawdzić. Zostanie przejrzane i opublikowane, gdy rejestr zostanie otwarty.',
+      'Podpisany rejestr działa i publikuje własne wtyczki DeckPilota. Wtyczki innych wydawców nie są jeszcze publikowane. Zgłoszenie możesz już przygotować i sprawdzić; według zasad współpracy zostanie przejrzane i opublikowane, gdy rejestr zostanie otwarty.',
     toc: 'Na tej stronie',
     submit: {
       title: 'Zgłoś wtyczkę',
@@ -620,7 +620,7 @@ export const pl: Dictionary = {
       dont: 'Nie otwieraj publicznego issue ani pull requesta w sprawie podejrzenia złośliwej wtyczki lub luki, nie publikuj szczegółów exploita i nie testuj niczego na instalacjach innych użytkowników.',
       scope: 'Luki w aplikacji lub agencie DeckPilota, w piaskownicy i procesie hosta wtyczek, w SDK lub w kodzie weryfikacji po stronie klienta zgłaszaj w repozytorium DeckPilota. Problem z wtyczką niezwiązany z bezpieczeństwem zgłoś formularzem issue „Plugin report”.',
       after: 'Nie ma gwarantowanych czasów odpowiedzi. Zgłoszenia są obsługiwane przed wszystkimi innymi pracami. Osoby zgłaszające są wymieniane w komunikacie bezpieczeństwa, chyba że sobie tego nie życzą.',
-      caveat: 'Rejestr jest dopiero budowany i nie przeszedł niezależnego audytu bezpieczeństwa.',
+      caveat: 'Rejestr nie przeszedł niezależnego audytu bezpieczeństwa.',
       primary: 'Zgłoś lukę',
       policy: 'SECURITY.md',
       appPolicy: 'Zgłoś lukę w DeckPilocie',

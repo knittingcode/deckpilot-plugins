@@ -11,13 +11,13 @@ Wtyczka ma kilka numerów wersji, a każdy odpowiada na inne pytanie: na któryc
 
 | Fakt | Obecnie |
 | --- | --- |
-| Obsługa wtyczek | Eksperymentalna. Wyłączona w każdej wydanej wersji DeckPilota: agent wymaga funkcji Cargo `plugins` i flagi `--enable-plugins` |
-| Publiczne wersje DeckPilota | Jedno wydanie wstępne, v0.6.0-alpha.3. Nie ma wydania stabilnego |
+| Obsługa wtyczek | Pojawi się w następnym wydaniu DeckPilota, z wtyczkami domyślnie włączonymi. DeckPilot 0.6.0 jej nie zawiera. Agent zbudowany ze źródeł wymaga funkcji Cargo `plugins`; `--disable-plugins` lub `DECKPILOT_ENABLE_PLUGINS=0` wyłącza wtyczki |
+| Publiczne wersje DeckPilota | v0.6.0 (2026-11-17), pierwsze stabilne wydanie, bez obsługi wtyczek. Wcześniej wydania wstępne v0.6.0-alpha.3 i v0.6.0-alpha.4 |
 | SDK dla Rusta | `deckpilot-plugin-sdk` 0.1.0, nieopublikowany w crates.io |
 | SDK dla JavaScriptu | Wyłącznie deklaracje typów; nie pozwala zbudować ani uruchomić wtyczki |
-| Rejestr | Brak kluczy produkcyjnych, brak opublikowanych wtyczek, nie jest otwarty na publikacje |
+| Rejestr | Działa pod adresem `https://knittingcode.github.io/deckpilot-plugins/v1/`, podpisany produkcyjnym zestawem kluczy 1. Publikuje własne wtyczki DeckPilota; nie jest jeszcze otwarty dla innych wydawców |
 
-API wtyczek 1.0, ABI gościa 1 i wersja manifestu 1 są tym, co implementuje gałąź `main`. Mogą się jeszcze zmienić, zanim wtyczki zostaną udostępnione.
+API wtyczek 1.x, ABI gościa 1 i wersja manifestu 1 są tym, co implementuje gałąź `main` DeckPilota.
 
 ## Numery wersji
 

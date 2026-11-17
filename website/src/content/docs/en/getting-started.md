@@ -7,7 +7,7 @@ order: 1
 
 A DeckPilot plugin is a Rust crate compiled to one WebAssembly module, shipped next to a `manifest.json` that describes it. This page takes you from an empty machine to a built and tested example, and shows how your own crate depends on the SDK.
 
-> **Status:** Plugin support is experimental. It is off in every DeckPilot release build: the agent needs the `plugins` cargo feature and must be started with `--enable-plugins`. The only public DeckPilot version is the pre-release v0.6.0-alpha.3, which does not include plugins. The SDK crate is not published to crates.io, and the registry has no production keys and no published plugins. Plugin API 1.0, guest ABI 1 and manifest version 1 can still change.
+> **Status:** DeckPilot 0.6.0, the current release, does not include plugin support. Plugin support ships with the next DeckPilot release: the Marketplace screen, the sandboxed plugin host in every installer and the registry's root keys built in, with plugins on by default. Until then, an agent built from source with the `plugins` cargo feature has plugins on unless it is started with `--disable-plugins` or `DECKPILOT_ENABLE_PLUGINS=0`. The signed registry is live at `https://knittingcode.github.io/deckpilot-plugins/v1/` and publishes DeckPilot's own plugins; it is not open to other publishers yet. The SDK crate is not published to crates.io. This documentation covers plugin API 1.x, guest ABI 1 and manifest version 1.
 
 ## Prerequisites
 

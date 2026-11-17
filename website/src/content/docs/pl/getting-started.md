@@ -7,7 +7,7 @@ order: 1
 
 Wtyczka DeckPilota to crate Rusta skompilowany do jednego modułu WebAssembly, dostarczany razem z plikiem `manifest.json`, który ją opisuje. Ta strona prowadzi od pustej maszyny do zbudowanego i przetestowanego przykładu oraz pokazuje, jak twój własny crate korzysta z SDK jako zależności.
 
-> **Status:** Obsługa wtyczek jest eksperymentalna. Jest wyłączona w każdej wydanej wersji DeckPilota: agent wymaga funkcji (feature) cargo `plugins` i musi zostać uruchomiony z flagą `--enable-plugins`. Jedyną publiczną wersją DeckPilota jest wydanie wstępne v0.6.0-alpha.3, które nie zawiera wtyczek. Crate SDK nie jest opublikowany w crates.io, a rejestr nie ma kluczy produkcyjnych ani żadnych opublikowanych wtyczek. API wtyczek 1.0, ABI gościa 1 i wersja manifestu 1 mogą się jeszcze zmienić.
+> **Status:** Obecne wydanie, DeckPilot 0.6.0, nie obsługuje wtyczek. Obsługa wtyczek pojawi się w następnym wydaniu DeckPilota: ekran Marketplace, host wtyczek w piaskownicy w każdym instalatorze i wbudowane klucze główne rejestru, a wtyczki będą domyślnie włączone. Do tego czasu agent zbudowany ze źródeł z funkcją (feature) cargo `plugins` ma włączone wtyczki, chyba że zostanie uruchomiony z flagą `--disable-plugins` lub ze zmienną `DECKPILOT_ENABLE_PLUGINS=0`. Podpisany rejestr działa pod adresem `https://knittingcode.github.io/deckpilot-plugins/v1/` i publikuje własne wtyczki DeckPilota; nie jest jeszcze otwarty dla innych wydawców. Crate SDK nie jest opublikowany w crates.io. Ta dokumentacja opisuje API wtyczek 1.x, ABI gościa 1 i wersję manifestu 1.
 
 ## Wymagania wstępne
 
