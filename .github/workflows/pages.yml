@@ -31,5 +31,6 @@ jobs:
     # and id-token, the others contents: read at most.
     permissions:
       contents: read
+      actions: read
       pages: write
       id-token: write

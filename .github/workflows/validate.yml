@@ -35,6 +35,8 @@ jobs:
         run: python3 -I tools/check-hygiene.py
       - name: Tests of the publication and timestamp gates
         run: tools/tests/test-release-gates.sh
+      - name: Tests of the Pages deployment
+        run: tools/tests/test-deploy-pages.sh
 
   submission:
     name: Submission rules
