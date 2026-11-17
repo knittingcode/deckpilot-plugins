@@ -1,0 +1,821 @@
+{
+  "$schema": "https://knittingcode.github.io/deckpilot-plugins/v1/schemas/plugin-manifest.schema.json",
+  "manifestVersion": 1,
+  "id": "deckpilot.markets",
+  "name": "Markets",
+  "version": "0.2.1",
+  "publisher": {
+    "id": "deckpilot",
+    "name": "DeckPilot",
+    "url": "https://github.com/knittingcode/deckpilot"
+  },
+  "description": "Daily ECB euro reference exchange rates via Frankfurter, never live prices: conversion, changes, the range of recent rates and threshold alerts, as messages, workflow outputs and variables. Information, not financial advice.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/knittingcode/deckpilot-plugins",
+    "directory": "first-party/markets"
+  },
+  "license": "Apache-2.0",
+  "keywords": [
+    "currency",
+    "exchange-rates",
+    "ecb",
+    "frankfurter",
+    "markets"
+  ],
+  "categories": [
+    "monitoring"
+  ],
+  "engines": {
+    "deckpilot": ">=0.6.0 <1.0.0",
+    "pluginApi": "^1.2",
+    "sdk": "0.1.0"
+  },
+  "runtime": {
+    "kind": "wasm",
+    "abi": 1
+  },
+  "entry": "src/lib.rs",
+  "icons": {
+    "128": "assets/icon-128.png"
+  },
+  "assets": {
+    "readme": "README.md"
+  },
+  "permissions": [
+    {
+      "kind": "network",
+      "hosts": [
+        "api.frankfurter.dev"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "justification": "Asks Frankfurter for the ECB reference rates of the currency pairs you choose. Only the two currency codes and a start date are sent."
+    },
+    {
+      "kind": "notifications",
+      "routing": {
+        "desktop": "desktop",
+        "statusBar": "statusBar"
+      },
+      "justification": "Check alert notifies you once when a rate crosses your threshold, on the desktop or in the status bar as you choose in this plugin's settings."
+    },
+    {
+      "kind": "device",
+      "state": true,
+      "justification": "Shows the pair's latest reference rate, its date and a sparkline on the keys you bound to Exchange rate."
+    }
+  ],
+  "contributes": {
+    "actions": [
+      {
+        "id": "rate",
+        "name": "Exchange rate",
+        "description": "Reports the newest ECB reference rate of a pair with its date, an optional conversion, the change since the previous rate and the range of saved rates. A daily rate, not live.",
+        "category": "Markets",
+        "parameters": [
+          {
+            "key": "base",
+            "label": "Base currency",
+            "description": "The currency of one unit, as an ISO 4217 code (EUR, USD, PLN). Default: EUR.",
+            "required": false,
+            "kind": {
+              "type": "text",
+              "maxLength": 3
+            },
+            "default": {
+              "type": "text",
+              "value": "EUR"
+            }
+          },
+          {
+            "key": "quote",
+            "label": "Quote currency",
+            "description": "The currency the rate is given in, as an ISO 4217 code (USD, PLN, CHF).",
+            "required": true,
+            "kind": {
+              "type": "text",
+              "maxLength": 3
+            }
+          },
+          {
+            "key": "amount",
+            "label": "Amount",
+            "description": "Optional. An amount of the base currency to convert, such as 100 or 99.50.",
+            "required": false,
+            "kind": {
+              "type": "text",
+              "maxLength": 32
+            }
+          },
+          {
+            "key": "at",
+            "label": "Run time",
+            "description": "Optional. In a scheduled workflow, the trigger's firing time (YYYY-MM-DD HH:MM): it lets the plugin use its saved rates instead of asking again.",
+            "required": false,
+            "kind": {
+              "type": "text",
+              "maxLength": 16
+            }
+          }
+        ],
+        "node": {
+          "version": 1,
+          "icon": "banknote",
+          "outputs": [
+            {
+              "key": "summary",
+              "label": "Summary",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "base",
+              "label": "Base currency",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "quote",
+              "label": "Quote currency",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "asOf",
+              "label": "As of",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "pair",
+              "label": "Pair",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "rate",
+              "label": "Rate (decimal text)",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "rateDate",
+              "label": "Date of the reference rate",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "amount",
+              "label": "Amount",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "converted",
+              "label": "Converted amount",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "previousRate",
+              "label": "Previous rate",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "previousDate",
+              "label": "Date of the previous rate",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "change",
+              "label": "Change since the previous rate",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "changePercent",
+              "label": "Change in percent",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "direction",
+              "label": "Direction (up, down, flat)",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "min",
+              "label": "Lowest saved rate",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "max",
+              "label": "Highest saved rate",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "trend",
+              "label": "Trend of the saved rates",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "historyCount",
+              "label": "Number of saved rates",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "historyFrom",
+              "label": "Date of the oldest saved rate",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "cross",
+              "label": "Cross rate (computed from euro rates)",
+              "kind": "boolean",
+              "always": true
+            },
+            {
+              "key": "delayed",
+              "label": "Delayed (daily reference rate, not live)",
+              "kind": "boolean",
+              "always": true
+            },
+            {
+              "key": "stale",
+              "label": "Stale",
+              "kind": "boolean",
+              "always": true
+            },
+            {
+              "key": "source",
+              "label": "Source",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "attribution",
+              "label": "Attribution",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "fetchedAt",
+              "label": "Fetched at (UTC)",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "ageMinutes",
+              "label": "Age in minutes",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "problem",
+              "label": "Problem",
+              "kind": "text",
+              "always": false
+            }
+          ],
+          "timeoutMs": 25000,
+          "retrySafe": true,
+          "idempotent": true,
+          "effect": "readOnly"
+        },
+        "state": {
+          "refresh": "every",
+          "intervalSeconds": 300
+        }
+      },
+      {
+        "id": "change",
+        "name": "Rate change",
+        "description": "Reports how a pair's ECB reference rate changed over the last 1-20 ECB working days, in units and in percent.",
+        "category": "Markets",
+        "parameters": [
+          {
+            "key": "base",
+            "label": "Base currency",
+            "description": "The currency of one unit, as an ISO 4217 code (EUR, USD, PLN). Default: EUR.",
+            "required": false,
+            "kind": {
+              "type": "text",
+              "maxLength": 3
+            },
+            "default": {
+              "type": "text",
+              "value": "EUR"
+            }
+          },
+          {
+            "key": "quote",
+            "label": "Quote currency",
+            "description": "The currency the rate is given in, as an ISO 4217 code (USD, PLN, CHF).",
+            "required": true,
+            "kind": {
+              "type": "text",
+              "maxLength": 3
+            }
+          },
+          {
+            "key": "days",
+            "label": "Working days",
+            "description": "How many ECB working days back to compare with, 1-20.",
+            "required": false,
+            "kind": {
+              "type": "integer",
+              "min": 1,
+              "max": 20
+            },
+            "default": {
+              "type": "integer",
+              "value": 1
+            }
+          },
+          {
+            "key": "at",
+            "label": "Run time",
+            "description": "Optional. In a scheduled workflow, the trigger's firing time (YYYY-MM-DD HH:MM): it lets the plugin use its saved rates instead of asking again.",
+            "required": false,
+            "kind": {
+              "type": "text",
+              "maxLength": 16
+            }
+          }
+        ],
+        "node": {
+          "version": 1,
+          "icon": "trending-up",
+          "outputs": [
+            {
+              "key": "summary",
+              "label": "Summary",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "pair",
+              "label": "Pair",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "rate",
+              "label": "Rate (decimal text)",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "rateDate",
+              "label": "Date of the reference rate",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "fromRate",
+              "label": "Rate at the start",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "fromDate",
+              "label": "Date at the start",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "days",
+              "label": "Working days",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "change",
+              "label": "Change",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "changePercent",
+              "label": "Change in percent",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "direction",
+              "label": "Direction (up, down, flat)",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "cross",
+              "label": "Cross rate (computed from euro rates)",
+              "kind": "boolean",
+              "always": true
+            },
+            {
+              "key": "delayed",
+              "label": "Delayed (daily reference rate, not live)",
+              "kind": "boolean",
+              "always": true
+            },
+            {
+              "key": "stale",
+              "label": "Stale",
+              "kind": "boolean",
+              "always": true
+            },
+            {
+              "key": "source",
+              "label": "Source",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "attribution",
+              "label": "Attribution",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "fetchedAt",
+              "label": "Fetched at (UTC)",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "ageMinutes",
+              "label": "Age in minutes",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "problem",
+              "label": "Problem",
+              "kind": "text",
+              "always": false
+            }
+          ],
+          "timeoutMs": 25000,
+          "retrySafe": true,
+          "idempotent": true,
+          "effect": "readOnly"
+        }
+      },
+      {
+        "id": "check-alert",
+        "name": "Check alert",
+        "description": "Compares a pair's ECB reference rate with your threshold and notifies you once each time the rate crosses it. Stale rates are not compared.",
+        "category": "Markets",
+        "parameters": [
+          {
+            "key": "base",
+            "label": "Base currency",
+            "description": "The currency of one unit, as an ISO 4217 code (EUR, USD, PLN). Default: EUR.",
+            "required": false,
+            "kind": {
+              "type": "text",
+              "maxLength": 3
+            },
+            "default": {
+              "type": "text",
+              "value": "EUR"
+            }
+          },
+          {
+            "key": "quote",
+            "label": "Quote currency",
+            "description": "The currency the rate is given in, as an ISO 4217 code (USD, PLN, CHF).",
+            "required": true,
+            "kind": {
+              "type": "text",
+              "maxLength": 3
+            }
+          },
+          {
+            "key": "condition",
+            "label": "Condition",
+            "description": "above: notify when the rate is at or above the threshold. below: at or below it.",
+            "required": false,
+            "kind": {
+              "type": "choice",
+              "options": [
+                "above",
+                "below"
+              ]
+            },
+            "default": {
+              "type": "choice",
+              "value": "above"
+            }
+          },
+          {
+            "key": "threshold",
+            "label": "Threshold",
+            "description": "The rate to compare with, such as 1.10 or 4,35.",
+            "required": true,
+            "kind": {
+              "type": "text",
+              "maxLength": 32
+            }
+          },
+          {
+            "key": "at",
+            "label": "Run time",
+            "description": "Optional. In a scheduled workflow, the trigger's firing time (YYYY-MM-DD HH:MM): it lets the plugin use its saved rates instead of asking again.",
+            "required": false,
+            "kind": {
+              "type": "text",
+              "maxLength": 16
+            }
+          }
+        ],
+        "node": {
+          "version": 1,
+          "icon": "bell",
+          "outputs": [
+            {
+              "key": "summary",
+              "label": "Summary",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "pair",
+              "label": "Pair",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "rate",
+              "label": "Rate (decimal text)",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "rateDate",
+              "label": "Date of the reference rate",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "condition",
+              "label": "Condition",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "threshold",
+              "label": "Threshold",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "triggered",
+              "label": "Condition holds",
+              "kind": "boolean",
+              "always": true
+            },
+            {
+              "key": "crossed",
+              "label": "Crossed now",
+              "kind": "boolean",
+              "always": true
+            },
+            {
+              "key": "notified",
+              "label": "Notified",
+              "kind": "boolean",
+              "always": true
+            },
+            {
+              "key": "evaluated",
+              "label": "Evaluated",
+              "kind": "boolean",
+              "always": true
+            },
+            {
+              "key": "notification",
+              "label": "Notification problem",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "cross",
+              "label": "Cross rate (computed from euro rates)",
+              "kind": "boolean",
+              "always": true
+            },
+            {
+              "key": "delayed",
+              "label": "Delayed (daily reference rate, not live)",
+              "kind": "boolean",
+              "always": true
+            },
+            {
+              "key": "stale",
+              "label": "Stale",
+              "kind": "boolean",
+              "always": true
+            },
+            {
+              "key": "source",
+              "label": "Source",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "attribution",
+              "label": "Attribution",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "fetchedAt",
+              "label": "Fetched at (UTC)",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "ageMinutes",
+              "label": "Age in minutes",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "problem",
+              "label": "Problem",
+              "kind": "text",
+              "always": false
+            }
+          ],
+          "timeoutMs": 25000,
+          "retrySafe": true,
+          "idempotent": true,
+          "effect": "modifies"
+        }
+      },
+      {
+        "id": "forget",
+        "name": "Forget saved data",
+        "description": "Deletes the saved rates and the state of every alert, and clears the plugin's variables. Settings are not changed.",
+        "category": "Markets",
+        "parameters": [],
+        "node": {
+          "version": 1,
+          "icon": "trash-2",
+          "outputs": [],
+          "timeoutMs": 10000,
+          "retrySafe": false,
+          "idempotent": true,
+          "effect": "modifies"
+        }
+      }
+    ],
+    "variables": [
+      {
+        "id": "pair",
+        "name": "Pair",
+        "description": "The pair of the last run of Exchange rate, such as EUR/USD.",
+        "valueType": {
+          "type": "string"
+        },
+        "scope": "machine"
+      },
+      {
+        "id": "rate",
+        "name": "Rate",
+        "description": "The ECB reference rate of the last run of Exchange rate, as decimal text.",
+        "valueType": {
+          "type": "string"
+        },
+        "scope": "machine"
+      },
+      {
+        "id": "rateDate",
+        "name": "Rate date",
+        "description": "The day that rate is for (YYYY-MM-DD).",
+        "valueType": {
+          "type": "string"
+        },
+        "scope": "machine"
+      },
+      {
+        "id": "changePercent",
+        "name": "Change in percent",
+        "description": "The change since the previous ECB rate in percent, such as -0.34; empty without a previous rate.",
+        "valueType": {
+          "type": "string"
+        },
+        "scope": "machine"
+      },
+      {
+        "id": "summary",
+        "name": "Summary",
+        "description": "One sentence about the rate; it starts with [stale] ([nieaktualne] in Polish) when the rate is not known to be current.",
+        "valueType": {
+          "type": "string"
+        },
+        "scope": "machine"
+      },
+      {
+        "id": "stale",
+        "name": "Stale",
+        "description": "True when the last run of a rate action failed or could only report saved rates that are not known to be current.",
+        "valueType": {
+          "type": "boolean"
+        },
+        "scope": "machine"
+      },
+      {
+        "id": "history",
+        "name": "History",
+        "description": "The saved rates of the pair of the last run of Exchange rate, oldest first: date and rate, at most 32.",
+        "valueType": {
+          "type": "json"
+        },
+        "scope": "machine"
+      },
+      {
+        "id": "alertTriggered",
+        "name": "Alert condition holds",
+        "description": "Whether the condition of the last evaluated Check alert held.",
+        "valueType": {
+          "type": "boolean"
+        },
+        "scope": "machine"
+      }
+    ],
+    "settings": {
+      "portabilityVersion": 1,
+      "fields": [
+        {
+          "key": "language",
+          "label": "Language of the texts",
+          "description": "The language of messages and notifications: en (English) or pl (Polish).",
+          "required": false,
+          "kind": {
+            "type": "choice",
+            "options": [
+              "en",
+              "pl"
+            ]
+          },
+          "default": {
+            "type": "choice",
+            "value": "en"
+          },
+          "portability": "portable"
+        },
+        {
+          "key": "desktop",
+          "label": "Desktop notifications",
+          "description": "Shows an alert as a notification of the operating system. macOS and Windows may ask whether to allow them.",
+          "required": false,
+          "kind": {
+            "type": "boolean"
+          },
+          "default": {
+            "type": "boolean",
+            "value": true
+          },
+          "portability": "portable"
+        },
+        {
+          "key": "statusBar",
+          "label": "Status bar",
+          "description": "Also lists alerts in the status bar while DeckPilot is open.",
+          "required": false,
+          "kind": {
+            "type": "boolean"
+          },
+          "default": {
+            "type": "boolean",
+            "value": true
+          },
+          "portability": "portable"
+        }
+      ]
+    },
+    "errorCodes": {
+      "unknown-currency": "The ECB publishes no reference rate for that currency, or Frankfurter does not know it.",
+      "invalid-amount": "The amount is not a positive number.",
+      "invalid-threshold": "The threshold is not a positive number.",
+      "not-enough-history": "Fewer saved rates than the working days asked for.",
+      "provider-error": "Frankfurter answered with an error, and no saved rates could be shown instead.",
+      "invalid-response": "Frankfurter's answer could not be read, and no saved rates could be shown instead.",
+      "response-too-large": "Frankfurter's answer was larger than the plugin accepts.",
+      "timed-out": "Frankfurter did not answer in time, and no saved rates could be shown instead."
+    }
+  }
+}

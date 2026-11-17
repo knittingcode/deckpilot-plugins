@@ -1,0 +1,507 @@
+{
+  "$schema": "https://knittingcode.github.io/deckpilot-plugins/v1/schemas/plugin-manifest.schema.json",
+  "manifestVersion": 1,
+  "id": "deckpilot.air-quality",
+  "name": "Air Quality",
+  "version": "0.2.2",
+  "publisher": {
+    "id": "deckpilot",
+    "name": "DeckPilot",
+    "url": "https://github.com/knittingcode/deckpilot"
+  },
+  "description": "PM2.5, PM10 and the Polish air quality index of one measuring station, with the time of the measurement, as messages, workflow outputs and variables. Źródło danych: GIOŚ - EKOINFONET (CC BY 4.0).",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/knittingcode/deckpilot-plugins",
+    "directory": "first-party/air-quality"
+  },
+  "license": "Apache-2.0",
+  "keywords": [
+    "air-quality",
+    "pm25",
+    "pm10",
+    "smog",
+    "gios"
+  ],
+  "categories": [
+    "monitoring"
+  ],
+  "engines": {
+    "deckpilot": ">=0.6.0 <1.0.0",
+    "pluginApi": "^1.2",
+    "sdk": "0.1.0"
+  },
+  "runtime": {
+    "kind": "wasm",
+    "abi": 1
+  },
+  "entry": "src/lib.rs",
+  "icons": {
+    "128": "assets/icon-128.png"
+  },
+  "assets": {
+    "readme": "README.md"
+  },
+  "permissions": [
+    {
+      "kind": "network",
+      "hosts": [
+        "api.gios.gov.pl"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "justification": "Asks GIOŚ (Poland's environmental inspectorate) for its list of stations and for the values of the station you choose. It only reads, and sends only that station's number."
+    },
+    {
+      "kind": "device",
+      "state": true,
+      "justification": "Shows the index category and the PM values of the last reading on the keys you bound to Current air quality."
+    }
+  ],
+  "contributes": {
+    "actions": [
+      {
+        "id": "current",
+        "name": "Current air quality",
+        "description": "Reports the air quality index, PM2.5 and PM10 of your station with the time they were measured, and says so when they are not current.",
+        "category": "Air quality",
+        "parameters": [
+          {
+            "key": "at",
+            "label": "Run time",
+            "description": "Optional. In a scheduled workflow, the trigger's firing time (YYYY-MM-DD HH:MM). Not needed: the plugin keeps its 30-minute cache by the computer's clock.",
+            "required": false,
+            "kind": {
+              "type": "text",
+              "maxLength": 16
+            }
+          }
+        ],
+        "node": {
+          "version": 1,
+          "icon": "wind",
+          "outputs": [
+            {
+              "key": "summary",
+              "label": "Summary",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "category",
+              "label": "Index category",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "categoryName",
+              "label": "Index category name",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "unit",
+              "label": "Unit of PM values",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "station",
+              "label": "Station",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "provider",
+              "label": "Provider",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "measuredAt",
+              "label": "Time of the oldest value (Polish time)",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "stale",
+              "label": "Stale",
+              "kind": "boolean",
+              "always": true
+            },
+            {
+              "key": "source",
+              "label": "Source",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "attribution",
+              "label": "Attribution",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "index",
+              "label": "Air quality index (0-5)",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "indexTime",
+              "label": "Time of the index data",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "pm25",
+              "label": "PM2.5 (µg/m³)",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "pm25Time",
+              "label": "Time of the PM2.5 value",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "pm10",
+              "label": "PM10 (µg/m³)",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "pm10Time",
+              "label": "Time of the PM10 value",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "no2Category",
+              "label": "NO2 index category name",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "o3Category",
+              "label": "O3 index category name",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "so2Category",
+              "label": "SO2 index category name",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "measurementAgeMinutes",
+              "label": "Age of the oldest value in minutes",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "fetchedAt",
+              "label": "Fetched at (UTC)",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "ageMinutes",
+              "label": "Minutes since it was fetched",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "problem",
+              "label": "Problem",
+              "kind": "text",
+              "always": false
+            }
+          ],
+          "timeoutMs": 50000,
+          "retrySafe": true,
+          "idempotent": true,
+          "effect": "readOnly"
+        },
+        "state": {
+          "refresh": "every",
+          "intervalSeconds": 60
+        }
+      },
+      {
+        "id": "find-station",
+        "name": "Find station",
+        "description": "Searches GIOŚ measuring stations by city, station name or voivodeship and lists up to 8 with their numbers.",
+        "category": "Air quality",
+        "parameters": [
+          {
+            "key": "query",
+            "label": "City or station name",
+            "description": "At least two letters; Polish letters may be typed without their marks (Krakow, Lodz). More words narrow the search.",
+            "required": true,
+            "kind": {
+              "type": "text",
+              "maxLength": 80
+            }
+          }
+        ],
+        "node": {
+          "version": 1,
+          "icon": "search",
+          "outputs": [
+            {
+              "key": "count",
+              "label": "Number of matches",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "shown",
+              "label": "Number of matches listed",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "matches",
+              "label": "Matches (number: station, one per line)",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "firstId",
+              "label": "Number of the first match",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "source",
+              "label": "Source",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "attribution",
+              "label": "Attribution",
+              "kind": "text",
+              "always": true
+            }
+          ],
+          "timeoutMs": 40000,
+          "retrySafe": true,
+          "idempotent": true,
+          "effect": "readOnly"
+        }
+      },
+      {
+        "id": "select-station",
+        "name": "Select station",
+        "description": "Stores the station with the given number as the one Current air quality reports, and looks up its PM2.5 and PM10 sensors.",
+        "category": "Air quality",
+        "parameters": [
+          {
+            "key": "station",
+            "label": "Station number",
+            "description": "The number in front of a station in the list of Find station.",
+            "required": true,
+            "kind": {
+              "type": "integer",
+              "min": 1,
+              "max": 99999999
+            }
+          }
+        ],
+        "node": {
+          "version": 1,
+          "icon": "map-pin",
+          "outputs": [
+            {
+              "key": "selected",
+              "label": "Chosen station",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "stationId",
+              "label": "Number of the station",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "hasPm25",
+              "label": "Measures PM2.5",
+              "kind": "boolean",
+              "always": true
+            },
+            {
+              "key": "hasPm10",
+              "label": "Measures PM10",
+              "kind": "boolean",
+              "always": true
+            },
+            {
+              "key": "attribution",
+              "label": "Attribution",
+              "kind": "text",
+              "always": true
+            }
+          ],
+          "timeoutMs": 50000,
+          "retrySafe": false,
+          "idempotent": true,
+          "effect": "modifies"
+        }
+      },
+      {
+        "id": "forget-station",
+        "name": "Forget station",
+        "description": "Deletes the chosen station and its saved values, and clears the plugin's variables. The list of stations and the settings stay.",
+        "category": "Air quality",
+        "parameters": [],
+        "node": {
+          "version": 1,
+          "icon": "trash-2",
+          "outputs": [],
+          "timeoutMs": 10000,
+          "retrySafe": false,
+          "idempotent": true,
+          "effect": "modifies"
+        }
+      }
+    ],
+    "variables": [
+      {
+        "id": "pm25",
+        "name": "PM2.5",
+        "description": "PM2.5 in µg/m³ at the last run of Current air quality; no value when the station has none.",
+        "valueType": {
+          "type": "integer"
+        },
+        "scope": "machine"
+      },
+      {
+        "id": "pm10",
+        "name": "PM10",
+        "description": "PM10 in µg/m³ at the last run of Current air quality; no value when the station has none.",
+        "valueType": {
+          "type": "integer"
+        },
+        "scope": "machine"
+      },
+      {
+        "id": "index",
+        "name": "Air quality index",
+        "description": "The Polish air quality index, 0 (very good) to 5 (very bad); no value when the station has no index.",
+        "valueType": {
+          "type": "integer"
+        },
+        "scope": "machine"
+      },
+      {
+        "id": "category",
+        "name": "Index category",
+        "description": "The index category as a text in the language of the settings.",
+        "valueType": {
+          "type": "string"
+        },
+        "scope": "machine"
+      },
+      {
+        "id": "categoryName",
+        "name": "Index category name",
+        "description": "The index category as a fixed name: very-good, good, moderate, sufficient, bad, very-bad or none.",
+        "valueType": {
+          "type": "string"
+        },
+        "scope": "machine"
+      },
+      {
+        "id": "summary",
+        "name": "Summary",
+        "description": "The reading as one text with its time and source; it starts with [stale] when the data is not known to be current.",
+        "valueType": {
+          "type": "string"
+        },
+        "scope": "machine"
+      },
+      {
+        "id": "measuredAt",
+        "name": "Measured at",
+        "description": "The time of the oldest value reported, in Polish time (YYYY-MM-DD HH:MM).",
+        "valueType": {
+          "type": "string"
+        },
+        "scope": "machine"
+      },
+      {
+        "id": "stale",
+        "name": "Stale",
+        "description": "True unless the last run of Current air quality could show that its values are recent.",
+        "valueType": {
+          "type": "boolean"
+        },
+        "scope": "machine"
+      },
+      {
+        "id": "station",
+        "name": "Station",
+        "description": "The station the values are from.",
+        "valueType": {
+          "type": "string"
+        },
+        "scope": "machine"
+      }
+    ],
+    "settings": {
+      "portabilityVersion": 1,
+      "fields": [
+        {
+          "key": "provider",
+          "label": "Data provider",
+          "description": "gios: Poland's Chief Inspectorate of Environmental Protection, without a key. The only provider in this version.",
+          "required": false,
+          "kind": {
+            "type": "choice",
+            "options": [
+              "gios"
+            ]
+          },
+          "default": {
+            "type": "choice",
+            "value": "gios"
+          },
+          "portability": "portable"
+        },
+        {
+          "key": "language",
+          "label": "Language of the texts",
+          "description": "The language of categories and messages: en (English) or pl (Polish).",
+          "required": false,
+          "kind": {
+            "type": "choice",
+            "options": [
+              "en",
+              "pl"
+            ]
+          },
+          "default": {
+            "type": "choice",
+            "value": "en"
+          },
+          "portability": "portable"
+        }
+      ]
+    },
+    "errorCodes": {
+      "no-station": "No station is chosen: run Find station, then Select station.",
+      "station-not-found": "No station matches the search, or no station has the given number.",
+      "no-data": "The station reports no PM2.5 value, no PM10 value and no index now.",
+      "provider-error": "GIOŚ answered with an error, and no saved data could be shown instead.",
+      "invalid-response": "GIOŚ's answer could not be read, and no saved data could be shown instead.",
+      "response-too-large": "GIOŚ's answer was larger than the plugin accepts.",
+      "timed-out": "GIOŚ did not answer in time, and no saved data could be shown instead."
+    }
+  }
+}
