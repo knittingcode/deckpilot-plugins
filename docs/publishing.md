@@ -103,7 +103,7 @@ The push of the tag starts *Publish*:
 | --- | --- | --- | --- | --- |
 | `resolve`: publishing enabled, run on a tag, tag commit on `main`, the version record exists and names this tag's asset URL, every other version already released | — | `contents: read` | — | no |
 | `build`: rebuilds and checks every recorded package at the tagged commit (`tools/validate.sh registry`) | — | `contents: read` | — | **yes** |
-| `sign`: builds only the pinned DeckPilot tool; takes the packages of `build` from this same run; re-checks every sha256 and size against the reviewed records; mirrors and verifies the live site (existing-client state); `build-index`, `sign-index`, `timestamp --expires-in 7d`; `verify-site --state … --require-packages --min-remaining 6d` | `registry-publish` | `contents: read` | index and timestamp keys | no |
+| `sign`: builds only the pinned DeckPilot tool; takes the packages of `build` from this same run; re-checks every sha256 and size against the reviewed records; mirrors and verifies the live site (existing-client state); `build-index`, `sign-index`, `timestamp --expires-in 7d`; `verify-site --state … --require-packages --min-remaining 6d` | `registry-release` | `contents: read` | index and timestamp keys | no |
 | `release`: re-checks the package against its pin; creates a draft release for the existing tag if there is none (`--verify-tag`), uploads the asset, publishes it (never latest; pre-release for a semver pre-release); downloads it anonymously and compares the sha256 | — | `contents: write` | — | no |
 | `website`: builds the Marketplace website, its catalog generated from the registry `sign` verified (read-only) | — | `contents: read` | — | no |
 | `deploy`: the signed `/v1/` byte for byte, with the website around it (`tools/compose-site.py`), to Pages | `github-pages` | `pages: write`, `id-token: write`, `contents: read` | — | no |
@@ -153,7 +153,7 @@ are in [production-readiness.md](production-readiness.md).
    `keys/roots.json`, `keys/1.json` and `keys/1.json.minisig` by pull
    request. `roots.json` also becomes DeckPilot's
    `DECKPILOT_REGISTRY_ROOT_PUBKEYS`.
-2. **Environment `registry-publish`**: deployment rule "selected tags"
+2. **Environment `registry-release`**: deployment rule "selected tags"
    `*--v*`, a required reviewer, and the secrets
    `REGISTRY_INDEX_KEY`, `REGISTRY_INDEX_KEY_PASSWORD`,
    `REGISTRY_TIMESTAMP_KEY`, `REGISTRY_TIMESTAMP_KEY_PASSWORD`
