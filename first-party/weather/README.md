@@ -15,15 +15,35 @@ Polish: [README.pl.md](README.pl.md).
 > owner has to confirm with Open-Meteo that the free API may be used by an
 > application distributed to many users ([below](#open-meteos-terms)).
 
+## On a key
+
+*Since 0.2.0; needs DeckPilot with plugin API 1.2.* A key bound to
+**Current weather** shows the temperature and the conditions, such as
+`12 C` over `Partly cloudy`, on a colour for the kind of weather: amber for
+sun, purple for a clear night, grey for clouds and fog, blue for rain, teal
+for snow, red for storms.
+
+The key shows the **last report a run of the action fetched** (a press of
+the key, or a scheduled workflow). Showing it never asks Open-Meteo. Once
+the report is older than its lifetime of 15 minutes, the values stay but
+the key says so: a warning mark and the age as a badge (`40m`, `3h`,
+`2d`), or `?` when the age is not known. It is never shown as current.
+Press the key, or refresh on a schedule ([below](#refreshing-on-a-schedule)),
+to fetch a new one.
+
+Before the first report, or when no place is set, the key shows the title
+you gave it. Key texts are in DeckPilot's key font, which has no `°` and
+no Polish letters: `12 C`, and `Mgla` for `Mgła`. The action's message and
+outputs keep the full text. A device without displays shows nothing.
+
 ## What it does not do
 
-Plugin API 1.0 has no way for a plugin to draw on a key, to run by itself,
-or to learn the time. So this version does **not**:
+Plugin API 1.2 lets a plugin describe what a key shows (above), but not
+draw on it, run by itself or keep a timer. So this version does **not**:
 
-- **show the weather on a key.** No temperature, no dynamic weather icon.
-  A key bound to an action runs it; the result is the action's message.
-  The outputs `conditionName` and `isDay` are what an icon would be chosen
-  by once plugins can set key content.
+- **draw a weather icon.** DeckPilot's built-in key glyphs have no sun or
+  cloud; the colour stands for the kind of weather. The outputs
+  `conditionName` and `isDay` are what an icon would be chosen by.
 - **refresh by itself.** It runs when a key is pressed or a workflow runs
   it. A workflow with a schedule is the way to refresh the variables
   ([below](#refreshing-on-a-schedule)).
@@ -214,6 +234,7 @@ as words.
 | --- | --- |
 | `network`: `api.open-meteo.com`, `GET` | The weather for your place |
 | `network`: `geocoding-api.open-meteo.com`, `GET` | Searching a place by name |
+| `device`: `state` | The temperature and the conditions on the keys bound to Current weather ([On a key](#on-a-key)) |
 
 Nothing else. Storage, settings, the plugin's own variables and the log
 need no permission; the cache is far below the default storage quota, so

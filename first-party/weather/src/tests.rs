@@ -110,13 +110,20 @@ struct Agent {
     published: Vec<(String, Value)>,
     cleared: usize,
     deny_network: bool,
+    /// The agent's clock for `time.now` (Unix seconds); the default is
+    /// the canned answer's `Date`.
+    now: u64,
 }
 
 type Shared = Rc<RefCell<Agent>>;
 
+/// `2026-11-16T18:16:34Z`, the `Date` of the canned answers.
+const FETCHED: u64 = 1_794_852_994;
+
 fn agent(settings: Value) -> Shared {
     Rc::new(RefCell::new(Agent {
         settings,
+        now: FETCHED,
         ..Agent::default()
     }))
 }
@@ -170,6 +177,9 @@ fn host(agent: &Shared) -> MockHost {
                 a.logs.push(l.message.clone());
                 CallResult::Ok(Value::Null)
             }
+            CapabilityRequest::TimeNow(_) => CallResult::Ok(json!({
+                "unixMs": a.now * 1000, "utcOffsetMinutes": 60
+            })),
             CapabilityRequest::HttpFetch(f) => {
                 assert_eq!(f.method, HttpMethod::Get);
                 assert!(f.body.is_none() && f.auth.is_none());
@@ -320,9 +330,15 @@ fn the_manifest_declares_what_the_code_uses_and_nothing_more() {
     assert_eq!(m["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(m["publisher"]["id"], "deckpilot");
 
-    // One permission: the two Open-Meteo origins the code asks, GET only.
+    // Two permissions: the two Open-Meteo origins the code asks, GET only;
+    // and key state for Current weather (plugin API 1.2).
     let permissions = m["permissions"].as_array().unwrap();
-    assert_eq!(permissions.len(), 1);
+    assert_eq!(permissions.len(), 2);
+    assert_eq!(permissions[1]["kind"], "device");
+    assert_eq!(permissions[1]["state"], true);
+    assert!(permissions[1].get("icons").is_none());
+    assert_eq!(m["engines"]["pluginApi"], "^1.2");
+    assert_eq!(plugin().api_level().to_string(), "1.2");
     assert_eq!(permissions[0]["kind"], "network");
     assert_eq!(
         permissions[0]["hosts"],
@@ -1797,5 +1813,124 @@ fn coordinates_reach_the_provider_and_nothing_else() {
             "{url}"
         );
         assert!(!url.contains("52.229") && !url.contains("21.012") && !url.contains("37.215"));
+    }
+}
+
+// ------------------------------------------------------------- key state
+
+/// What a key bound to Current weather shows, through the state handler.
+fn key(agent: &Shared) -> KeyState {
+    match host(agent).key_state(&plugin(), "current", json!({})) {
+        deckpilot_plugin_sdk::StateOutcome::Ok(state) => state,
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn only_current_shows_key_state_and_it_fetches_nothing() {
+    let m = manifest();
+    for action in m["contributes"]["actions"].as_array().unwrap() {
+        let id = action["id"].as_str().unwrap();
+        let declared = action.get("state").is_some();
+        assert_eq!(declared, id == "current", "{id}");
+        if declared {
+            assert_eq!(action["node"]["effect"], "readOnly");
+            assert_eq!(
+                action["state"],
+                json!({"refresh": "every", "intervalSeconds": 60})
+            );
+        }
+        let shows = plugin().find(id).unwrap().has_state();
+        assert_eq!(shows, declared, "{id}");
+    }
+    // A state call with a report stored: no request, no write.
+    let a = warsaw();
+    queue(&a, http(200, FORECAST));
+    ok(run(&a, "current", json!({})));
+    let (urls, store) = (requests(&a), a.borrow().store.clone());
+    key(&a);
+    assert_eq!(requests(&a), urls);
+    assert_eq!(a.borrow().store, store);
+}
+
+#[test]
+fn the_key_shows_the_last_report_and_its_age_once_old() {
+    let a = warsaw();
+    // Nothing fetched yet: the key as the user designed it.
+    assert_eq!(key(&a), KeyState::new());
+    queue(&a, http(200, FORECAST));
+    ok(run(&a, "current", json!({})));
+    // Fresh: the temperature in ASCII, the condition, a colour for rain.
+    let fresh = key(&a);
+    assert_eq!(fresh.label.as_deref(), Some("7 C"));
+    assert_eq!(fresh.detail.as_deref(), Some("Light drizzle"));
+    assert_eq!(fresh.accent, Some(Accent::Blue));
+    assert_eq!((fresh.badge.as_deref(), fresh.indicator), (None, None));
+    // Still within the lifetime of 15 minutes.
+    a.borrow_mut().now = FETCHED + 14 * 60;
+    assert_eq!(key(&a), fresh);
+    // Older: the same values, marked with the age; never as current.
+    for (age, badge) in [(15 * 60, "15m"), (3 * 3_600, "3h"), (3 * 86_400, "3d")] {
+        a.borrow_mut().now = FETCHED + age;
+        let old = key(&a);
+        assert_eq!(old.label, fresh.label);
+        assert_eq!(old.badge.as_deref(), Some(badge));
+        assert_eq!(old.indicator, Some(Indicator::Warning));
+    }
+    // A clock behind the answer's date: the age is unknown, and said so.
+    a.borrow_mut().now = FETCHED - 60;
+    let unknown = key(&a);
+    assert_eq!(
+        (unknown.badge.as_deref(), unknown.indicator),
+        (Some("?"), Some(Indicator::Warning))
+    );
+    for state in [fresh, unknown] {
+        state.validate().expect("within the bounds of key state");
+    }
+}
+
+#[test]
+fn the_key_follows_units_language_and_place() {
+    let a = warsaw();
+    queue(&a, http(200, FORECAST));
+    ok(run(&a, "current", json!({})));
+    // Imperial and Polish: no degree sign, no Polish letters on a key.
+    a.borrow_mut().settings["units"] = json!("imperial");
+    a.borrow_mut().settings["language"] = json!("pl");
+    let state = key(&a);
+    assert_eq!(state.label.as_deref(), Some("44 F"));
+    assert_eq!(state.detail.as_deref(), Some("Slaba mzawka"));
+    // Another place than the stored report's: nothing shown for it.
+    a.borrow_mut().settings["latitude"] = json!("50.06");
+    a.borrow_mut().settings["longitude"] = json!("19.94");
+    assert_eq!(key(&a), KeyState::new());
+    // A mistake in the settings: left to the action to report.
+    a.borrow_mut().settings["latitude"] = json!("north");
+    assert_eq!(key(&a), KeyState::new());
+}
+
+#[test]
+fn key_texts_are_ascii_within_their_bounds() {
+    use crate::key::{age_badge, ascii};
+    assert_eq!(ascii("Mgła osadzająca szadź", 32), "Mgla osadzajaca szadz");
+    assert_eq!(ascii("ZAŻÓŁĆ GĘŚLĄ JAŹŃ", 32), "ZAZOLC GESLA JAZN");
+    assert_eq!(ascii("7 °C\n", 32), "7 C");
+    assert_eq!(ascii(&"x".repeat(40), 32).len(), 32);
+    for (code, _, en, pl) in conditions::CODES {
+        for text in [en, pl] {
+            let shown = ascii(text, 32);
+            assert!(shown.is_ascii() && !shown.is_empty(), "{code}: {text}");
+        }
+    }
+    for (seconds, badge) in [
+        (0, "0m"),
+        (59 * 60, "59m"),
+        (60 * 60, "1h"),
+        (47 * 3_600, "47h"),
+        (48 * 3_600, "2d"),
+        (u64::MAX, "999d"),
+    ] {
+        assert_eq!(age_badge(seconds), badge, "{seconds}");
+        assert!(badge.chars().count() <= 4);
     }
 }

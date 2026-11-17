@@ -2,7 +2,8 @@
   "name": "Pogoda",
   "description": "Aktualna pogoda i prognoza do 7 dni dla jednego miejsca: komunikaty, wyjścia dla przepływów pracy i zmienne. Dane pogodowe: Open-Meteo.com (CC BY 4.0), do użytku niekomercyjnego.",
   "permissions": {
-    "network": "Wysyła współrzędne Twojego miejsca (zaokrąglone do ok. 1 km) do Open-Meteo, aby odczytać pogodę, a wyszukiwane nazwy miejsc do usługi geokodowania Open-Meteo."
+    "network": "Wysyła współrzędne Twojego miejsca (zaokrąglone do ok. 1 km) do Open-Meteo, aby odczytać pogodę, a wyszukiwane nazwy miejsc do usługi geokodowania Open-Meteo.",
+    "device": "Pokazuje temperaturę i warunki z ostatniego raportu na klawiszach przypisanych do akcji Aktualna pogoda."
   },
   "actions": {
     "current": {

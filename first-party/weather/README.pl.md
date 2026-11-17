@@ -16,15 +16,39 @@ English: [README.md](README.md).
 > rozpowszechniana wśród wielu użytkowników
 > ([niżej](#warunki-open-meteo)).
 
+## Na klawiszu
+
+*Od wersji 0.2.0; wymaga DeckPilota z API wtyczek 1.2.* Klawisz przypisany
+do akcji **Aktualna pogoda** pokazuje temperaturę i warunki, na przykład
+`12 C` nad `Czesciowe zachmurzenie`, na kolorze dla rodzaju pogody:
+bursztynowym dla słońca, fioletowym dla bezchmurnej nocy, szarym dla
+chmur i mgły, niebieskim dla deszczu, morskim dla śniegu, czerwonym dla
+burzy.
+
+Klawisz pokazuje **ostatni raport pobrany przez uruchomienie akcji**
+(naciśnięcie klawisza albo przepływ z harmonogramem). Samo pokazywanie
+nigdy nie pyta Open-Meteo. Gdy raport jest starszy niż jego czas ważności
+(15 minut), wartości zostają, ale klawisz to mówi: znacznik ostrzeżenia i
+wiek jako plakietka (`40m`, `3h`, `2d`), albo `?`, gdy wiek nie jest
+znany. Nigdy nie jest pokazywany jako aktualny. Naciśnij klawisz albo
+odświeżaj według harmonogramu ([niżej](#odświeżanie-według-harmonogramu)),
+aby pobrać nowy.
+
+Przed pierwszym raportem albo gdy miejsce nie jest ustawione, klawisz
+pokazuje nadany przez Ciebie tytuł. Teksty na klawiszach są w czcionce
+DeckPilota, która nie ma `°` ani polskich liter: `12 C` i `Mgla` zamiast
+`Mgła`. Komunikat i wyjścia akcji zachowują pełny tekst. Urządzenie bez
+wyświetlaczy nic nie pokazuje.
+
 ## Czego wtyczka nie robi
 
-API wtyczek 1.0 nie pozwala wtyczce rysować na klawiszu, uruchamiać się
-samodzielnie ani poznać aktualnego czasu. Dlatego ta wersja **nie**:
+API wtyczek 1.2 pozwala wtyczce opisać, co pokazuje klawisz (wyżej), ale
+nie rysować na nim, uruchamiać się samodzielnie ani mieć timera. Dlatego
+ta wersja **nie**:
 
-- **pokazuje pogody na klawiszu.** Nie ma temperatury ani dynamicznej ikony
-  pogody. Klawisz przypisany do akcji uruchamia ją; wynikiem jest komunikat
-  akcji. Wyjścia `conditionName` i `isDay` posłużą do wyboru ikony, gdy
-  wtyczki będą mogły ustawiać zawartość klawisza.
+- **rysuje ikony pogody.** Wbudowane symbole klawiszy DeckPilota nie mają
+  słońca ani chmury; kolor oznacza rodzaj pogody. Wyjścia `conditionName`
+  i `isDay` posłużą do wyboru ikony.
 - **odświeża się sama.** Działa, gdy naciśniesz klawisz albo gdy uruchomi
   ją przepływ pracy. Zmienne odświeża przepływ z harmonogramem
   ([niżej](#odświeżanie-według-harmonogramu)).
@@ -219,6 +243,7 @@ słownie.
 | --- | --- |
 | `network`: `api.open-meteo.com`, `GET` | Pogoda dla Twojego miejsca |
 | `network`: `geocoding-api.open-meteo.com`, `GET` | Wyszukiwanie miejsca po nazwie |
+| `device`: `state` | Temperatura i warunki na klawiszach przypisanych do akcji Aktualna pogoda ([Na klawiszu](#na-klawiszu)) |
 
 Nic więcej. Pamięć wtyczki, ustawienia, własne zmienne i dziennik nie
 wymagają uprawnień; pamięć podręczna jest znacznie mniejsza niż domyślny

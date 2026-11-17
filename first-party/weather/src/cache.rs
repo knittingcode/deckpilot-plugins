@@ -256,6 +256,17 @@ pub fn weather(
     }
 }
 
+/// The stored report for `place`, without asking the provider: what a key
+/// shows (`crate::key`). Absent, of another place or another format:
+/// `None`.
+pub fn stored_weather(
+    ctx: &mut Context<'_>,
+    place: &Place,
+) -> Result<Option<WeatherEntry>, PluginError> {
+    let grid = place.grid();
+    Ok(read::<WeatherEntry>(ctx, WEATHER_KEY)?.filter(|e| e.v == FORMAT && e.grid == grid))
+}
+
 /// A name as one line with single spaces, at most 80 characters.
 pub fn normalize_name(name: &str) -> String {
     let line: String = name
