@@ -23,7 +23,7 @@
 #   website           UNPRIVILEGED (no environment, no secret): builds the
 #                     marketplace website, with its catalog generated from
 #                     the registry `sign` just verified; read-only consumer
-#   pages-build       contents: write only: an empty commit on the branch
+#   pages-build       contents: write only: a build commit on the branch
 #                     pages-builds, the build version of this deployment
 #                     (Pages ignores a version it has seen, and refuses
 #                     one that is not a commit; tools/pages-build-commit.sh)
@@ -213,7 +213,7 @@ jobs:
   # The commit this run's Pages deployment is recorded under: Pages ignores
   # a second deployment of a build version it has seen and refuses one that
   # is not a commit (tools/pages-build-commit.sh). Its only permission is
-  # writing the empty commit to the branch pages-builds; it runs no
+  # writing a build commit to the branch pages-builds; it runs no
   # repository code but that script and has no secret.
   pages-build:
     name: Pages build commit
@@ -232,7 +232,7 @@ jobs:
           sparse-checkout: tools
           ref: ${{ needs.resolve.outputs.commit }}
       - id: commit
-        name: Append an empty build commit to pages-builds
+        name: Append a build commit to pages-builds
         env:
           GH_TOKEN: ${{ github.token }}
         run: tools/pages-build-commit.sh

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Tests of tools/pages-build-commit.sh with a gh stand-in: an empty commit
-# on the empty tree, appended to pages-builds (or starting it), its SHA
+# Tests of tools/pages-build-commit.sh with a gh stand-in (which, like
+# GitHub, refuses an empty tree): a commit with one file, BUILD, appended to pages-builds (or starting it), its SHA
 # printed and written to GITHUB_OUTPUT; every API failure stops it.
 #
 #   tools/tests/test-pages-build-commit.sh
@@ -21,7 +21,10 @@ done
 echo "$method $endpoint $body" >> "$STUB/calls"
 if [ -n "${STUB_FAIL:-}" ] && [[ "$method $endpoint" =~ $STUB_FAIL ]]; then echo "HTTP 422" >&2; exit 1; fi
 case "$method $endpoint" in
-  "POST repos/o/r/git/trees") echo '{"sha":"4b825dc642cb6eb9a060e54bf8d69288fbee4904"}' | jq -r "$q" ;;
+  "POST repos/o/r/git/trees") echo "$body" > "$STUB/tree.json"
+    # GitHub refuses an empty tree: 422 "Invalid tree info".
+    [ "$(jq '.tree | length' <<< "$body")" -gt 0 ] || { echo "gh: Invalid tree info (HTTP 422)" >&2; exit 1; }
+    echo '{"sha":"4b825dc642cb6eb9a060e54bf8d69288fbee4904"}' | jq -r "$q" ;;
   "GET repos/o/r/git/ref/heads/pages-builds") [ -f "$STUB/head" ] || { echo "HTTP 404" >&2; exit 1; }; jq -n --arg s "$(cat "$STUB/head")" '{object: {sha: $s}}' | jq -r "$q" ;;
   "POST repos/o/r/git/commits") echo "$body" > "$STUB/commit.json"; echo '{"sha":"1111111111111111111111111111111111111111"}' | jq -r "$q" ;;
   "PATCH repos/o/r/git/refs/heads/pages-builds") echo "$body" > "$STUB/patch.json"; echo '{}' ;;
@@ -47,7 +50,10 @@ if HEAD_SHA=2222222222222222222222222222222222222222 run \
   && [ "$(jq -c '[.tree, .parents]' "$STUB/commit.json")" = '["4b825dc642cb6eb9a060e54bf8d69288fbee4904",["2222222222222222222222222222222222222222"]]' ] \
   && jq -e '.message | test("0123456789abcdef0123456789abcdef01234567.*run 42, attempt 3")' "$STUB/commit.json" > /dev/null \
   && [ "$(jq -c . "$STUB/patch.json")" = '{"sha":"1111111111111111111111111111111111111111","force":false}' ]; then
-  ok "an empty commit on the empty tree, appended to pages-builds without force"
+  [ "$(jq -c '[.tree[] | {path, mode, type}]' "$STUB/tree.json")" = '[{"path":"BUILD","mode":"100644","type":"blob"}]' ] \
+    && jq -e '.tree[0].content | test("^Pages build of 0123456789abcdef0123456789abcdef01234567 \\(run 42, attempt 3\\)\n$")' "$STUB/tree.json" > /dev/null \
+    && ok "a commit whose only file BUILD names the run, appended to pages-builds without force" \
+    || bad "the build tree: $(cat "$STUB/tree.json")"
 else bad "append: $(cat "$work/log")"; fi
 if run && [ "$(jq -c '.parents' "$STUB/commit.json")" = '[]' ] \
   && [ "$(jq -c . "$STUB/create.json")" = '{"ref":"refs/heads/pages-builds","sha":"1111111111111111111111111111111111111111"}' ]; then
