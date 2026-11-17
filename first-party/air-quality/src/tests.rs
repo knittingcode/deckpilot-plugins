@@ -195,6 +195,8 @@ struct Agent {
     /// The agent's clock for `time.now` (Unix seconds); the default is
     /// the canned answers' `Date`.
     now: u64,
+    /// An agent older than plugin API 1.1: `time.now` does not exist.
+    no_clock: bool,
 }
 
 type Shared = Rc<RefCell<Agent>>;
@@ -305,6 +307,10 @@ fn host(agent: &Shared) -> MockHost {
                     None => panic!("an HTTP request the test did not expect: {}", f.url),
                 }
             }
+            CapabilityRequest::TimeNow(_) if a.no_clock => CallResult::error(
+                CallErrorCode::UnsupportedOp,
+                "time.now needs plugin API 1.1",
+            ),
             CapabilityRequest::TimeNow(_) => CallResult::Ok(json!({
                 "unixMs": a.now * 1000, "utcOffsetMinutes": 60
             })),
@@ -385,6 +391,20 @@ fn variable(agent: &Shared, id: &str) -> Option<Value> {
 
 fn requests(agent: &Shared) -> usize {
     agent.borrow().urls.len()
+}
+
+/// Moves the agent's clock on.
+fn later(agent: &Shared, minutes: u64) {
+    agent.borrow_mut().now += minutes * 60;
+}
+
+/// Sets the agent's clock to a local time `YYYY-MM-DD HH:MM` of its zone
+/// (UTC+1, as its `time.now` answers) and runs `current` with that `at`,
+/// as a scheduled workflow does.
+fn current_at(agent: &Shared, at: &str) -> (String, BTreeMap<String, ParamValue>) {
+    let local = time::local_minutes(at).expect("a valid at");
+    agent.borrow_mut().now = u64::try_from((local - 60) * 60).unwrap();
+    current(agent, json!({ "at": at }))
 }
 
 /// The declared outputs of an action: `(key, always)`.
@@ -1335,12 +1355,12 @@ PM2.5 15 µg/m³, PM10 23 µg/m³. Indeks zanieczyszczeń: NO2: Dobry, O3: Umiar
 fn a_scheduled_run_uses_the_cache_for_half_an_hour() {
     let agent = chosen_530(json!({}));
     queue_reading(&agent);
-    let (_, data) = current(&agent, json!({ "at": "2026-11-16 19:42" }));
+    let (_, data) = current_at(&agent, "2026-11-16 19:42");
     assert_eq!(text(&data, "source"), "network");
     assert_eq!(requests(&agent), 3);
 
     // 29 minutes later: the stored reading, no request, its age counted on.
-    let (message, data) = current(&agent, json!({ "at": "2026-11-16 20:11" }));
+    let (message, data) = current_at(&agent, "2026-11-16 20:11");
     assert_eq!(requests(&agent), 3);
     assert_eq!(
         (text(&data, "source"), int(&data, "ageMinutes")),
@@ -1355,23 +1375,29 @@ fn a_scheduled_run_uses_the_cache_for_half_an_hour() {
 
     // 30 minutes: asked again.
     queue_reading(&agent);
-    let (_, data) = current(&agent, json!({ "at": "2026-11-16 20:12" }));
+    let (_, data) = current_at(&agent, "2026-11-16 20:12");
     assert_eq!(
         (text(&data, "source"), requests(&agent)),
         ("network".into(), 6)
     );
 
-    // A key press has no time: it cannot know the age, and asks.
-    queue_reading(&agent);
-    let (_, data) = current(&agent, json!({}));
+    // `at` still counts when the clock cannot: set back an hour, the clock
+    // gives no age, and `at` says ten minutes.
+    agent.borrow_mut().now -= 3_600;
+    let (_, data) = current(&agent, json!({ "at": "2026-11-16 20:22" }));
     assert_eq!(
-        (text(&data, "source"), requests(&agent)),
-        ("network".into(), 9)
+        (
+            text(&data, "source"),
+            int(&data, "ageMinutes"),
+            requests(&agent)
+        ),
+        ("cache".into(), 10, 6)
     );
-    // A run "before" the stored one (the clock was set back): asks.
+    // A run "before" the stored one by both (the clock was set back):
+    // the age is unknown, and it asks.
     queue_reading(&agent);
-    current(&agent, json!({ "at": "2026-11-16 19:00" }));
-    assert_eq!(requests(&agent), 12);
+    current_at(&agent, "2026-11-16 19:00");
+    assert_eq!(requests(&agent), 9);
 
     for at in [
         "yesterday",
@@ -1382,7 +1408,191 @@ fn a_scheduled_run_uses_the_cache_for_half_an_hour() {
         let (code, _, _) = failed(run(&agent, "current", json!({ "at": at })));
         assert_eq!(code, codes::INVALID_PARAMETERS, "{at}");
     }
-    assert_eq!(requests(&agent), 12);
+    assert_eq!(requests(&agent), 9);
+}
+
+#[test]
+fn a_key_press_uses_the_cache_and_asks_gios_at_most_twice_an_hour() {
+    // A key press has no `at`: the agent's clock alone decides.
+    let agent = chosen_530(json!({}));
+    queue_reading(&agent);
+    let (_, data) = current(&agent, json!({}));
+    assert_eq!(
+        (text(&data, "source"), requests(&agent)),
+        ("network".into(), 3)
+    );
+    assert_eq!(
+        agent.borrow().store[READING_KEY]["pulled_at"],
+        json!(DATE_UNIX)
+    );
+
+    // Pressed again and again within 30 minutes: never a request.
+    for minutes in [0, 1, 15, 29] {
+        agent.borrow_mut().now = DATE_UNIX + minutes * 60;
+        let (message, data) = current(&agent, json!({}));
+        assert_eq!(requests(&agent), 3, "{minutes}");
+        assert_eq!(
+            (text(&data, "source"), int(&data, "ageMinutes")),
+            ("cache".into(), i64::try_from(minutes).unwrap())
+        );
+        assert!(!flag(&data, "stale"));
+        assert_eq!(
+            int(&data, "measurementAgeMinutes"),
+            42 + i64::try_from(minutes).unwrap()
+        );
+        if minutes > 0 {
+            assert!(message.contains(&format!("(from the cache, fetched {minutes} min ago)")));
+        }
+    }
+    // 30 minutes after the pull: asked again.
+    agent.borrow_mut().now = DATE_UNIX + 30 * 60;
+    queue_reading(&agent);
+    let (_, data) = current(&agent, json!({}));
+    assert_eq!(
+        (text(&data, "source"), requests(&agent)),
+        ("network".into(), 6)
+    );
+
+    // A request that reached GIOŚ counts even when it failed: the next one
+    // waits 30 minutes, and the saved reading is shown meanwhile.
+    later(&agent, 30);
+    queue(&agent, http(500, ""));
+    let (_, data) = current(&agent, json!({}));
+    assert_eq!(
+        (text(&data, "problem"), requests(&agent)),
+        (PROVIDER_ERROR.into(), 7)
+    );
+    assert!(flag(&data, "stale"));
+    later(&agent, 29);
+    let (message, data) = current(&agent, json!({}));
+    assert_eq!(
+        (text(&data, "problem"), requests(&agent)),
+        ("throttled".into(), 7)
+    );
+    assert!(message.starts_with("Not current: GIOŚ gave no new data (throttled)."));
+    later(&agent, 1);
+    queue_reading(&agent);
+    let (_, data) = current(&agent, json!({}));
+    assert_eq!(
+        (text(&data, "source"), requests(&agent)),
+        ("network".into(), 10)
+    );
+
+    // A request that never left this computer does not count.
+    later(&agent, 30);
+    queue(&agent, offline());
+    let (_, data) = current(&agent, json!({}));
+    assert_eq!(text(&data, "problem"), "connection-failed");
+    later(&agent, 1);
+    queue_reading(&agent);
+    let (_, data) = current(&agent, json!({}));
+    assert_eq!(
+        (text(&data, "source"), requests(&agent)),
+        ("network".into(), 14)
+    );
+
+    // Without saved data the limit is an error, not a request.
+    let agent = chosen_530(json!({}));
+    queue(&agent, http(503, ""));
+    let (code, _, _) = failed(run(&agent, "current", json!({})));
+    assert_eq!(code, PROVIDER_ERROR);
+    later(&agent, 10);
+    let (code, message, retryable) = failed(run(&agent, "current", json!({})));
+    assert_eq!((code.as_str(), retryable), (codes::THROTTLED, true));
+    assert!(message.contains("less than 30 minutes ago"), "{message}");
+    assert_eq!(requests(&agent), 1);
+    // Per station: another station is not held back by this one.
+    agent.borrow_mut().store.get_mut(STATE_KEY).unwrap()["pulls"] =
+        json!({ "550": DATE_UNIX + 10 * 60 });
+    queue_reading(&agent);
+    current(&agent, json!({}));
+    assert_eq!(requests(&agent), 4);
+}
+
+#[test]
+fn without_the_agent_clock_gios_is_not_asked() {
+    // The manifest requires plugin API 1.2, which has `time.now`; should an
+    // agent still lack it, the limit cannot be kept, so nothing is sent.
+    assert_eq!(manifest()["engines"]["pluginApi"], "^1.2");
+    let agent = chosen_530(json!({}));
+    agent.borrow_mut().no_clock = true;
+    for params in [json!({}), json!({ "at": "2026-11-16 19:42" })] {
+        let outcome = run(&agent, "current", params);
+        assert!(
+            matches!(outcome, ActionOutcome::Failed { .. }),
+            "{outcome:?}"
+        );
+    }
+    assert_eq!(requests(&agent), 0);
+}
+
+#[test]
+fn http_429_is_honoured_by_key_presses() {
+    let agent = chosen_530(json!({}));
+    queue_reading(&agent);
+    current(&agent, json!({}));
+    later(&agent, 30);
+    queue(
+        &agent,
+        Reply::Http {
+            status: 429,
+            headers: vec![
+                ("date", "Mon, 16 Nov 2026 19:12:09 GMT".into()),
+                ("retry-after", "3600".into()),
+            ],
+            body: String::new(),
+        },
+    );
+    let (_, data) = current(&agent, json!({}));
+    assert_eq!(
+        (text(&data, "problem"), int(&data, "ageMinutes")),
+        ("throttled".into(), 30)
+    );
+    assert!(flag(&data, "stale"));
+    assert_eq!(requests(&agent), 4);
+    assert_eq!(
+        agent.borrow().store[STATE_KEY]["wait_until"],
+        json!(DATE_UNIX + 30 * 60 + 3_600)
+    );
+    // Past the 30 minutes of the limit but within the hour GIOŚ asked
+    // for: nothing is sent.
+    for minutes in [1, 30, 59] {
+        agent.borrow_mut().now = DATE_UNIX + 30 * 60 + minutes * 60;
+        let (message, data) = current(&agent, json!({}));
+        assert_eq!(
+            (requests(&agent), text(&data, "problem")),
+            (4, "throttled".into()),
+            "{minutes}"
+        );
+        assert!(message.starts_with("Not current: GIOŚ gave no new data (throttled)."));
+    }
+    // After it: asked again, and the wait is over.
+    later(&agent, 1);
+    queue_reading(&agent);
+    let (_, data) = current(&agent, json!({}));
+    assert_eq!(
+        (text(&data, "source"), requests(&agent)),
+        ("network".into(), 7)
+    );
+    assert!(agent.borrow().store[STATE_KEY]["wait_until"].is_null());
+
+    // Without saved data: an error that says GIOŚ asked to wait.
+    let agent = chosen_530(json!({}));
+    queue(
+        &agent,
+        Reply::Http {
+            status: 429,
+            headers: vec![("date", DATE.into()), ("retry-after", "3600".into())],
+            body: String::new(),
+        },
+    );
+    let (code, _, _) = failed(run(&agent, "current", json!({})));
+    assert_eq!(code, codes::THROTTLED);
+    later(&agent, 45);
+    let (code, message, retryable) = failed(run(&agent, "current", json!({})));
+    assert_eq!((code.as_str(), retryable), (codes::THROTTLED, true));
+    assert!(message.contains("asked to wait"), "{message}");
+    assert_eq!(requests(&agent), 1);
 }
 
 #[test]
@@ -1432,17 +1642,17 @@ fn old_measurements_are_never_presented_as_current() {
     assert!(text(&data, "summary").starts_with("[stale] Warszawa"));
     assert_eq!(variable(&agent, "stale"), Some(json!(true)));
 
-    // Exactly three hours is still current; a second more is not.
-    for (date, stale) in [
-        ("Mon, 16 Nov 2026 21:00:00 GMT", false),
-        ("Mon, 16 Nov 2026 21:00:01 GMT", true),
+    // Exactly three hours is still current; a second more is not. The
+    // present is the agent's clock, not the answer's `Date`.
+    for (now, stale) in [
+        (MEASURED + 3 * 3_600, false),
+        (MEASURED + 3 * 3_600 + 1, true),
     ] {
         let agent = chosen_530(json!({}));
-        queue(&agent, http_at(200, &good_index(), date));
-        queue(&agent, http_at(200, &pm25_body(), date));
-        queue(&agent, http_at(200, &pm10_body(), date));
+        agent.borrow_mut().now = now;
+        queue_reading(&agent);
         let (_, data) = current(&agent, json!({}));
-        assert_eq!(flag(&data, "stale"), stale, "{date}");
+        assert_eq!(flag(&data, "stale"), stale, "{now}");
     }
 
     // A reading that was current when it was stored grows old in the
@@ -1453,9 +1663,11 @@ fn old_measurements_are_never_presented_as_current() {
     queue(&agent, http_at(200, &good_index(), date));
     queue(&agent, http_at(200, &pm25_body(), date));
     queue(&agent, http_at(200, &pm10_body(), date));
-    let (_, data) = current(&agent, json!({ "at": "2026-11-16 21:50" }));
+    let (_, data) = current_at(&agent, "2026-11-16 21:50");
     assert!(!flag(&data, "stale"));
-    let (message, data) = current(&agent, json!({ "at": "2026-11-16 22:05" }));
+    // A key press, by the clock alone.
+    later(&agent, 15);
+    let (message, data) = current(&agent, json!({}));
     assert_eq!(
         (text(&data, "source"), int(&data, "ageMinutes")),
         ("cache".into(), 15)
@@ -1470,18 +1682,28 @@ fn old_measurements_are_never_presented_as_current() {
 
 #[test]
 fn without_a_time_source_nothing_is_called_current() {
-    // No Date header: the values may be right, but the plugin cannot show
-    // that they are recent.
+    // No Date header: the agent's clock dates the reading all the same.
     let agent = chosen_530(json!({ "language": "pl" }));
     queue(&agent, undated(&good_index()));
     queue(&agent, undated(&pm25_body()));
     queue(&agent, undated(&pm10_body()));
+    let (_, data) = current(&agent, json!({}));
+    assert!(!flag(&data, "stale"));
+    assert_eq!(int(&data, "measurementAgeMinutes"), 42);
+    assert!(!data.contains_key("fetchedAt"));
+    // Nor is the agent's clock far behind the measurement.
+    let agent = chosen_530(json!({ "language": "pl" }));
+    agent.borrow_mut().now = MEASURED - 2 * 3_600;
+    queue_reading(&agent);
     let (message, data) = current(&agent, json!({}));
-    assert!(message.starts_with(
-        "Być może nieaktualne: wtyczka nie ma zegara i nie mogła sprawdzić wieku tych wartości. Warszawa"
-    ));
+    assert!(
+        message.starts_with(
+            "Być może nieaktualne: wtyczka nie mogła sprawdzić wieku tych wartości według zegara komputera. Warszawa"
+        ),
+        "{message}"
+    );
     assert!(flag(&data, "stale"));
-    assert!(!data.contains_key("measurementAgeMinutes") && !data.contains_key("fetchedAt"));
+    assert!(!data.contains_key("measurementAgeMinutes"));
     assert!(text(&data, "summary").starts_with("[nieaktualne] "));
 
     // A measurement from the future is not believed either.
@@ -1495,7 +1717,7 @@ fn without_a_time_source_nothing_is_called_current() {
     let (message, data) = current(&agent, json!({}));
     assert!(
         message.starts_with(
-            "Possibly not current: the plugin has no clock and could not check the age"
+            "Possibly not current: the plugin could not check the age of these values against the computer's clock."
         )
     );
     assert!(flag(&data, "stale") && !data.contains_key("measurementAgeMinutes"));
@@ -1520,6 +1742,7 @@ fn missing_values_are_said_and_their_variables_cleared() {
     let agent = chosen_530(json!({}));
     queue_reading(&agent);
     current(&agent, json!({}));
+    later(&agent, 30);
     queue(&agent, http(200, &no_index()));
     queue(&agent, http(200, &data_body(&[(HOUR, None)])));
     queue(&agent, http(200, &pm10_body()));
@@ -1584,13 +1807,13 @@ fn a_failed_request_serves_the_saved_reading_as_stale() {
     queue_reading(&agent);
     current(&agent, json!({}));
 
-    // Offline: no answer, so no time. Saved data, age unknown.
+    // Offline half an hour later: no answer, but the clock tells the age.
+    later(&agent, 30);
     queue(&agent, offline());
     let (message, data) = current(&agent, json!({}));
     assert!(
         message.starts_with(
-            "Not current: GIOŚ gave no new data (connection-failed). Saved data fetched 2026-11-16T18:42:09Z; \
-the plugin has no clock and cannot tell how old that is. Warszawa"
+            "Not current: GIOŚ gave no new data (connection-failed). Saved data fetched 2026-11-16T18:42:09Z, about 30 min ago. Warszawa"
         ),
         "{message}"
     );
@@ -1599,13 +1822,19 @@ the plugin has no clock and cannot tell how old that is. Warszawa"
         (text(&data, "source"), text(&data, "problem")),
         ("cache".into(), "connection-failed".into())
     );
-    assert!(!data.contains_key("ageMinutes") && !data.contains_key("measurementAgeMinutes"));
+    assert_eq!(
+        (
+            int(&data, "ageMinutes"),
+            int(&data, "measurementAgeMinutes")
+        ),
+        (30, 72)
+    );
     assert_eq!(int(&data, "pm25"), 15);
     assert_eq!(variable(&agent, "stale"), Some(json!(true)));
     assert!(text(&data, "summary").starts_with("[stale] "));
 
-    // The provider answers with an error an hour later: its Date tells the
-    // age.
+    // The provider answers with an error an hour after the fetch.
+    later(&agent, 30);
     queue(&agent, http_at(503, "", "Mon, 16 Nov 2026 19:42:09 GMT"));
     let (message, data) = current(&agent, json!({}));
     assert!(message.starts_with(
@@ -1620,19 +1849,8 @@ the plugin has no clock and cannot tell how old that is. Warszawa"
     );
     assert!(flag(&data, "stale"));
 
-    // An error ten minutes after the fetch: the saved reading is still
-    // within its lifetime, and the failure is told all the same.
-    queue(&agent, http_at(500, "", "Mon, 16 Nov 2026 18:52:09 GMT"));
-    let (message, data) = current(&agent, json!({}));
-    assert!(!flag(&data, "stale"));
-    assert!(
-        message.contains(
-            "(from the cache, fetched 10 min ago; GIOŚ gave no new data: provider-error)"
-        )
-    );
-    assert_eq!(text(&data, "problem"), "provider-error");
-
     // The second of three answers fails: nothing half-new is shown.
+    later(&agent, 30);
     queue(
         &agent,
         http(
@@ -1652,14 +1870,27 @@ the plugin has no clock and cannot tell how old that is. Warszawa"
         (1, INVALID_RESPONSE.into())
     );
 
+    // A clock set back before the fetch: the age is unknown, and said so.
+    agent.borrow_mut().now = DATE_UNIX - 3_600;
+    queue(&agent, offline());
+    let (message, data) = current(&agent, json!({}));
+    assert!(
+        message.starts_with(
+            "Not current: GIOŚ gave no new data (connection-failed). Saved data fetched 2026-11-16T18:42:09Z; \
+the computer's clock shows an earlier time, so how old that is is unknown. Warszawa"
+        ),
+        "{message}"
+    );
+    assert!(!data.contains_key("ageMinutes"));
+
     // In Polish.
+    agent.borrow_mut().now = DATE_UNIX + 2 * 3_600;
     agent.borrow_mut().settings = json!({ "language": "pl" });
     queue(&agent, offline());
     let (message, _) = current(&agent, json!({}));
     assert!(message.starts_with(
-        "Nieaktualne: GIOŚ nie podał nowych danych (connection-failed). Zapisane dane pobrane 2026-11-16T18:42:09Z; \
-wtyczka nie ma zegara i nie wie, jak dawno to było. "
-    ));
+        "Nieaktualne: GIOŚ nie podał nowych danych (connection-failed). Zapisane dane pobrane 2026-11-16T18:42:09Z, około 2 h temu. "
+    ), "{message}");
 }
 
 #[test]
@@ -1724,7 +1955,7 @@ fn every_failure_without_saved_data_is_an_error() {
 fn http_429_is_honoured_by_scheduled_runs() {
     let agent = chosen_530(json!({}));
     queue_reading(&agent);
-    current(&agent, json!({ "at": "2026-11-16 19:42" }));
+    current_at(&agent, "2026-11-16 19:42");
     queue(
         &agent,
         Reply::Http {
@@ -1736,7 +1967,7 @@ fn http_429_is_honoured_by_scheduled_runs() {
             body: String::new(),
         },
     );
-    let (_, data) = current(&agent, json!({ "at": "2026-11-16 20:42" }));
+    let (_, data) = current_at(&agent, "2026-11-16 20:42");
     assert_eq!(
         (text(&data, "problem"), int(&data, "ageMinutes")),
         ("throttled".into(), 60)
@@ -1744,32 +1975,47 @@ fn http_429_is_honoured_by_scheduled_runs() {
     assert!(flag(&data, "stale"));
     assert_eq!(requests(&agent), 4);
     // Within the ten minutes: nothing is sent.
-    let (message, data) = current(&agent, json!({ "at": "2026-11-16 20:51" }));
+    let (message, data) = current_at(&agent, "2026-11-16 20:51");
     assert_eq!(
         (requests(&agent), text(&data, "problem")),
         (4, "throttled".into())
     );
     assert!(message.starts_with("Not current: GIOŚ gave no new data (throttled)."));
-    // After them: asked again, and the wait is over.
+    // After them, but within 30 minutes of the request GIOŚ answered:
+    // still nothing (two pulls an hour).
+    let (_, data) = current_at(&agent, "2026-11-16 21:11");
+    assert_eq!(
+        (requests(&agent), text(&data, "problem")),
+        (4, "throttled".into())
+    );
+    // After both: asked again, and the wait is over.
     queue_reading(&agent);
-    let (_, data) = current(&agent, json!({ "at": "2026-11-16 20:52" }));
+    let (_, data) = current_at(&agent, "2026-11-16 21:12");
     assert_eq!(
         (text(&data, "source"), requests(&agent)),
         ("network".into(), 7)
     );
     assert!(agent.borrow().store[STATE_KEY]["wait_until_local"].is_null());
+    assert!(agent.borrow().store[STATE_KEY]["wait_until"].is_null());
 
-    // Without Retry-After: 15 minutes. Without saved data: an error.
+    // Without Retry-After: 15 minutes, within the 30 of the limit. Without
+    // saved data: an error.
     let agent = chosen_530(json!({}));
     queue(&agent, http(429, ""));
     let (code, _, retryable) = failed(run(&agent, "current", json!({ "at": "2026-11-16 19:42" })));
     assert_eq!((code.as_str(), retryable), (codes::THROTTLED, true));
+    agent.borrow_mut().now += 14 * 60;
     let (code, message, _) = failed(run(&agent, "current", json!({ "at": "2026-11-16 19:56" })));
     assert_eq!(code, codes::THROTTLED);
     assert!(message.contains("asked to wait"));
+    agent.borrow_mut().now += 15 * 60;
+    let (code, message, _) = failed(run(&agent, "current", json!({ "at": "2026-11-16 20:11" })));
+    assert_eq!(code, codes::THROTTLED);
+    assert!(message.contains("less than 30 minutes ago"));
     assert_eq!(requests(&agent), 1);
+    // The 429 came at 19:42:09 by the clock.
     queue_reading(&agent);
-    current(&agent, json!({ "at": "2026-11-16 19:57" }));
+    current_at(&agent, "2026-11-16 20:13");
     assert_eq!(requests(&agent), 4);
 }
 
@@ -1778,6 +2024,7 @@ fn a_denied_network_permission_is_said_and_saved_data_is_not_shown_instead() {
     let agent = chosen_530(json!({}));
     queue_reading(&agent);
     current(&agent, json!({}));
+    later(&agent, 30);
     agent.borrow_mut().deny_network = true;
     let (code, message, retryable) = failed(run(&agent, "current", json!({})));
     assert_eq!((code.as_str(), retryable), (codes::NOT_PERMITTED, false));
@@ -1805,7 +2052,7 @@ fn agent_denied() -> Shared {
 fn a_reading_of_another_station_is_never_served() {
     let agent = chosen_530(json!({}));
     queue_reading(&agent);
-    current(&agent, json!({ "at": "2026-11-16 19:42" }));
+    current_at(&agent, "2026-11-16 19:42");
     // The choice changes behind the cache's back (an older version, a
     // damaged store): the stored reading is of station 530.
     agent.borrow_mut().store.get_mut(STATION_KEY).unwrap()["station"]["id"] = json!(550);
@@ -1815,10 +2062,11 @@ fn a_reading_of_another_station_is_never_served() {
     // A stored reading of another format is not read.
     let agent = chosen_530(json!({}));
     queue_reading(&agent);
-    current(&agent, json!({ "at": "2026-11-16 19:42" }));
+    current_at(&agent, "2026-11-16 19:42");
     agent.borrow_mut().store.get_mut(READING_KEY).unwrap()["v"] = json!(7);
+    later(&agent, 30);
     queue_reading(&agent);
-    let (_, data) = current(&agent, json!({ "at": "2026-11-16 19:50" }));
+    let (_, data) = current(&agent, json!({}));
     assert_eq!(text(&data, "source"), "network");
 }
 
@@ -1831,11 +2079,13 @@ fn storage_and_log_never_hold_coordinates_and_the_log_never_names_the_station() 
     ok(run(&agent, "select-station", json!({ "station": 530 })));
     queue_reading(&agent);
     let (message, data) = current(&agent, json!({}));
+    later(&agent, 30);
     queue(&agent, offline());
     current(&agent, json!({}));
     // A storage that refuses writes is the only thing logged, in general
     // words.
     agent.borrow_mut().full_storage = true;
+    later(&agent, 1);
     queue_reading(&agent);
     current(&agent, json!({}));
     ok(run(&agent, "forget-station", json!({})));
@@ -1891,6 +2141,7 @@ fn a_very_long_station_name_still_gives_a_message_within_the_limit() {
     agent.borrow_mut().urls.clear();
     queue_reading(&agent);
     current(&agent, json!({}));
+    later(&agent, 30);
     queue(&agent, offline());
     let (message, data) = current(&agent, json!({}));
     assert!(message.chars().count() <= 1_024);
@@ -1992,6 +2243,7 @@ fn freshly_fetched_but_long_measured_is_not_current() {
         station: 530,
         fetched_at: Some(DATE_UNIX),
         fetched_local: None,
+        pulled_at: Some(DATE_UNIX),
         reading: Reading {
             index,
             index_time: index.map(|_| pm25_time.to_owned()),

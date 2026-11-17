@@ -4,7 +4,7 @@
 [package]
 name = "deckpilot-air-quality"
 description = "DeckPilot's air quality plugin: PM2.5, PM10 and the air quality index of one station, from GIOŚ"
-version = "0.2.1"
+version = "0.2.2"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

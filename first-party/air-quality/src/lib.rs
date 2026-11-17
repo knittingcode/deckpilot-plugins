@@ -11,8 +11,11 @@
 //! PM values of the last reading (plugin API 1.2, [`key`]), marked with
 //! the measurement's age once it is not known to be current. What the
 //! plugin still does not do: it cannot refresh by itself (no timers; a key
-//! shows what the last run fetched), and its actions read the time only
-//! from `at` and the answers' `Date` ([`cache`]).
+//! shows what the last run fetched).
+//!
+//! Every run of `current` reads the agent's clock (`time.now`), so GIOŚ's
+//! "no more often than twice an hour" holds for a key press as for a
+//! scheduled run ([`cache`]).
 //!
 //! Freshness is the point of an air quality reading, so it is never
 //! implied. Every value carries the time the provider measured it, and a
@@ -43,7 +46,7 @@ use texts::{Language, UNIT, fold, one_line};
 
 /// Must equal `manifest.json` (`id`, `version`).
 pub const ID: &str = "deckpilot.air-quality";
-pub const VERSION: &str = "0.2.1";
+pub const VERSION: &str = "0.2.2";
 
 /// Error codes of this plugin, each declared in `contributes.errorCodes`.
 pub const NO_STATION: &str = "no-station";
@@ -196,12 +199,11 @@ fn freshness(served: &Served, provider: &dyn Provider) -> Freshness {
     let times = served.reading.times();
     let oldest = times.iter().min().copied().unwrap_or_default();
     let newest = times.iter().max().copied().unwrap_or_default();
-    let measurement_age = match (served.now, provider.unix(oldest)) {
-        (Some(now), Some(measured)) if measured <= now.saturating_add(FUTURE_TOLERANCE_SECONDS) => {
-            Some(now.saturating_sub(measured))
-        }
-        _ => None,
-    };
+    let now = served.now;
+    let measurement_age = provider
+        .unix(oldest)
+        .filter(|measured| *measured <= now.saturating_add(FUTURE_TOLERANCE_SECONDS))
+        .map(|measured| now.saturating_sub(measured));
     Freshness {
         oldest: minute(oldest).to_owned(),
         newest: minute(newest).to_owned(),
@@ -323,10 +325,14 @@ fn warning(
             (Some(at), Some(age)) if pl => format!("{at}, około {age} temu"),
             (Some(at), Some(age)) => format!("{at}, about {age} ago"),
             (Some(at), None) if pl => {
-                format!("{at}; wtyczka nie ma zegara i nie wie, jak dawno to było")
+                format!(
+                    "{at}; zegar komputera wskazuje wcześniejszy czas, więc nie wiadomo, jak dawno to było"
+                )
             }
             (Some(at), None) => {
-                format!("{at}; the plugin has no clock and cannot tell how old that is")
+                format!(
+                    "{at}; the computer's clock shows an earlier time, so how old that is is unknown"
+                )
             }
             (None, Some(age)) if pl => format!("około {age} temu"),
             (None, Some(age)) => format!("about {age} ago"),
@@ -355,11 +361,11 @@ fn warning(
             duration(age)
         ),
         None if pl => {
-            "Być może nieaktualne: wtyczka nie ma zegara i nie mogła sprawdzić wieku tych wartości. "
+            "Być może nieaktualne: wtyczka nie mogła sprawdzić wieku tych wartości według zegara komputera. "
                 .into()
         }
         None => {
-            "Possibly not current: the plugin has no clock and could not check the age of these values. "
+            "Possibly not current: the plugin could not check the age of these values against the computer's clock. "
                 .into()
         }
     }
@@ -402,7 +408,10 @@ fn current(ctx: &mut Context<'_>, args: &Args<'_>) -> ActionResult {
             "No station is chosen: run Find station with a city, then Select station with the number of the station you want",
         )
     })?;
-    let served = match cache::reading(ctx, &provider, &chosen, at) {
+    // Plugin API 1.1; the plugin requires 1.2, so an agent that runs it has
+    // the clock. Without it no request is sent: GIOŚ's limit needs it.
+    let clock = ctx.now()?.unix_seconds();
+    let served = match cache::reading(ctx, &provider, &chosen, at, clock) {
         Ok(served) if !served.reading.is_empty() => served,
         outcome => {
             // Variables keep their last values: say that they are old.
