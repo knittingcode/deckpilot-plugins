@@ -6,17 +6,16 @@ focus sessions you completed.
 
 Polish: [README.pl.md](README.pl.md).
 
-> **Read this first.** A DeckPilot plugin has no timer and no clock, and it
-> runs only while one of its actions runs (plugin API 1.0). This plugin
-> therefore counts nothing by itself: **you add one workflow that runs its
-> Tick action every minute** ([Setup](#setup)).
+> **Read this first.** A DeckPilot plugin has no timer, and it runs only
+> while one of its actions runs. This plugin therefore counts nothing by
+> itself: **you add one workflow that runs its Tick action every minute**
+> ([Setup](#setup)). The timer counts **whole minutes, not seconds**: it
+> moves at each tick ([What it does not do](#what-it-does-not-do)).
 >
-> **The countdown on a key is not delivered yet.** A plugin cannot give a
-> key its state in this API, so a key shows neither the minutes left nor
-> the phase; you learn them from the notifications, the Status action and
-> the variables. And the timer counts **whole minutes, not seconds**: the
-> only clock a plugin gets is the schedule trigger's date and time, once a
-> minute ([What it does not do](#what-it-does-not-do)).
+> **The countdown on a key** (since 0.2.0, DeckPilot with plugin API
+> 1.2): a key bound to **Status** shows the minutes left, the phase and
+> its progress ([On a key](#on-a-key)).
+
 
 ## Setup
 
@@ -163,19 +162,39 @@ the next phase to one that runs or is paused.
   `storage-unavailable`, nothing is shown and nothing is lost: the next
   tick that can be saved counts the minutes since the last saved one.
 
-## What a key would show
+## On a key
 
-DeckPilot is getting a key-state call for plugins. This version already
-computes what it will return, in one place, from the stored state: the
-title `12 min`, the second line `Focus 2/4` (`Short break`, `Long break`,
-with `· paused` or `· ready`; in Polish when the language setting says
-so), a progress bar, and whether the countdown runs. Today that is only
-visible as the Status outputs `keyLabel`, `keyDetail` and `progress`.
+*Since 0.2.0; needs DeckPilot with plugin API 1.2.* A key bound to
+**Status** shows the minutes left (`12 min`), the phase on the second line
+(`Focus 2/4`, `Short break`, `Long break`, with `- paused` or `- ready`;
+in Polish when the language setting says so), a bar of the phase's
+progress, a mark along the top while the countdown runs, and a colour for
+the phase: red for focus, green for a short break, teal for a long one.
+The corner mark is blue while running, amber when paused, grey before the
+start. Status's outputs `keyLabel`, `keyDetail` and `progress` say the
+same in words.
+
+The key shows the minutes **as of the last tick**: the timer moves only
+when the every-minute workflow runs. When the countdown should be running
+but no tick has come for 3 minutes (the workflow was disabled, the
+computer slept, DeckPilot was locked), or none ever came, the key does not
+pretend to count: it adds a warning and the time since the last tick as a
+badge (`12m`, `2h`), or `?` before the first tick. The next tick brings
+the timer up to date as it always did.
+
+Key texts are in DeckPilot's key font, which has no Polish letters
+(`Krotka przerwa`). Pressing the key runs Status, which changes nothing; put
+**Start, pause or resume** on another key, or on this key's long press.
+A device without displays shows nothing.
 
 ## Permissions and data
 
-- **Notifications**, the only permission: to show the end of a phase,
-  where the two settings above say. No network access, no credentials.
+- **Notifications**: to show the end of a phase, where the two settings
+  above say.
+- **Key state** (`device`, `state`): to show the countdown on the keys
+  bound to Status ([On a key](#on-a-key)). The plugin describes the key;
+  DeckPilot draws it.
+- No network access, no credentials.
 - The plugin keeps one small value in its own storage on this computer:
   the phase, the minutes left, the session number, the time of the last
   tick, a notification that waits to be shown, and the counters. Nothing
@@ -195,18 +214,15 @@ visible as the Status outputs `keyLabel`, `keyDetail` and `progress`.
 
 ## What it does not do
 
-Not in this version, because plugin API 1.0 has no call for it:
+Not in this version, because the plugin API has no call for it:
 
-- **No countdown on the key, and no dynamic key state at all.** A key does
-  not show the minutes left, the phase, or whether the timer runs. This is
-  the main thing a Pomodoro key is for, and it is not delivered; it needs
-  DeckPilot's key-state call for plugins.
 - **No seconds.** The countdown has whole minutes, and its precision is one
   tick.
 - **No timer of its own.** Without the workflow nothing counts down, and
-  the plugin cannot create that workflow for you. It also cannot tell
-  that the ticks stopped: a key pressed while no tick arrives still
-  answers, with the state of the last tick.
+  the plugin cannot create that workflow for you. Its actions cannot
+  tell that the ticks stopped: a key pressed while no tick arrives still
+  answers, with the state of the last tick. Only the Status key notices
+  and marks it ([On a key](#on-a-key)).
 - **No idle detection.** It does not know whether you are at the keyboard;
   only a pause between ticks counts as time away.
 - **No sound and no action buttons** in the notification: start and skip

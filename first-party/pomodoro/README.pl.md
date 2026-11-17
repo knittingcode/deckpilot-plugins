@@ -6,18 +6,16 @@ ukończonych sesji skupienia.
 
 English: [README.md](README.md).
 
-> **Najpierw przeczytaj.** Wtyczka DeckPilot nie ma zegara ani własnego
-> odliczania i działa tylko wtedy, gdy działa któraś z jej akcji (API
-> wtyczek 1.0). Sama z siebie niczego więc nie odlicza: **dodajesz jeden
-> przepływ pracy, który co minutę uruchamia jej akcję Takt**
-> ([Konfiguracja](#konfiguracja)).
+> **Najpierw przeczytaj.** Wtyczka DeckPilot nie ma własnego odliczania
+> i działa tylko wtedy, gdy działa któraś z jej akcji. Sama z siebie
+> niczego więc nie odlicza: **dodajesz jeden przepływ pracy, który co
+> minutę uruchamia jej akcję Takt** ([Konfiguracja](#konfiguracja)).
+> Minutnik liczy **pełne minuty, nie sekundy**: przesuwa się przy każdym
+> takcie ([Czego nie robi](#czego-nie-robi)).
 >
-> **Odliczania na klawiszu jeszcze nie ma.** W tym API wtyczka nie może
-> przekazać klawiszowi swojego stanu, więc klawisz nie pokazuje ani
-> pozostałych minut, ani fazy; poznasz je z powiadomień, akcji Status
-> i zmiennych. Minutnik liczy też **pełne minuty, nie sekundy**: jedynym
-> zegarem wtyczki jest data i godzina wyzwalacza harmonogramu, raz na
-> minutę ([Czego nie robi](#czego-nie-robi)).
+> **Odliczanie na klawiszu** (od wersji 0.2.0, DeckPilot z API wtyczek
+> 1.2): klawisz przypisany do akcji **Stan** pokazuje pozostałe minuty,
+> fazę i jej postęp ([Na klawiszu](#na-klawiszu)).
 
 ## Konfiguracja
 
@@ -176,21 +174,40 @@ fazy, która biegnie lub jest wstrzymana, od następnej fazy.
   następny takt, który uda się zapisać, policzy minuty od ostatniego
   zapisanego.
 
-## Co pokazałby klawisz
+## Na klawiszu
 
-DeckPilot dostaje wywołanie stanu klawisza dla wtyczek. Ta wersja już
-wylicza, w jednym miejscu i z zapisanego stanu, to, co będzie zwracać:
-tytuł `12 min`, drugi wiersz `Skupienie 2/4` (`Krótka przerwa`, `Długa
-przerwa`, z dopiskiem `· pauza` lub `· gotowe`; po angielsku, gdy tak
-mówi ustawienie języka), pasek postępu i to, czy odliczanie biegnie. Dziś
-widać to tylko jako wyjścia `keyLabel`, `keyDetail` i `progress` akcji
-Stan.
+*Od wersji 0.2.0; wymaga DeckPilota z API wtyczek 1.2.* Klawisz przypisany
+do akcji **Stan** pokazuje pozostałe minuty (`12 min`), fazę w drugim
+wierszu (`Skupienie 2/4`, `Krotka przerwa`, `Dluga przerwa`, z dopiskiem
+`- pauza` lub `- gotowe`; po angielsku, gdy tak mówi ustawienie języka),
+pasek postępu fazy, pasek u góry, gdy odliczanie biegnie, oraz kolor fazy:
+czerwony dla skupienia, zielony dla krótkiej przerwy, morski dla długiej.
+Znacznik w rogu jest niebieski w trakcie odliczania, bursztynowy podczas
+pauzy, szary przed startem. Wyjścia `keyLabel`, `keyDetail` i `progress`
+akcji Stan mówią to samo słowami.
+
+Klawisz pokazuje minuty **z ostatniego taktu**: minutnik przesuwa się
+tylko wtedy, gdy przepływ uruchamia Takt co minutę. Gdy odliczanie
+powinno biec, ale od 3 minut nie było taktu (przepływ wyłączony,
+komputer uśpiony, DeckPilot zablokowany) albo nie było żadnego, klawisz
+nie udaje, że liczy: dodaje znacznik ostrzeżenia i czas od ostatniego
+taktu jako plakietkę (`12m`, `2h`), albo `?` przed pierwszym taktem.
+Następny takt doprowadza minutnik do porządku jak zawsze.
+
+Teksty na klawiszach są w czcionce DeckPilota, która nie ma polskich
+liter (`Krotka przerwa`). Naciśnięcie klawisza uruchamia Stan, który
+niczego nie zmienia; **Start, pauza lub wznowienie** umieść na innym
+klawiszu albo na długim naciśnięciu tego. Urządzenie bez wyświetlaczy nic
+nie pokazuje.
 
 ## Uprawnienia i dane
 
-- **Powiadomienia**, jedyne uprawnienie: żeby pokazać koniec fazy tam,
-  gdzie wskazują dwa ustawienia powyżej. Bez dostępu do sieci, bez
-  poświadczeń.
+- **Powiadomienia**: żeby pokazać koniec fazy tam, gdzie wskazują dwa
+  ustawienia powyżej.
+- **Stan klawisza** (`device`, `state`): żeby pokazać odliczanie na
+  klawiszach przypisanych do akcji Stan ([Na klawiszu](#na-klawiszu)).
+  Wtyczka opisuje klawisz; rysuje go DeckPilot.
+- Bez dostępu do sieci, bez poświadczeń.
 - Wtyczka trzyma jedną małą wartość we własnej pamięci na tym komputerze:
   fazę, pozostałe minuty, numer sesji, czas ostatniego taktu,
   powiadomienie czekające na pokazanie i liczniki. Nic nie opuszcza
@@ -210,19 +227,15 @@ Stan.
 
 ## Czego nie robi
 
-Nie w tej wersji, bo API wtyczek 1.0 nie ma do tego wywołania:
+Nie w tej wersji, bo API wtyczek nie ma do tego wywołania:
 
-- **Brak odliczania na klawiszu i w ogóle brak dynamicznego stanu
-  klawisza.** Klawisz nie pokazuje pozostałych minut, fazy ani tego, czy
-  minutnik biegnie. To główna rzecz, do której służy klawisz Pomodoro,
-  i nie jest dostarczona; wymaga wywołania stanu klawisza dla wtyczek
-  w DeckPilot.
 - **Brak sekund.** Odliczanie ma pełne minuty, a jego dokładność to jeden
   takt.
 - **Brak własnego zegara.** Bez przepływu pracy nic się nie odlicza,
-  a wtyczka nie może utworzyć go za Ciebie. Nie potrafi też stwierdzić,
-  że takty ustały: klawisz naciśnięty, gdy takty nie przychodzą, nadal
-  odpowiada, stanem z ostatniego taktu.
+  a wtyczka nie może utworzyć go za Ciebie. Jej akcje nie potrafią
+  stwierdzić, że takty ustały: klawisz naciśnięty, gdy takty nie
+  przychodzą, nadal odpowiada, stanem z ostatniego taktu. Tylko klawisz
+  Stanu to zauważa i oznacza ([Na klawiszu](#na-klawiszu)).
 - **Brak wykrywania bezczynności.** Wtyczka nie wie, czy jesteś przy
   klawiaturze; za nieobecność liczy się tylko pauza między taktami.
 - **Brak dźwięku i przycisków** w powiadomieniu: start i pomijanie to

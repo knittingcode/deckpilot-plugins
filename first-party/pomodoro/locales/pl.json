@@ -2,7 +2,8 @@
   "name": "Pomodoro",
   "description": "Minutnik skupienia z krótkimi i długimi przerwami, powiadomieniami na koniec każdej fazy i statystykami sesji. Nie ma własnego zegara: dodany przez Ciebie przepływ pracy uruchamia akcję Takt co minutę. Klawisz nie pokazuje jeszcze odliczania.",
   "permissions": {
-    "notifications": "Pokazuje powiadomienie, gdy kończy się sesja skupienia lub przerwa, na pulpicie lub na pasku stanu, zgodnie z ustawieniami tej wtyczki."
+    "notifications": "Pokazuje powiadomienie, gdy kończy się sesja skupienia lub przerwa, na pulpicie lub na pasku stanu, zgodnie z ustawieniami tej wtyczki.",
+    "device": "Pokazuje pozostałe minuty, fazę i jej postęp na klawiszach przypisanych do akcji Stan."
   },
   "actions": {
     "tick": {

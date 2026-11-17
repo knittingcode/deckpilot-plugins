@@ -3,7 +3,7 @@
   "manifestVersion": 1,
   "id": "deckpilot.pomodoro",
   "name": "Pomodoro",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": {
     "id": "deckpilot",
     "name": "DeckPilot",
@@ -28,7 +28,7 @@
   ],
   "engines": {
     "deckpilot": ">=0.6.0 <1.0.0",
-    "pluginApi": "^1.0",
+    "pluginApi": "^1.2",
     "sdk": "0.1.0"
   },
   "runtime": {
@@ -50,6 +50,11 @@
         "statusBar": "statusBar"
       },
       "justification": "Shows a notification when a focus session or a break ends, on the desktop or in the status bar as you choose in this plugin's settings."
+    },
+    {
+      "kind": "device",
+      "state": true,
+      "justification": "Shows the minutes left, the phase and its progress on the keys you bound to Status."
     }
   ],
   "contributes": {
@@ -706,6 +711,10 @@
           "retrySafe": true,
           "idempotent": true,
           "effect": "readOnly"
+        },
+        "state": {
+          "refresh": "every",
+          "intervalSeconds": 60
         }
       }
     ],
