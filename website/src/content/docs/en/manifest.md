@@ -65,7 +65,7 @@ The rules below come from the JSON Schema (draft 2020-12) at [plugins/schemas/pl
 
 ## Settings
 
-`contributes.settings` is `{ "portabilityVersion"?, "fields": [...] }` with at most 32 fields. A field has the same `key`, `label`, `description`, `kind`, `required` and `default` as an action parameter, plus `portability`: `portable`, `machineSpecific` (the default) or `sensitive`. The key `privateHosts` is reserved. There are no secret settings; secrets are credential slots. See [Parameters](../parameters/#plugin-settings).
+`contributes.settings` is `{ "portabilityVersion"?, "fields": [...] }` with at most 32 fields. A field has the same `key`, `label`, `description`, `kind`, `required` and `default` as an action parameter, plus `portability`: `portable`, `machineSpecific` (the default) or `sensitive`. The key `privateHosts` is reserved. A setting can hold a server the user enters (named by a `network.userOrigins` slot, see [Permissions](../permissions/#user-entered-origins)) or decide where notifications appear (named by `notifications.routing`, see [Permissions](../permissions/#routing)). There are no secret settings; secrets are credential slots. See [Parameters](../parameters/#plugin-settings).
 
 ## Credentials
 

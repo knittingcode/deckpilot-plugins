@@ -48,8 +48,8 @@ The schema of manifest version 1 defines nine kinds. Four have an effect in ABI 
 | --- | --- | --- |
 | `network` | `hosts`, `methods`, `userOrigins`, `privateNetwork` | **Usable.** Allows `Context::fetch` to `https://<host>` with a listed method |
 | `credentials` | `refs` (1 to 8 slot keys) | **Usable.** Allows attaching a credential slot to a request and `Context::has_credential` |
-| `notifications` | none | **Usable.** Allows `Context::notify` |
-| `openUrl` | `hosts` (1 to 16) | **Usable.** Allows `Context::open_url` for `https://<host>` pages |
+| `notifications` | `routing` (optional) | **Usable.** Allows `Context::notify` |
+| `openUrl` | `hosts` (0 to 16), `userOrigins` | **Usable.** Allows `Context::open_url` for `https://<host>` pages, and for the server the user entered and allowed |
 | `storage` | `quotaKb` (257 to 10,240) | **Usable.** Raises the storage quota from 256 KiB to `quotaKb` KiB. Storage itself needs no permission |
 | `profile` | `read` (`profile`, `project`) | **Schema only.** No ABI 1 capability reads the profile or the project |
 | `variables` | `read` (variable ids of other owners) | **Schema only.** ABI 1 has no capability to read variables. A plugin's own variables need no permission |
@@ -80,6 +80,26 @@ Limits per request: a URL of at most 8 KiB, at most 32 headers of at most 4 KiB,
 
 `Context::notify(title, body)` shows a notification through the agent, titled with the plugin's name. The title is at most 64 characters and the body at most 300.
 
+#### Routing
+
+The permission may name the plugin's own settings that decide where its notifications appear. The agent reads them, as the user saved them, every time the plugin shows a notification; the plugin itself never decides where.
+
+```json
+{
+  "kind": "notifications",
+  "routing": { "desktop": "desktop", "statusBar": "statusBar", "minimumSeverity": "minimumSeverity" },
+  "justification": "Shows the notifications your workflows ask for, where you choose in the settings."
+}
+```
+
+| Member | The setting it names |
+| --- | --- |
+| `desktop` | A `boolean` setting: on, notifications are also shown by the operating system |
+| `statusBar` | A `boolean` setting: on, they are listed in the status bar of an open DeckPilot window |
+| `minimumSeverity` | A `choice` setting of `info`, `success`, `warning` and `error`: less severe notifications are not shown |
+
+At least one member is required, and each must name a setting of `contributes.settings` of that kind. A member left out keeps the default of a plugin without routing: no operating-system notifications, the status bar, every severity. The grant, its low tier, the plugin-name prefix and the rate limit are the same with or without routing. An agent older than routing refuses the manifest.
+
 ### Open URL
 
 `Context::open_url(url)` asks the agent to open a page in the user's browser.
@@ -87,6 +107,7 @@ Limits per request: a URL of at most 8 KiB, at most 32 headers of at most 4 KiB,
 - Only `https` URLs on an exactly granted host, without user information, of at most 2,048 bytes. Wildcard hosts validate but are never granted.
 - Only in a run the user started: a key press, a gesture, the app, or a workflow the user started that way. In a run started by a schedule, a lifecycle event, the agent's start or a work session, the call is denied. `Context::run_context()` tells beforehand.
 - `openUrl` gives no network access to the host, and `network` gives no right to open pages.
+- For pages of a server the user enters, see [Pages of a user-entered server](#pages-of-a-user-entered-server).
 
 ## Always allowed
 
@@ -116,7 +137,7 @@ A call over a limit fails with the kind `Throttled`, which `?` turns into the re
 
 - **Installing grants nothing.** A plugin is installed disabled.
 - **Enabling grants the permissions the user approves.** Every declared permission must be granted before a plugin can be enabled. A plugin without permissions is enabled with an empty consent.
-- Each permission is granted under a key, for example `network:status.example.com` per host, `credentials:apiToken` per slot, `openUrl:status.example.com` per host, `notifications` and `storage`.
+- Each permission is granted under a key, for example `network:status.example.com` per host, `credentials:apiToken` per slot, `openUrl:status.example.com` per host, `network:user-origin:<setting>` and `openUrl:user-origin:<setting>` per origin setting, `notifications` and `storage`.
 - **An update that adds or broadens a permission is an escalation.** The agent stages the update and asks for consent to the escalated keys. Declining keeps the old version. See [Compatibility](../compatibility/#updates-and-permission-escalation).
 
 ## Revocation
@@ -162,6 +183,27 @@ Consent works in steps:
 4. Changing the setting ends the consent at once, and so does revoking the slot permission or uninstalling.
 
 The broker matches each request against the allowed server exactly, by scheme, host, port and path prefix, and checks every redirect the same way.
+
+### Pages of a user-entered server
+
+`openUrl.hosts` are fixed names, so they cannot cover a server only the user knows. The `openUrl` permission may name the origin settings whose server's pages the plugin opens:
+
+```json
+{
+  "kind": "openUrl",
+  "hosts": ["gitlab.com"],
+  "userOrigins": ["apiUrl"],
+  "justification": "Opens a project or a merge request on GitLab in your browser."
+}
+```
+
+- Each entry must be the `setting` of a `network.userOrigins` slot; at most 4. `hosts` may then be empty.
+- It is a permission of its own, `openUrl:user-origin:<setting>`, shown and granted like any other. An update that adds it is an escalation.
+- By itself it opens nothing. Pages open only on the server the user entered in that setting **and allowed**, while this permission is granted: `https` pages of exactly that scheme, host and port. The consent to the server says so.
+- It is by server, not by path prefix: a server's pages are usually not under its API's path. It allows no request; requests stay within the methods and path prefix the user allowed.
+- A server on a private network opens only when it is exactly the one the user allowed on a private network.
+- All other rules of [Open URL](#open-url) apply: only in a run the user started, and the same rate limits.
+- Revoking this permission, revoking the consent to the server, changing the setting or uninstalling ends it on the next call. An agent older than this field refuses the manifest.
 
 ## Canonical reference
 

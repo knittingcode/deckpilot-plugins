@@ -65,7 +65,7 @@ Poniższe reguły pochodzą z JSON Schema (draft 2020-12) w pliku [plugins/schem
 
 ## Ustawienia
 
-`contributes.settings` ma postać `{ "portabilityVersion"?, "fields": [...] }` i zawiera co najwyżej 32 pola. Pole ma te same `key`, `label`, `description`, `kind`, `required` i `default` co parametr akcji, a do tego `portability`: `portable`, `machineSpecific` (wartość domyślna) albo `sensitive`. Klucz `privateHosts` jest zastrzeżony. Nie ma ustawień będących sekretami; sekrety to pola danych uwierzytelniających (sloty). Zobacz [Parametry i ustawienia](../parameters/#ustawienia-wtyczki).
+`contributes.settings` ma postać `{ "portabilityVersion"?, "fields": [...] }` i zawiera co najwyżej 32 pola. Pole ma te same `key`, `label`, `description`, `kind`, `required` i `default` co parametr akcji, a do tego `portability`: `portable`, `machineSpecific` (wartość domyślna) albo `sensitive`. Klucz `privateHosts` jest zastrzeżony. Ustawienie może zawierać adres serwera wpisany przez użytkownika (wskazany przez slot `network.userOrigins`, zobacz [Uprawnienia](../permissions/#adresy-serwerów-podane-przez-użytkownika)) albo decydować, gdzie pojawiają się powiadomienia (wskazane przez `notifications.routing`, zobacz [Uprawnienia](../permissions/#kierowanie-powiadomień)). Nie ma ustawień będących sekretami; sekrety to pola danych uwierzytelniających (sloty). Zobacz [Parametry i ustawienia](../parameters/#ustawienia-wtyczki).
 
 ## Dane uwierzytelniające
 
