@@ -8,22 +8,26 @@
 //! stored. The place is the latitude and longitude of the settings when
 //! both are set, otherwise the stored one.
 //!
-//! What plugin API 1.0 does not have, and this plugin therefore does not
-//! do: it cannot draw on a key (no temperature, no icon), it cannot refresh
-//! by itself (no timers), and it has no clock ([`cache`] explains what that
-//! means for the age of cached data). It cannot write settings either,
-//! which is why a place found by name lives in the plugin's storage.
+//! A key bound to `current` shows the temperature and the conditions of
+//! the last report (plugin API 1.2, [`key`]), marked with its age once it
+//! is older than its lifetime. What the plugin still does not do: it
+//! cannot refresh by itself (no timers; a key shows what the last run
+//! fetched), and its actions read the time only from `at` and the
+//! answers' `Date` ([`cache`]). It cannot write settings either, which is
+//! why a place found by name lives in the plugin's storage.
 //!
 //! Coordinates are personal data. They go to the provider (rounded to two
 //! decimals) and into the plugin's storage, and nowhere else: not into the
 //! log, a message, an output or a variable.
 #![deny(unsafe_code)]
 
+use deckpilot_plugin_sdk::ApiLevel;
 use deckpilot_plugin_sdk::prelude::*;
 use serde::Serialize;
 
 pub mod cache;
 pub mod conditions;
+pub mod key;
 pub mod open_meteo;
 pub mod provider;
 pub mod time;
@@ -37,7 +41,7 @@ use units::{Units, compass};
 
 /// Must equal `manifest.json` (`id`, `version`).
 pub const ID: &str = "deckpilot.weather";
-pub const VERSION: &str = "0.1.0";
+pub const VERSION: &str = "0.2.0";
 
 /// Error codes of this plugin, each declared in `contributes.errorCodes`.
 pub const NO_LOCATION: &str = "no-location";
@@ -81,7 +85,12 @@ pub const OUTPUT_DAYS: usize = 3;
 pub fn plugin() -> Plugin {
     let at = || Param::text("at").max_length(16);
     Plugin::new(ID, VERSION)
-        .action(Action::new("current", current).param(at()))
+        .requires_api(ApiLevel { major: 1, minor: 2 })
+        .action(
+            Action::new("current", current)
+                .param(at())
+                .state(key::current_state),
+        )
         .action(
             Action::new("forecast", forecast)
                 .param(Param::integer("days").min(1.0).max(7.0).default(3))

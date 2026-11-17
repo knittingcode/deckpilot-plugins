@@ -3,7 +3,7 @@
   "manifestVersion": 1,
   "id": "deckpilot.weather",
   "name": "Weather",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": {
     "id": "deckpilot",
     "name": "DeckPilot",
@@ -26,7 +26,7 @@
   ],
   "engines": {
     "deckpilot": ">=0.6.0 <1.0.0",
-    "pluginApi": "^1.0",
+    "pluginApi": "^1.2",
     "sdk": "0.1.0"
   },
   "runtime": {
@@ -51,6 +51,11 @@
         "GET"
       ],
       "justification": "Sends your place's coordinates (rounded to about 1 km) to Open-Meteo to read its weather, and the place names you search to Open-Meteo's geocoding service."
+    },
+    {
+      "kind": "device",
+      "state": true,
+      "justification": "Shows the temperature and the conditions of the last report on the keys you bound to Current weather."
     }
   ],
   "contributes": {
@@ -213,6 +218,10 @@
           "retrySafe": true,
           "idempotent": true,
           "effect": "readOnly"
+        },
+        "state": {
+          "refresh": "every",
+          "intervalSeconds": 60
         }
       },
       {
