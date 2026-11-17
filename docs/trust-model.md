@@ -19,8 +19,8 @@ updater signature never passes as a registry signature (or the reverse).
 | Role | Signs | Trusted comment | Private key lives | Compromise means |
 | --- | --- | --- | --- | --- |
 | root (v1 plan: 2 keys, threshold 1, U-10) | `keys/<n>.json` | `… role:keys version:<n>` | **offline only**: the owner's machine and an offline backup; never in GitHub | full registry trust until a DeckPilot release ships new roots |
-| index | `index/<seq>.json` | `… role:index seq:<seq> keys:<n>` | secret `REGISTRY_INDEX_KEY` of environment `registry-publish` (tag runs, required reviewer) | malicious listings until rotation; every use is reviewer-gated |
-| timestamp | `timestamp.json` | `… role:timestamp seq:<seq> keys:<n>` | secret `REGISTRY_TIMESTAMP_KEY` of `registry-publish` and `registry-timestamp` | freezing or delaying only: it cannot point at an index the index key did not sign |
+| index | `index/<seq>.json` | `… role:index seq:<seq> keys:<n>` | secret `REGISTRY_INDEX_KEY` of environment `registry-release` (tag runs, required reviewer) | malicious listings until rotation; every use is reviewer-gated |
+| timestamp | `timestamp.json` | `… role:timestamp seq:<seq> keys:<n>` | secret `REGISTRY_TIMESTAMP_KEY` of `registry-release` and `registry-timestamp` | freezing or delaying only: it cannot point at an index the index key did not sign |
 
 A key set whose roles share a key is refused, so the unattended timestamp
 key can never act as the index key or a root. The index and timestamp
@@ -105,7 +105,7 @@ they are enforced offline from then on.
   The admin may bypass only through a pull request.
 - Ruleset on tags: creating, updating and deleting any tag is restricted to
   the admin role, so only the owner can start `publish.yml`.
-- `registry-publish` deploys only for tags `*--v*` and requires a reviewer.
+- `registry-release` deploys only for tags `*--v*` and requires a reviewer.
 - CODEOWNERS covers workflows, `tools/`, `schemas/`, `keys/`, `registry/`
   and the policy documents.
 - No secret is reachable from a pull request: `validate.yml` uses no
@@ -113,7 +113,7 @@ they are enforced offline from then on.
 
 ## Current status
 
-No production keys exist. `keys/` is empty, `registry-publish` and
+No production keys exist. `keys/` is empty, `registry-release` and
 `registry-timestamp` do not exist, and the public site serves only the
 Marketplace website and `/v1/README.txt`. Registries signed with throwaway keys
 exist only inside CI jobs and are discarded.

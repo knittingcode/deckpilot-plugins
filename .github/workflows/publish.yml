@@ -10,7 +10,7 @@
 #   build             UNPRIVILEGED (no environment, no secret, contents: read):
 #                     rebuilds every recorded package from its pinned source
 #                     at the tagged commit; plugin build scripts run here only
-#   sign              environment registry-publish, index and timestamp keys:
+#   sign              environment registry-release, index and timestamp keys:
 #                     builds nothing; takes the packages of `build` from this
 #                     run, re-checks every sha256 and size against the
 #                     reviewed pins, signs, verify-site as an existing client
@@ -61,7 +61,7 @@ jobs:
           ENABLED: ${{ vars.REGISTRY_PUBLISH_ENABLED }}
           REF_TYPE: ${{ github.ref_type }}
         run: |
-          [ "$ENABLED" = true ] || { echo "::error::REGISTRY_PUBLISH_ENABLED is not 'true': the registry-publish environment and its secrets are not set up"; exit 1; }
+          [ "$ENABLED" = true ] || { echo "::error::REGISTRY_PUBLISH_ENABLED is not 'true': the registry-release environment and its secrets are not set up"; exit 1; }
           [ "$REF_TYPE" = tag ] || { echo "::error::run publish.yml on a release tag (gh workflow run publish.yml --ref <tag>)"; exit 1; }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -102,7 +102,7 @@ jobs:
     needs: [resolve, build]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    environment: registry-publish
+    environment: registry-release
     permissions:
       contents: read
     steps:

@@ -45,7 +45,7 @@ step below cannot be done as written until the decision is taken.
 | U-10 | Root threshold: 1-of-2 or 2-of-2 | 1-of-2 in v1 | §2 (how many root keys, `--root-threshold`) |
 | U-12 | Timestamp role, or an index signed monthly for 30 days | Timestamp role | §2 to §5. The workflows implement only the timestamp role (`refresh-timestamp.yml`, environment `registry-timestamp`). Choosing the 30-day index means changing the workflows first. |
 | U-11 | If reproducibility (spike S6) fails: accept "the registry's own trusted job builds it, without three-way hash agreement" | Don't launch without reproducibility | §6, the first publication. Today CI's rebuild must match the committed record byte for byte, but a contributor may copy that record from the CI summary. That is two-way agreement, not three-way. S6 is still open in DeckPilot (`docs/marketplace/spike-findings.md`). |
-| U-8 | Single maintainer: PR-only admin bypass, or a second maintainer | A second maintainer; bypass only for revocations | §3 (who reviews `registry-publish`). The ruleset uses the PR-only admin bypass today. Until U-8 is decided, keep "Prevent self-review" off on `registry-publish`, or the only reviewer cannot approve. |
+| U-8 | Single maintainer: PR-only admin bypass, or a second maintainer | A second maintainer; bypass only for revocations | §3 (who reviews `registry-release`). The ruleset uses the PR-only admin bypass today. Until U-8 is decided, keep "Prevent self-review" off on `registry-release`, or the only reviewer cannot approve. |
 | B6 | Reserve the `deckpilot` publisher in the registry | (open) | Registry publication of first-party plugins. Not needed for the first test publication. Today, *Submission rules* refuses `deckpilot` (and every other id DeckPilot reserves) in community pull requests only, and DeckPilot itself refuses `deckpilot.*` in registry packages: `verify_package` runs `Manifest::validate`, which treats `deckpilot` as reserved. Only bundled plugins go through `validate_first_party`. Publishing a `deckpilot.*` plugin here therefore needs this decision **and** a DeckPilot change. |
 | B7 | When a legacy built-in implementation may be removed (module-migration §5.7) | (open) | Not the first publication. It decides when a registry-delivered first-party plugin can replace a built-in module (migration step P12). |
 | U-1 | Engine build: Javy plugin API or an own rquickjs build | Decide by size, start-up and maintenance cost | Not the first publication. The registry accepts only ABI 1 WebAssembly modules built from Rust (`schemas/inputs/build-recipe.schema.json`). U-1 decides whether and how JavaScript plugins come later, and with them a new recipe kind. |
@@ -146,8 +146,8 @@ complete. The result:
 | `ws/site/v1/keys/1.json` | `keys/1.json` (by pull request). `tools/publish-site.sh` deploys it to `/v1/keys/1.json`. | changed after it is published (key sets are immutable) |
 | `ws/site/v1/keys/1.json.minisig` | `keys/1.json.minisig` (by pull request) | — |
 | `secret/root-a.key`, `secret/root-b.key` and their passwords | offline only: the ceremony machine and one offline backup each, ideally in two places | GitHub, any online machine |
-| `secret/index-1.key` and its password | `REGISTRY_INDEX_KEY` and `REGISTRY_INDEX_KEY_PASSWORD` of `registry-publish` (§3.1); an encrypted offline backup | this repository; `knittingcode/deckpilot` |
-| `secret/timestamp-1.key` and its password | `REGISTRY_TIMESTAMP_KEY` and `REGISTRY_TIMESTAMP_KEY_PASSWORD` of **both** `registry-publish` and `registry-timestamp` (§3.1, §3.2); an encrypted offline backup | this repository; `knittingcode/deckpilot` |
+| `secret/index-1.key` and its password | `REGISTRY_INDEX_KEY` and `REGISTRY_INDEX_KEY_PASSWORD` of `registry-release` (§3.1); an encrypted offline backup | this repository; `knittingcode/deckpilot` |
+| `secret/timestamp-1.key` and its password | `REGISTRY_TIMESTAMP_KEY` and `REGISTRY_TIMESTAMP_KEY_PASSWORD` of **both** `registry-release` and `registry-timestamp` (§3.1, §3.2); an encrypted offline backup | this repository; `knittingcode/deckpilot` |
 | `public/*.pub`, `public/*.b64` | not needed in the repository: `roots.json` and `1.json` hold them | — |
 
 Move only the two **encrypted** online key files (`index-1.key`,
@@ -177,7 +177,7 @@ The owner's numeric id is `109468044` (`gh api users/knittingcode -q .id`).
 Set every secret through `gh`'s prompt or from a file; never on a command
 line, because it ends up in shell history.
 
-### 3.1 `registry-publish` (publication, release tags only)
+### 3.1 `registry-release` (publication, release tags only)
 
 1. Create the environment:
    - deployment branches and tags: **selected**, with exactly one tag rule
@@ -190,16 +190,16 @@ line, because it ends up in shell history.
    is the full text of the minisign secret key file.
 
 ```sh
-gh api -X PUT repos/$R/environments/registry-publish --input - <<'JSON'
+gh api -X PUT repos/$R/environments/registry-release --input - <<'JSON'
 { "reviewers": [{ "type": "User", "id": 109468044 }], "prevent_self_review": false,
   "can_admins_bypass": false,
   "deployment_branch_policy": { "protected_branches": false, "custom_branch_policies": true } }
 JSON
-gh api -X POST repos/$R/environments/registry-publish/deployment-branch-policies -f name='*--v*' -f type=tag
-gh secret set REGISTRY_INDEX_KEY     --env registry-publish -R $R < index-1.key
-gh secret set REGISTRY_INDEX_KEY_PASSWORD     --env registry-publish -R $R   # prompts
-gh secret set REGISTRY_TIMESTAMP_KEY --env registry-publish -R $R < timestamp-1.key
-gh secret set REGISTRY_TIMESTAMP_KEY_PASSWORD --env registry-publish -R $R   # prompts
+gh api -X POST repos/$R/environments/registry-release/deployment-branch-policies -f name='*--v*' -f type=tag
+gh secret set REGISTRY_INDEX_KEY     --env registry-release -R $R < index-1.key
+gh secret set REGISTRY_INDEX_KEY_PASSWORD     --env registry-release -R $R   # prompts
+gh secret set REGISTRY_TIMESTAMP_KEY --env registry-release -R $R < timestamp-1.key
+gh secret set REGISTRY_TIMESTAMP_KEY_PASSWORD --env registry-release -R $R   # prompts
 ```
 
 Used by `publish.yml`, job `sign` (`tools/publish-site.sh index`). That job
@@ -245,9 +245,9 @@ gh api repos/$R/environments/github-pages/deployment-branch-policies -q '.branch
 ### 3.4 Check
 
 ```sh
-gh api repos/$R/environments -q '.environments[].name'   # github-pages, registry-publish, registry-timestamp
+gh api repos/$R/environments -q '.environments[].name'   # github-pages, registry-release, registry-timestamp
 gh secret list -R $R                                     # empty: no repository-level secrets
-gh secret list --env registry-publish -R $R              # the four REGISTRY_* names
+gh secret list --env registry-release -R $R              # the four REGISTRY_* names
 gh secret list --env registry-timestamp -R $R            # the two REGISTRY_TIMESTAMP_* names
 ```
 
@@ -335,7 +335,7 @@ that may stay listed, or yank it afterwards (step 7).
    gh run watch -R $R "$(gh run list -R $R -w publish.yml -L 1 --json databaseId -q '.[0].databaseId')"
    ```
 
-   Approve the `registry-publish` deployment when *Publish* asks for it.
+   Approve the `registry-release` deployment when *Publish* asks for it.
    Every job must succeed: `resolve`, `build`, `sign`, `release`,
    `deploy` and `verify-published`. To retry on the same tag:
 

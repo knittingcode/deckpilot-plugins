@@ -78,7 +78,7 @@ tag of a plugin version is always exactly `<id>--v<version>`.
 | `workflow-lint.yml` (*Workflow lint*) | every pull request, push to `main` | none | actionlint and zizmor |
 | `website.yml` (*Website*) | every pull request | none | builds and tests the website; composes it with the registry tree and checks that no registry path changes; never deploys |
 | `pages.yml` (*Pages*) | push to `main`, dispatch | none (timestamp only if enabled) | `/v1/` README, or the verified live registry; the website around it |
-| `publish.yml` (*Publish*) | owner-created tag `*--v*`, dispatch on a tag | `registry-publish`: index and timestamp keys | build, sign, release, website, deploy, verify published |
+| `publish.yml` (*Publish*) | owner-created tag `*--v*`, dispatch on a tag | `registry-release`: index and timestamp keys | build, sign, release, website, deploy, verify published |
 | `refresh-timestamp.yml` (*Refresh timestamp*) | daily, dispatch | `registry-timestamp`: timestamp key | re-sign `timestamp.json`, redeploy |
 
 `_site.yml` is the reusable build and deploy of the Pages site used by
@@ -113,13 +113,13 @@ committed roots (or README)             |
 ```
 
 - The website is a read-only consumer. Its job has no environment and no
-  secret, and it cannot reach `registry-publish` or `registry-timestamp`.
+  secret, and it cannot reach `registry-release` or `registry-timestamp`.
   It never signs, re-signs or rewrites a registry document.
 - The catalog is generated from the registry tree that `verify-site`
   accepted in the same run, never from `registry/` source data, examples
   or fixtures. While no registry is published, the catalog is empty.
 - The gates of registry publication are unchanged: a signed registry still
-  reaches Pages only through `publish.yml` (owner's tag, `registry-publish`)
+  reaches Pages only through `publish.yml` (owner's tag, `registry-release`)
   or as the mirrored, verified copy of what is already live. A deploy from
   `main` republishes the registry that is already published, byte for byte,
   or `/v1/README.txt` while there is none.

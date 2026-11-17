@@ -6,7 +6,7 @@ of docs/architecture.md and docs/separation.md:
 
 * secrets: only the registry role keys; never DeckPilot's application
   signing secrets;
-* environments: only registry-publish, registry-timestamp, github-pages;
+* environments: only registry-release, registry-timestamp, github-pages;
   never production-release;
 * no pull_request_target or workflow_run triggers, no actions/cache;
 * every remote action pinned to a full commit SHA with a version comment;
@@ -24,7 +24,7 @@ ALLOWED_SECRETS = {
     "REGISTRY_TIMESTAMP_KEY",
     "REGISTRY_TIMESTAMP_KEY_PASSWORD",
 }
-ALLOWED_ENVIRONMENTS = {"registry-publish", "registry-timestamp", "github-pages"}
+ALLOWED_ENVIRONMENTS = {"registry-release", "registry-timestamp", "github-pages"}
 FORBIDDEN = {
     "pull_request_target": "pull_request_target runs with secrets on untrusted code",
     "workflow_run": "workflow_run can carry untrusted artifacts into a trusted context",

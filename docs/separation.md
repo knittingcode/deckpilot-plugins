@@ -8,7 +8,7 @@ secret or an environment. This follows DeckPilot's distribution contract
 | --- | --- | --- |
 | Repository | `knittingcode/deckpilot` | `knittingcode/deckpilot-plugins` (this one) |
 | Releases | application versions, tags `v*` | plugin versions, tags `<id>--v<version>`; index-only `registry--v…` |
-| Signed with | the application updater key and Apple Developer ID, environment `production-release` | registry roles: root (offline), index and timestamp keys, environments `registry-publish` and `registry-timestamp` |
+| Signed with | the application updater key and Apple Developer ID, environment `production-release` | registry roles: root (offline), index and timestamp keys, environments `registry-release` and `registry-timestamp` |
 | Served from | GitHub Releases of `knittingcode/deckpilot` | GitHub Pages of this repository (metadata) and its GitHub Releases (packages) |
 
 ## What this repository never does
@@ -44,7 +44,7 @@ needs an application release.
   lint*): workflows may reference only the secrets `REGISTRY_INDEX_KEY`,
   `REGISTRY_INDEX_KEY_PASSWORD`, `REGISTRY_TIMESTAMP_KEY` and
   `REGISTRY_TIMESTAMP_KEY_PASSWORD`, and only the environments
-  `registry-publish`, `registry-timestamp` and `github-pages`;
+  `registry-release`, `registry-timestamp` and `github-pages`;
   `production-release`, `TAURI_SIGNING*` and `APPLE_*` are refused, as are
   `pull_request_target`, `workflow_run`, caches, unpinned actions and
   checkouts that keep credentials.
