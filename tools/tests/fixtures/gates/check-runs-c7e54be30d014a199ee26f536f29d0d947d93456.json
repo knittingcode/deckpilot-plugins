@@ -1,0 +1,82 @@
+{
+  "total_count": 11,
+  "check_runs": [
+    {
+      "id": 134354869488,
+      "name": "Site / Compose and check registry preservation",
+      "head_sha": "c7e54be30d014a199ee26f536f29d0d947d93456",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 134353823244,
+      "name": "Site / Re-sign timestamp",
+      "head_sha": "c7e54be30d014a199ee26f536f29d0d947d93456",
+      "status": "completed",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 134353820419,
+      "name": "Site / Website / Build and test website",
+      "head_sha": "c7e54be30d014a199ee26f536f29d0d947d93456",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 134353744111,
+      "name": "Submission rules",
+      "head_sha": "c7e54be30d014a199ee26f536f29d0d947d93456",
+      "status": "completed",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 134353742232,
+      "name": "Build examples",
+      "head_sha": "c7e54be30d014a199ee26f536f29d0d947d93456",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 134353741936,
+      "name": "Schemas match DeckPilot",
+      "head_sha": "c7e54be30d014a199ee26f536f29d0d947d93456",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 134353741772,
+      "name": "Validate registry",
+      "head_sha": "c7e54be30d014a199ee26f536f29d0d947d93456",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 134353741204,
+      "name": "Site / Build registry tree",
+      "head_sha": "c7e54be30d014a199ee26f536f29d0d947d93456",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 134353740976,
+      "name": "Repository hygiene",
+      "head_sha": "c7e54be30d014a199ee26f536f29d0d947d93456",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 134353740811,
+      "name": "Build, test and package first-party plugins",
+      "head_sha": "c7e54be30d014a199ee26f536f29d0d947d93456",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "id": 134353740317,
+      "name": "actionlint and zizmor",
+      "head_sha": "c7e54be30d014a199ee26f536f29d0d947d93456",
+      "status": "completed",
+      "conclusion": "success"
+    }
+  ]
+}

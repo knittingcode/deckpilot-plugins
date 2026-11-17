@@ -1,0 +1,13 @@
+[
+  {
+    "number": 38,
+    "merged_at": "2026-11-17T20:42:28Z",
+    "merge_commit_sha": "c7e54be30d014a199ee26f536f29d0d947d93456",
+    "base": {
+      "ref": "main"
+    },
+    "head": {
+      "sha": "bb3d3052948637b01a767115e5eaab4d783b50db"
+    }
+  }
+]

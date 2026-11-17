@@ -76,9 +76,29 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  # Before the job that names registry-timestamp: the environment deploys
+  # main only, cannot be bypassed, and main is protected by its ruleset.
+  timestamp-gate:
+    name: Timestamp gate
+    needs: build
+    if: inputs.refresh-timestamp && needs.build.outputs.live == 'true' && vars.REGISTRY_TIMESTAMP_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: tools
+      - name: registry-timestamp deploys main only and is authorized by main's ruleset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: tools/check-environment.sh registry-timestamp
+
   timestamp:
     name: Re-sign timestamp
-    needs: build
+    needs: [build, timestamp-gate]
     if: inputs.refresh-timestamp && needs.build.outputs.live == 'true' && vars.REGISTRY_TIMESTAMP_ENABLED == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -119,8 +139,8 @@ jobs:
 
   compose:
     name: Compose and check registry preservation
-    needs: [build, timestamp, website]
-    if: always() && needs.build.result == 'success' && needs.website.result == 'success' && (needs.timestamp.result == 'success' || needs.timestamp.result == 'skipped')
+    needs: [build, timestamp-gate, timestamp, website]
+    if: always() && needs.build.result == 'success' && needs.website.result == 'success' && (needs.timestamp-gate.result == 'success' || needs.timestamp-gate.result == 'skipped') && (needs.timestamp.result == 'success' || needs.timestamp.result == 'skipped')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:

@@ -7,6 +7,10 @@
 # Jobs, in order:
 #   resolve           the tag names a reviewed commit on main and a recorded
 #                     version; every other version is already released
+#   gate              UNPRIVILEGED: registry-release is tag-only, cannot be
+#                     bypassed and is authorized by a reviewer or by the
+#                     admin-only tag ruleset; every required check of main
+#                     passed for the tagged commit
 #   build             UNPRIVILEGED (no environment, no secret, contents: read):
 #                     rebuilds every recorded package from its pinned source
 #                     at the tagged commit; plugin build scripts run here only
@@ -72,6 +76,36 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: tools/resolve-tag.sh "$TAG" | tee -a "$GITHUB_OUTPUT"
 
+  # Before the job that names registry-release: the environment is
+  # protected (tag-only, no administrator bypass, and authorized by a
+  # reviewer or by the admin-only tag ruleset) and every check main's rules
+  # require passed for the tagged commit. Names no environment and reads no
+  # secret (tools/check-environment.sh, tools/check-required-checks.sh).
+  gate:
+    name: Publication gate
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      checks: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.resolve.outputs.commit }}
+          sparse-checkout: tools
+      - name: registry-release deploys release tags only and authorizes every run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: tools/check-environment.sh registry-release
+      - name: Every required check of main passed for the tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT: ${{ needs.resolve.outputs.commit }}
+        run: tools/check-required-checks.sh "$COMMIT"
+
   build:
     name: Build packages
     needs: resolve
@@ -99,7 +133,7 @@ jobs:
 
   sign:
     name: Sign the registry
-    needs: [resolve, build]
+    needs: [resolve, gate, build]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: registry-release
