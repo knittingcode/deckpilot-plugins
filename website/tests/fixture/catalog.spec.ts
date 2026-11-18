@@ -63,9 +63,9 @@ test.describe('directory', () => {
     expect((await visible(page)).sort()).toEqual(['fixture.build-status', 'fixture.focus-timer', 'sample.chat-status', 'sample.media-keys']);
     await page.getByLabel('Platform').selectOption('linux');
     expect(await visible(page)).not.toContain('sample.chat-status');
-    await page.getByLabel('DeckPilot version').selectOption('0.6.0');
+    await page.getByLabel('DeckPilot version').selectOption('0.7.0');
     expect(await visible(page)).not.toContain('sample.room-lights');
-    await expect(page).toHaveURL(/platform=linux&deckpilot=0\.6\.0$/);
+    await expect(page).toHaveURL(/platform=linux&deckpilot=0\.7\.0$/);
     await page.reload();
     expect((await visible(page)).sort()).toEqual(['fixture.build-status', 'fixture.focus-timer', 'sample.media-keys']);
   });
@@ -156,7 +156,8 @@ test.describe('plugin page', () => {
     await expect(details).toContainText('Jun 18, 2026');
     await expect(details).toContainText('macOS, Windows and Linux');
     await expect(details).toContainText('>=0.5.0 <1.0.0');
-    await expect(details).toContainText('Includes the current release v0.6.0, which does not include plugin support yet');
+    await expect(details).toContainText('Includes the current release v0.7.0.');
+    await expect(details).not.toContainText('does not include plugin support');
     await expect(details).toContainText('Apache-2.0');
     await expect(details.getByRole('link', { name: 'example/build-status' })).toHaveAttribute('href', 'https://github.com/example/build-status');
     await expect(details).toContainText('fixture.build-status');
@@ -177,7 +178,8 @@ test.describe('plugin page', () => {
     await expect(history.getByRole('link', { name: 'Compare with 1.1.0' })).toHaveAttribute('href', /github\.com\/example\/build-status\/compare\/[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/);
 
     await expect(page.locator('#install-title')).toHaveText('How to install');
-    await expect(page.getByRole('main')).toContainText('Install the next DeckPilot release, the first with plugin support');
+    await expect(page.getByRole('main')).toContainText('Install DeckPilot 0.7.0 or later. 0.7.0 is the first release with plugin support');
+    await expect(page.getByRole('main')).toContainText('Open the Marketplace page in DeckPilot (Settings › Extensions › Plugins) and find Build Status.');
     await expect(page.getByRole('main')).toContainText('This website has no install button');
     await expect(page.getByRole('main').getByRole('link', { name: /^install/i })).toHaveCount(0);
     await expect(page.getByRole('main').getByRole('button', { name: /install/i })).toHaveCount(0);
@@ -189,7 +191,7 @@ test.describe('plugin page', () => {
     await expect(page.getByRole('main')).toContainText('Pre-release');
     const details = page.getByRole('complementary');
     await expect(details).toContainText('macOS, Linux');
-    await expect(details).toContainText('Does not include the current release v0.6.0');
+    await expect(details).toContainText('Does not include the current release v0.7.0');
     await expect(page.locator('[data-permission="telepathy"]')).toContainText('Other permission');
     await expect(page.locator('[data-permission="network"]')).toContainText('a server address you enter yourself');
     await expect(page.locator('#actions-title + p')).toContainText('not shown here');

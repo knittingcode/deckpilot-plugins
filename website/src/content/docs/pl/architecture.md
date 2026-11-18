@@ -7,7 +7,7 @@ order: 2
 
 Wtyczka to kod niezaufany. DeckPilot nigdy nie uruchamia jej wewnątrz aplikacji ani agenta działającego w tle: wtyczka działa w osobnym procesie zamkniętym w piaskownicy, a wszystko, czego chce od świata zewnętrznego, jest żądaniem, które agent sprawdza względem tego, co zatwierdził użytkownik. Ta strona opisuje poszczególne elementy i to, jak do siebie pasują.
 
-> **Status:** Wszystko tutaj opisuje gałąź `main` DeckPilota. Obsługa wtyczek pojawi się w następnym wydaniu DeckPilota; obecne wydanie, DeckPilot 0.6.0, jej nie zawiera. Podpisany rejestr działa. Zobacz [Zgodność wersji](../compatibility/).
+> **Status:** Wszystko tutaj opisuje gałąź `main` DeckPilota. DeckPilot 0.7.0 jest pierwszym wydaniem z obsługą wtyczek. Podpisany rejestr działa. Zobacz [Zgodność wersji](../compatibility/).
 
 ## Elementy
 

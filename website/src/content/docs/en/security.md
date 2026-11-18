@@ -7,7 +7,7 @@ order: 17
 
 DeckPilot treats every plugin as untrusted code: it runs in a sandbox, holds only the permissions a user granted, and never sees a secret. That protects users from a plugin, but a well-behaved plugin still has work to do. This page collects guidelines for authors, derived from the sandbox model and from what registry reviewers check, and explains where to report a vulnerability.
 
-> **Status:** Plugin support ships with the next DeckPilot release; DeckPilot 0.6.0 does not include it. Neither DeckPilot nor the plugin registry has had an independent security review, and both repositories say so in their security policies.
+> **Status:** DeckPilot 0.7.0 is the first release with plugin support. Neither DeckPilot nor the plugin registry has had an independent security review, and both repositories say so in their security policies.
 
 ## What the platform enforces
 

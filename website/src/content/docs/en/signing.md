@@ -7,7 +7,7 @@ order: 14
 
 Plugin authors do not sign anything. There is no author key, no certificate to buy and no signature file in a package. What is signed is the registry: a small set of static documents that pin every published package by its sha256 and size. This page explains who signs what and what a DeckPilot client verifies before it installs a plugin.
 
-> **Status:** The production registry at `https://knittingcode.github.io/deckpilot-plugins/v1/` is signed with key set 1: two offline root keys with a threshold of 1 of 2, and separate index and timestamp keys. The timestamp is re-signed daily. The root public keys are in [`keys/roots.json`](https://github.com/knittingcode/deckpilot-plugins/blob/main/keys/roots.json) of the registry repository, with the key ids `131875735F6B6F06` and `9D7D888C7D407086`. The next DeckPilot release has them built in; DeckPilot 0.6.0 does not include plugin support.
+> **Status:** The production registry at `https://knittingcode.github.io/deckpilot-plugins/v1/` is signed with key set 1: two offline root keys with a threshold of 1 of 2, and separate index and timestamp keys. The timestamp is re-signed daily. The root public keys are in [`keys/roots.json`](https://github.com/knittingcode/deckpilot-plugins/blob/main/keys/roots.json) of the registry repository, with the key ids `131875735F6B6F06` and `9D7D888C7D407086`. DeckPilot 0.7.0, the first release with plugin support, has them built in.
 
 ## What an author provides
 
@@ -83,7 +83,7 @@ The agent records the integrity of the installed files. Before every start of a 
 
 ## What remains before the registry opens to other publishers
 
-The production keys exist, and the publishing workflows sign the live registry with them. DeckPilot uses it starting with the next DeckPilot release, which has the root keys built in. What the registry repository lists before it opens to plugins from other publishers is in the owner's checklist, [docs/production-readiness.md](https://github.com/knittingcode/deckpilot-plugins/blob/main/docs/production-readiness.md), section "Before opening the registry to the public".
+The production keys exist, and the publishing workflows sign the live registry with them. DeckPilot uses it starting with DeckPilot 0.7.0, which has the root keys built in. On every refresh, DeckPilot checks the signed key set, the index, the timestamp and every package's size and SHA-256. What the registry repository lists before it opens to plugins from other publishers is in the owner's checklist, [docs/production-readiness.md](https://github.com/knittingcode/deckpilot-plugins/blob/main/docs/production-readiness.md), section "Before opening the registry to the public".
 
 ## Canonical reference
 
