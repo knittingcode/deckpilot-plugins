@@ -409,7 +409,9 @@ that may stay listed, or yank it afterwards (step 7).
 ## 7. Before opening the registry to the public
 
 These come from the design, sections 19.2 and R-6. They are not needed for
-the test publication:
+the test publication. The full gap list, area by area, and the signing
+gate that keeps the registry first-party only until then are in
+[third-party-readiness.md](third-party-readiness.md):
 
 - U-8 resolved: a second maintainer, or the documented single-maintainer
   bypass;

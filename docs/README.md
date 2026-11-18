@@ -7,6 +7,7 @@
 | [production-readiness.md](production-readiness.md) | The owner's ordered checklist before the first production publication: decisions, key ceremony, environments, variables, DeckPilot's side, a test publication |
 | [trust-model.md](trust-model.md) | Roles and keys, client checks, freshness, rollback and freeze protection, revocation, rotation |
 | [review-policy.md](review-policy.md) | What a reviewer checks before approving |
+| [third-party-readiness.md](third-party-readiness.md) | Opening the registry to other publishers: what exists, what is missing, the gate that keeps it closed |
 | [plugin-factory.md](plugin-factory.md) | DeckPilot's own installable plugins: what plugin API 1.0 can do (capability matrix), each planned plugin, data providers, the capabilities proposed, and how `first-party/` is built |
 | [separation.md](separation.md) | Why and how this repository never touches DeckPilot application releases |
 
