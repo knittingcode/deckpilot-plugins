@@ -11,10 +11,13 @@ English: [README.md](README.md).
 
 > **Stan.** Wersja 0.1.0 jest budowana, testowana i pakowana przez CI i
 > **nie jest opublikowana**. Nie da się jej jeszcze zainstalować z rejestru
-> ([first-party/README.md](../README.md)). Przed publikacją właściciel musi
-> potwierdzić w Open-Meteo, że z darmowego API może korzystać aplikacja
-> rozpowszechniana wśród wielu użytkowników
-> ([niżej](#warunki-open-meteo)).
+> ([first-party/README.md](../README.md)). Darmowe API Open-Meteo służy
+> tylko do użytku niekomercyjnego ([niżej](#warunki-open-meteo)), dlatego
+> opublikowana wtyczka będzie korzystać z MET Norway, którego warunki
+> pozwalają na użytek komercyjny i bezpośrednie zapytania. Wymaga to
+> obsługi gzip w DeckPilot, dostawcy MET Norway w tej wtyczce i akceptacji
+> warunków MET Norway przez właściciela
+> ([decyzja](../../docs/plugin-factory.md#weather-the-provider-decision-2026-11-18)).
 
 ## Na klawiszu
 
