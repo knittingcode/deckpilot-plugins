@@ -1,4 +1,10 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type APIRequestContext } from '@playwright/test';
+
+/** The ids of the plugins this build was made with (empty without a registry tree). */
+async function catalogIds(request: APIRequestContext): Promise<string[]> {
+  const index = await (await request.get('en/plugins/search.json')).json();
+  return index.plugins.map((plugin: { id: string }) => plugin.id);
+}
 
 test.describe('homepage', () => {
   test('has the sections in order, in both languages', async ({ page }) => {
@@ -22,12 +28,22 @@ test.describe('homepage', () => {
     );
   });
 
-  test('states the release status and shows no invented plugins', async ({ page }) => {
+  test('states the release status and shows no invented plugins', async ({ page, request }) => {
+    const ids = await catalogIds(request);
     await page.goto('en/');
     await expect(page.locator('#status')).toContainText('DeckPilot 0.7.0, the first release with plugin support, installs plugins from its Marketplace page');
     await expect(page.locator('#status')).not.toContainText('next DeckPilot release');
-    await expect(page.locator('#featured')).toContainText('No plugins in this build');
-    await expect(page.locator('[data-plugin]')).toHaveCount(0);
+    if (ids.length === 0) {
+      await expect(page.locator('#featured')).toContainText('No plugins in this build');
+      await expect(page.locator('[data-plugin]')).toHaveCount(0);
+    } else {
+      // Built with the published registry (a deployment of main): the
+      // featured plugins (at most six) all come from this build's catalog.
+      await expect(page.locator('#featured')).not.toContainText('No plugins in this build');
+      const shown = await page.locator('#featured [data-plugin]').evaluateAll((cards) => cards.map((card) => card.getAttribute('data-plugin')));
+      expect(shown).toHaveLength(Math.min(6, ids.length));
+      for (const id of shown) expect(ids).toContain(id);
+    }
   });
 
   test('search hands the query to the directory', async ({ page }) => {
@@ -38,16 +54,26 @@ test.describe('homepage', () => {
   });
 });
 
-test.describe('empty registry', () => {
-  test('the directory explains that nothing is published', async ({ page, request }) => {
+test.describe('the directory', () => {
+  test('lists exactly the plugins of this build, or explains that there are none', async ({ page, request }) => {
+    const ids = await catalogIds(request);
     await page.goto('en/plugins/');
-    await expect(page.locator('#empty-registry')).toContainText('No plugins in this build');
-    await expect(page.locator('[data-plugin-item]')).toHaveCount(0);
     await expect(page.locator('[data-fixture-banner]')).toHaveCount(0);
-    const index = await (await request.get('en/plugins/search.json')).json();
-    expect(index.plugins).toEqual([]);
-    await page.goto('pl/plugins/');
-    await expect(page.locator('#empty-registry')).toContainText('Ta wersja witryny nie zawiera wtyczek');
+    if (ids.length === 0) {
+      // Built without a registry tree (pull requests).
+      await expect(page.locator('#empty-registry')).toContainText('No plugins in this build');
+      await expect(page.locator('[data-plugin-item]')).toHaveCount(0);
+      await page.goto('pl/plugins/');
+      await expect(page.locator('#empty-registry')).toContainText('Ta wersja witryny nie zawiera wtyczek');
+    } else {
+      // Built with the published registry: every listed plugin comes from it.
+      await expect(page.locator('#empty-registry')).toHaveCount(0);
+      const listed = await page.locator('[data-plugin-item]').evaluateAll((items) => items.map((item) => item.getAttribute('data-plugin-item')));
+      expect([...listed].sort()).toEqual([...ids].sort());
+      await page.goto('pl/plugins/');
+      await expect(page.locator('#empty-registry')).toHaveCount(0);
+      await expect(page.locator('[data-plugin-item]')).toHaveCount(ids.length);
+    }
   });
 });
 
