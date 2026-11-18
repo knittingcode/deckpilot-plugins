@@ -30,14 +30,15 @@ export const LINKS = {
 } as const;
 
 /**
- * DeckPilot's current public release (DeckPilot's GitHub Releases: v0.6.0 of
- * 2026-11-17, the first stable release; it does not include plugin support,
- * which ships with the next release). The compatibility filter of the plugin
- * directory offers exactly these.
+ * DeckPilot's current public release (DeckPilot's GitHub Releases: v0.7.0 of
+ * 2026-11-18, the first release with plugin support; the earlier v0.6.0 of
+ * 2026-11-17 and its pre-releases cannot install plugins, so they are not
+ * listed). The compatibility filter of the plugin directory offers exactly
+ * these, and the plugin page compares against the first entry.
  */
-export const DECKPILOT_VERSIONS = [{ version: '0.6.0', prerelease: false }] as const;
+export const DECKPILOT_VERSIONS = [{ version: '0.7.0', prerelease: false }] as const;
 
-export const DECKPILOT_RELEASE_URL = `${REPO_APP}/releases/tag/v0.6.0`;
+export const DECKPILOT_RELEASE_URL = `${REPO_APP}/releases/tag/v0.7.0`;
 
 /**
  * The DeckPilot commit the developer documentation (src/content/docs) was

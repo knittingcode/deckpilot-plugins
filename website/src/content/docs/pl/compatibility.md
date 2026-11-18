@@ -11,8 +11,8 @@ Wtyczka ma kilka numerów wersji, a każdy odpowiada na inne pytanie: na któryc
 
 | Fakt | Obecnie |
 | --- | --- |
-| Obsługa wtyczek | Pojawi się w następnym wydaniu DeckPilota, z wtyczkami domyślnie włączonymi. DeckPilot 0.6.0 jej nie zawiera. Agent zbudowany ze źródeł wymaga funkcji Cargo `plugins`; `--disable-plugins` lub `DECKPILOT_ENABLE_PLUGINS=0` wyłącza wtyczki |
-| Publiczne wersje DeckPilota | v0.6.0 (2026-11-17), pierwsze stabilne wydanie, bez obsługi wtyczek. Wcześniej wydania wstępne v0.6.0-alpha.3 i v0.6.0-alpha.4 |
+| Obsługa wtyczek | Dostępna od DeckPilota 0.7.0, z wtyczkami domyślnie włączonymi. DeckPilot 0.6.0 jej nie zawiera. Agent zbudowany ze źródeł wymaga funkcji Cargo `plugins`; `--disable-plugins` lub `DECKPILOT_ENABLE_PLUGINS=0` wyłącza wtyczki |
+| Publiczne wersje DeckPilota | [v0.7.0](https://github.com/knittingcode/deckpilot/releases/tag/v0.7.0) (2026-11-18), obecne stabilne wydanie i pierwsze z obsługą wtyczek. Wcześniej v0.6.0 (2026-11-17), pierwsze stabilne wydanie, bez obsługi wtyczek, oraz wydania wstępne v0.6.0-alpha.3 i v0.6.0-alpha.4 |
 | SDK dla Rusta | `deckpilot-plugin-sdk` 0.1.0, nieopublikowany w crates.io |
 | SDK dla JavaScriptu | Wyłącznie deklaracje typów; nie pozwala zbudować ani uruchomić wtyczki |
 | Rejestr | Działa pod adresem `https://knittingcode.github.io/deckpilot-plugins/v1/`, podpisany produkcyjnym zestawem kluczy 1. Publikuje własne wtyczki DeckPilota; nie jest jeszcze otwarty dla innych wydawców |

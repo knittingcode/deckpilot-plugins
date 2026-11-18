@@ -11,8 +11,8 @@ A plugin carries several version numbers, each answering a different question: w
 
 | Fact | Today |
 | --- | --- |
-| Plugin support | Ships with the next DeckPilot release, with plugins on by default. DeckPilot 0.6.0 does not include it. An agent built from source needs the `plugins` cargo feature; `--disable-plugins` or `DECKPILOT_ENABLE_PLUGINS=0` turns plugins off |
-| Public DeckPilot versions | v0.6.0 (2026-11-17), the first stable release, without plugin support. Before it, the pre-releases v0.6.0-alpha.3 and v0.6.0-alpha.4 |
+| Plugin support | Included since DeckPilot 0.7.0, with plugins on by default. DeckPilot 0.6.0 does not include it. An agent built from source needs the `plugins` cargo feature; `--disable-plugins` or `DECKPILOT_ENABLE_PLUGINS=0` turns plugins off |
+| Public DeckPilot versions | [v0.7.0](https://github.com/knittingcode/deckpilot/releases/tag/v0.7.0) (2026-11-18), the current stable release and the first with plugin support. Before it, v0.6.0 (2026-11-17), the first stable release, without plugin support, and the pre-releases v0.6.0-alpha.3 and v0.6.0-alpha.4 |
 | Rust SDK | `deckpilot-plugin-sdk` 0.1.0, not published to crates.io |
 | JavaScript SDK | Type declarations only; cannot build or run a plugin |
 | Registry | Live at `https://knittingcode.github.io/deckpilot-plugins/v1/`, signed with production key set 1. Publishes DeckPilot's own plugins; not open to other publishers yet |
