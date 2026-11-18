@@ -1,12 +1,20 @@
 # Re-signs timestamp.json of the live registry before it expires (7 days,
-# re-signed daily) with the timestamp key only, then redeploys. The index
-# is unchanged byte for byte. A no-op (a redeploy of the same site) until a
-# signed registry is live and REGISTRY_TIMESTAMP_ENABLED is 'true'.
+# re-signed daily) with the timestamp key only, then redeploys. GitHub
+# starts scheduled runs late (hours, at busy times) or drops them, so it is
+# scheduled four times a day and a scheduled run re-signs only a timestamp
+# at least 20 hours old; the others deploy nothing. A dispatch always
+# re-signs. Every run ends with the monitor (tools/check-freshness.sh).
+# The index is unchanged byte for byte. A no-op (a redeploy of the same
+# site) until a signed registry is live and REGISTRY_TIMESTAMP_ENABLED is
+# 'true'.
 name: Refresh timestamp
 
 on:
   schedule:
     - cron: "23 4 * * *"
+    - cron: "23 10 * * *"
+    - cron: "23 16 * * *"
+    - cron: "23 22 * * *"
   workflow_dispatch:
 
 permissions: {}
@@ -21,6 +29,7 @@ jobs:
     uses: ./.github/workflows/_site.yml
     with:
       refresh-timestamp: true
+      min-age-hours: ${{ github.event_name == 'schedule' && 20 || 0 }}
     # Named, never `secrets: inherit`; the values come from the
     # registry-timestamp environment of the job that signs (see _site.yml).
     secrets:
@@ -31,3 +40,25 @@ jobs:
       actions: read
       pages: write
       id-token: write
+
+  # Fails when the live timestamp has less than 5 days left (refreshes are
+  # failing or not running) or a published plugin release is missing from
+  # the live index (its publication did not complete). A failed scheduled
+  # run notifies the workflow's owner.
+  monitor:
+    name: Registry freshness monitor
+    needs: site
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: tools
+      - name: The live timestamp is valid for 5 more days; every published release is listed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: tools/check-freshness.sh https://knittingcode.github.io/deckpilot-plugins 5

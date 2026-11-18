@@ -154,10 +154,30 @@ cannot be added to a published release.
 
 Daily, the timestamp is re-signed with the timestamp key only (7 days of
 validity, at most 14 accepted by clients), and the site redeployed. The
-index is unchanged byte for byte. GitHub disables scheduled workflows in a
+index is unchanged byte for byte. GitHub starts scheduled runs late (by
+hours at busy times) and can drop them, so the workflow is scheduled four
+times a day (04:23, 10:23, 16:23, 22:23 UTC); a scheduled run re-signs
+only a live timestamp at least 20 hours old and otherwise deploys nothing.
+A dispatch always re-signs. GitHub disables scheduled workflows in a
 public repository after 60 days without activity; a dispatch of *Refresh
 timestamp* restores freshness. If it stops, clients show the registry as
 stale and keep running installed plugins.
+
+Every run, scheduled or dispatched, ends with the **freshness monitor**
+(`tools/check-freshness.sh`). It fails when the live timestamp has less
+than 5 days left, or when a published `<id>--v<version>` release is not in
+the live index. A failed scheduled run is reported by GitHub to the
+workflow's owner (by e-mail, by default).
+
+### Recovery
+
+| Symptom | Cause | Action |
+|---|---|---|
+| Monitor: less than 5 days left | refreshes failing or not running | open the last *Refresh timestamp* runs; fix the cause; `gh workflow run refresh-timestamp.yml -R knittingcode/deckpilot-plugins`. If the workflow was disabled for inactivity, enable it (`gh workflow enable refresh-timestamp.yml`). |
+| Monitor: the live timestamp has EXPIRED | as above, for 7 days | as above. Clients recover on their next refresh; installed plugins kept running. |
+| Monitor: a release is not in the live index | its `publish.yml` run failed or was cancelled by a newer pending run of `registry-pages` | `gh workflow run publish.yml -R knittingcode/deckpilot-plugins --ref <id>--v<version>` |
+| A run fails with "older registry than the last verified deployment" or "serves no registry" | the CDN still serves a cached copy (it is waited for 15 minutes), or the live site lost its registry | re-run the run after a few minutes. If it persists, compare `/v1/timestamp.json` with `state.json` on `registry-state`; a live site without the registry is restored by re-running the last successful *Publish* or *Refresh timestamp* run's workflow. Never delete or rewind `registry-state` to make a run pass: that would let a stale copy be redeployed. |
+| The `sign` job refuses the mirror (`verify-site --state`) | the live registry is not one existing clients accept | stop publishing; see [trust-model.md](trust-model.md) |
 
 ## Revocation, yank, deprecation
 

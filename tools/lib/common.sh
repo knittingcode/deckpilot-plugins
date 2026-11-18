@@ -45,3 +45,23 @@ require_cli() {
 # Bump it when the way packages are built changes.
 BUILDER_VERSION=1.0.0
 WASM_TARGET=wasm32-unknown-unknown
+
+# timestamp_order FILE: "<seq> <epoch seconds> <nanoseconds>" of a
+# timestamp.json (or of a state.json written by tools/registry-state.sh),
+# so two of them compare as integers: seq first, then signed_at.
+timestamp_order() {
+  jq -er '
+    (.signed_at | capture("^(?<s>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})(\\.(?<f>[0-9]{1,9}))?Z$")) as $t
+    | select((.seq | type) == "number" and .seq >= 1 and .seq == (.seq | floor))
+    | "\(.seq) \(($t.s + "Z") | fromdateiso8601) \(((($t.f // "") + "000000000")[0:9]))"' "$1" 2>/dev/null
+}
+
+# older_than A B: true when the timestamp (or state) A is older than B.
+older_than() {
+  local a b
+  a=$(timestamp_order "$1") || die "$1: no seq or signed_at"
+  b=$(timestamp_order "$2") || die "$2: no seq or signed_at"
+  read -r as ass an <<< "$a"
+  read -r bs bss bn <<< "$b"
+  (( as < bs || (as == bs && (ass < bss || (ass == bss && 10#$an < 10#$bn))) ))
+}

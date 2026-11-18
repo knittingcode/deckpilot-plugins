@@ -154,6 +154,14 @@ jobs:
         with:
           name: packages
           path: ${{ runner.temp }}/packages
+      # The mirror the new index is built on must be at least as new as the
+      # last verified deployment: Pages' CDN can serve the previous one for
+      # 10 minutes, and an index signed on it would reuse a seq clients
+      # already have (tools/registry-state.sh, tools/mirror-site.sh).
+      - name: The last verified deployment (branch registry-state)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: tools/registry-state.sh fetch "$RUNNER_TEMP/min-state.json"
       - name: Verify the packages against the pins, sign index and timestamp, verify as an existing client
         env:
           REGISTRY_INDEX_KEY: ${{ secrets.REGISTRY_INDEX_KEY }}
@@ -161,6 +169,7 @@ jobs:
           REGISTRY_TIMESTAMP_KEY: ${{ secrets.REGISTRY_TIMESTAMP_KEY }}
           REGISTRY_TIMESTAMP_KEY_PASSWORD: ${{ secrets.REGISTRY_TIMESTAMP_KEY_PASSWORD }}
         run: |
+          [ ! -f "$RUNNER_TEMP/min-state.json" ] || export REGISTRY_MIN_STATE="$RUNNER_TEMP/min-state.json"
           tools/publish-site.sh index --packages "$RUNNER_TEMP/packages" \
             --out "$RUNNER_TEMP/ws" --base-url "$REGISTRY_URL"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -304,3 +313,28 @@ jobs:
           path: ${{ runner.temp }}/expected
       - name: Fetch the live site anonymously and verify it
         run: tools/verify-published.sh "$REGISTRY_URL" "$RUNNER_TEMP/expected/timestamp.json"
+
+  # Only after the live site was proven to serve the signed registry: its
+  # timestamp becomes the floor of the next mirror. Its only permission is
+  # writing a commit to the branch registry-state; no secret.
+  record:
+    name: Record the verified registry state
+    needs: [resolve, verify-published]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: tools
+          ref: ${{ needs.resolve.outputs.commit }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: registry-v1
+          path: ${{ runner.temp }}/registry-v1
+      - name: Append the state to registry-state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: tools/registry-state.sh record "$RUNNER_TEMP/registry-v1/timestamp.json"
