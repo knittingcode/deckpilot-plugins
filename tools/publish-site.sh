@@ -90,6 +90,7 @@ else
 fi
 
 if [ "$mode" = index ]; then
+  "$REPO_ROOT/tools/check-first-party-only.sh" "$REPO_ROOT"
   note "release assets (must match the reviewed pins)"
   for record in "$ws"/registry/plugins/*/versions/*.json; do
     [ -f "$record" ] || continue

@@ -41,6 +41,8 @@ jobs:
         run: tools/tests/test-pages-build-commit.sh
       - name: Tests of the registry freshness guard, state record and monitor
         run: tools/tests/test-registry-freshness.sh
+      - name: Tests of the first-party-only signing gate
+        run: tools/tests/test-first-party-only.sh
 
   submission:
     name: Submission rules

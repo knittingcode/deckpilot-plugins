@@ -6,9 +6,12 @@ to tooling, workflows, schemas and keys are maintained by the owner (see
 [What you may change](#what-you-may-change)).
 
 > **Status:** the signed production registry is live and serves DeckPilot's
-> own plugins, but it is not open to other publishers yet. You can already
-> prepare and validate a submission; it will be reviewed and published once
-> the registry opens.
+> own plugins, but it is not open to other publishers yet: the signing step
+> refuses anything outside DeckPilot's namespace until the trust model for
+> other publishers is complete
+> ([docs/third-party-readiness.md](docs/third-party-readiness.md)). You can
+> already prepare and validate a submission; it will be reviewed and
+> published once the registry opens.
 
 By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
 
