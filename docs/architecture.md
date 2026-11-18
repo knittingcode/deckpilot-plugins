@@ -79,13 +79,26 @@ tag of a plugin version is always exactly `<id>--v<version>`.
 | `website.yml` (*Website*) | every pull request | none | builds and tests the website; composes it with the registry tree and checks that no registry path changes; never deploys |
 | `pages.yml` (*Pages*) | push to `main`, dispatch | none (timestamp only if enabled) | `/v1/` README, or the verified live registry; the website around it |
 | `publish.yml` (*Publish*) | owner-created tag `*--v*`, dispatch on a tag | `registry-release`: index and timestamp keys | build, sign, release, website, deploy, verify published |
-| `refresh-timestamp.yml` (*Refresh timestamp*) | daily, dispatch | `registry-timestamp`: timestamp key | re-sign `timestamp.json`, redeploy |
+| `refresh-timestamp.yml` (*Refresh timestamp*) | four times a day (re-signs once a day), dispatch | `registry-timestamp`: timestamp key | re-sign `timestamp.json`, redeploy; then the freshness monitor |
 
 `_site.yml` is the reusable build and deploy of the Pages site used by
 *Pages* and *Refresh timestamp*. `_website.yml` is the reusable build and
 test of the website used by *Website*, `_site.yml` and *Publish*. *Pages*,
 *Publish* and *Refresh timestamp* share the concurrency group
-`registry-pages` and never cancel each other.
+`registry-pages` and never cancel a running deployment. GitHub keeps one
+pending run per group: a newer one cancels a pending one, so a publication
+queued behind two other runs can be dropped; the monitor of *Refresh
+timestamp* reports a release that is not in the live index.
+
+Every deploying run builds on a mirror of the live registry, and Pages' CDN
+caches each file for 10 minutes, ignoring query strings and `no-cache`. So
+after every verified deployment the timestamp the live site serves is
+recorded as `state.json` on the branch `registry-state`
+(`tools/registry-state.sh`), and the next mirror must be at least as new
+(`REGISTRY_MIN_STATE` in `tools/mirror-site.sh`): a cached older copy, or a
+site without a registry, is waited for and then refused, never redeployed
+or signed over. The record is a freshness floor only; trust comes from the
+signatures.
 
 ## The website and the registry on one Pages site
 

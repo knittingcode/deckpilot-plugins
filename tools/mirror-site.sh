@@ -7,6 +7,17 @@
 # no registry was ever published). Only the registry's own path grammar is
 # fetched, and the result is data: tools/publish-site.sh runs `verify-site`
 # on it with the committed roots before anything builds on it.
+#
+# REGISTRY_MIN_STATE (optional): the state.json of the last verified
+# deployment (tools/registry-state.sh fetch). Pages' CDN caches every file
+# for 10 minutes and ignores query strings and no-cache, so right after a
+# deployment an edge can still serve the previous timestamp, or none. A
+# mirror older than that state, or a site without a registry, is never
+# built on: it would redeploy a registry that clients already moved past
+# (they refuse a lower seq), or sign a second index at a seq already used.
+# The timestamp is fetched again every REGISTRY_FRESHNESS_WAIT seconds
+# (default 60), REGISTRY_FRESHNESS_ATTEMPTS times (default 15), then the
+# mirror fails.
 . "$(dirname "$0")/lib/common.sh"
 base=${1:?usage: mirror-site.sh BASE_URL DIR}
 dir=${2:?usage: mirror-site.sh BASE_URL DIR}
@@ -39,10 +50,25 @@ get() {
   die "fetching $path: HTTP $code after 6 attempts"
 }
 
-if ! get timestamp.json optional; then
-  echo none
-  exit 0
-fi
+min_state=${REGISTRY_MIN_STATE:-}
+[ -z "$min_state" ] || [ -f "$min_state" ] || die "REGISTRY_MIN_STATE $min_state does not exist"
+wait=${REGISTRY_FRESHNESS_WAIT:-60}
+attempts=${REGISTRY_FRESHNESS_ATTEMPTS:-15}
+for attempt in $(seq 1 "$attempts"); do
+  if get timestamp.json optional; then
+    if [ -z "$min_state" ] || ! older_than "$site/timestamp.json" "$min_state"; then
+      break
+    fi
+    note "the live timestamp ($(timestamp_order "$site/timestamp.json")) is older than the last verified deployment ($(timestamp_order "$min_state")): a cached copy; attempt $attempt of $attempts"
+    stale=older
+  else
+    [ -n "$min_state" ] || { echo none; exit 0; }
+    note "the live site serves no timestamp, but a registry was deployed and verified ($(timestamp_order "$min_state")); attempt $attempt of $attempts"
+    stale=missing
+  fi
+  [ "$attempt" -lt "$attempts" ] || die "the live site serves $([ "$stale" = missing ] && echo "no registry" || echo "an older registry") than the last verified deployment after $attempts attempts; refusing to build on it (docs/publishing.md, Recovery)"
+  sleep "$wait"
+done
 get timestamp.json.minisig
 n=1
 while get "keys/$n.json" optional; do

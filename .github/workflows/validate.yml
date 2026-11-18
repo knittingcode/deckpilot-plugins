@@ -39,6 +39,8 @@ jobs:
         run: tools/tests/test-deploy-pages.sh
       - name: Tests of the Pages build commit
         run: tools/tests/test-pages-build-commit.sh
+      - name: Tests of the registry freshness guard, state record and monitor
+        run: tools/tests/test-registry-freshness.sh
 
   submission:
     name: Submission rules
