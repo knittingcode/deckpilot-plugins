@@ -193,12 +193,69 @@ is published; quotations are the providers' words at that date.
 | Open-Meteo (weather, geocoding, air quality) | `api.open-meteo.com`, `geocoding-api.open-meteo.com`, `air-quality-api.open-meteo.com` | none for non-commercial use | 600/min, 5,000/h, 10,000/day, 300,000/month, "applied by IP addresses and application" | CC BY 4.0: a link "Weather data by Open-Meteo.com" where the data is shown; geocoding: GeoNames; air quality: CAMS. Free use is non-commercial only | **Use** for weather. The terms do not address an application distributed to many users whose calls may count together: ask Open-Meteo before publication, cache at least 15 minutes |
 | GIOŚ (Polish air quality) | `api.gios.gov.pl` (`/pjp-api/v1/rest/…`; older versions were withdrawn on 2025-06-30) | none | 1,500/min for current measurements and the index; 2/min for stations, archives and statistics; the terms advise at most two pulls an hour | CC BY 4.0: "Źródło danych: GIOŚ - EKOINFONET", the time of the data, and a note when data is processed | **Use**. Data is hourly: cache 30-60 minutes; cache the station list for days (2/min) |
 | Airly | `airapi.airly.eu` | the user's own (`apikey` header) | free plan: 100/day per the support page (the developer documentation could not be loaded; other numbers circulate) | Name Airly as the source, the measurement time, a link and the unmodified logo next to the data. The free plan forbids sharing the key, building a database and commercial use | **Optional source, user's key**. One clause about use "on any websites, platforms or mobile applications" could not be read in full: read the terms by hand before publication |
-| MET Norway | `api.met.no` | none; an identifying `User-Agent` is mandatory | 20/s for the whole application; honour `Expires` and `If-Modified-Since` | NLOD 2.0 / CC BY 4.0. "Browsers and mobile apps should not contact the API directly" | **Not chosen**: direct calls from users' computers are discouraged and the limit is shared |
+| MET Norway | `api.met.no` | none; an identifying `User-Agent` with a contact is mandatory | under 20/s for the whole application; never repeat before `Expires`; `If-Modified-Since`; gzip and redirects required | NLOD 2.0 / CC BY 4.0, commercial use allowed. Its FAQ (2026-11-18): direct calls are "ok" for "moderate traffic amounts" | **Chosen for weather** (2026-11-18, below); this row said "not chosen" from the terms' "Browsers and mobile apps should not contact the API directly", which the FAQ qualifies |
 | Frankfurter (ECB reference rates) | `api.frankfurter.dev` | none | "no monthly or daily caps", abuse limits unnamed | Daily reference rates, not live prices; local caching encouraged | **Use** for currencies; cache for hours |
 | CoinGecko | `api.coingecko.com` | the user's demo key (`x-cg-demo-api-key`) | about 30-100/min and 10,000/month per key (two official pages differ) | "Powered by CoinGecko" shown prominently; no redistribution of API access | **Optional, user's key** |
 | Alpha Vantage, Finnhub | | the user's key | 25/day; 60/min (unverified) | personal, non-commercial use only | Possible with the user's key, of little use at 25/day; not planned |
 | Twelve Data | | the user's key | 800/day | the free plan is "internal non-display usage" | **No**: a key that shows a price is display |
 | Stooq | | | | no API and no terms; `robots.txt` disallows everything | **No**: it would be scraping |
+
+### Weather: the provider decision (2026-11-18)
+
+`deckpilot.weather` was withheld at launch: Open-Meteo's free API is for
+"non-commercial purposes" only, and its terms do not say whether an
+application installed by many people, some of them companies, is within
+that. A user's own key does not settle it by itself either: the user then
+holds the contract, but the plugin still has to let them comply (Open-Meteo
+forbids sharing an account; WeatherAPI caps how long data may be shown;
+Tomorrow.io forbids distributed use; OpenWeather requires its logo next to
+the data). The providers' pages were read on 2026-11-18:
+
+| Provider | Commercial use | Direct calls from users' computers | Key | Decision |
+| --- | --- | --- | --- | --- |
+| MET Norway (`api.met.no`, Locationforecast 2.0) | yes ("Is this API free, even for commercial use? Yes!") | yes, "for moderate traffic amounts" | none | **default provider** |
+| Open-Meteo, free | no | unclear for a distributed application | none | not in a published build without Open-Meteo's written confirmation |
+| Open-Meteo, paid (`customer-api.open-meteo.com`) | yes | yes, with the user's own subscription | the user's | optional, later |
+| US NWS (`api.weather.gov`) | yes (public domain) | yes | none | possible later, US only |
+| OpenWeather, WeatherAPI, Tomorrow.io, Pirate Weather | | | the user's | not planned: logo, display-time or redistribution clauses, or unreadable terms |
+
+What MET Norway requires, and what that means here:
+
+- **A `User-Agent` with the application and a contact**, e.g.
+  `DeckPilot-Weather/<version> https://github.com/knittingcode/deckpilot-plugins`
+  (the plugin's current one has no contact).
+- **No repeat before `Expires`**; `If-Modified-Since` with the last
+  `Last-Modified`, 304 meaning "unchanged"; at most every 30 minutes in the
+  Nordic area and every 3 hours elsewhere; not on the full hour; no `HEAD`;
+  coordinates to at most 4 decimals; under 20 requests a second for the
+  whole application (about 36,000 installs refreshing every 30 minutes).
+- **gzip and redirects**: "All clients must support redirects and gzip
+  compression". DeckPilot's plugin HTTP (`crates/deckpilot-net`) does not
+  decompress gzip yet: a DeckPilot change, with a cap on the decompressed
+  size, and then a minimum DeckPilot version for the plugin.
+- **Attribution**: "Weather data from MET Norway" with the licence link,
+  and a note that daily values and conditions are derived by the plugin and
+  are not MET Norway's responsibility.
+- **Privacy**: MET Norway logs addresses with the coordinates asked for;
+  the README's privacy section says so.
+- **The terms are accepted by a person**: they "must be read, understood
+  and accepted by a human in authority before using our service". That is
+  the owner, and it is not done by merging code.
+
+Place search: Open-Meteo's geocoding is under the same free-API terms, MET
+Norway has none, and Nominatim's policy (1 request a second, no
+autocomplete, switching on request) does not suit a distributed
+application. The candidate is a bundled extract of GeoNames
+`cities15000` (CC BY 4.0, "Location data based on GeoNames"), next to the
+latitude and longitude entry that exists.
+
+**Before `deckpilot.weather` is published:** (1) the owner accepts MET
+Norway's terms; (2) gzip in DeckPilot's plugin HTTP, released; (3) the MET
+Norway provider in `first-party/weather/src/` (the `Provider` trait already
+separates it) with the request rules above, and place search moved off
+Open-Meteo; (4) the README, the manifest's hosts and justification, and
+`registry/plugins/deckpilot.weather/plugin.json` updated. Until then it
+stays unpublished.
 
 Rules for every network plugin: exact hosts and `GET` only in the
 manifest; a `User-Agent` naming the plugin and its version; a cache in

@@ -11,9 +11,12 @@ Polish: [README.pl.md](README.pl.md).
 
 > **Status.** Version 0.1.0 is built, tested and packaged by CI and is
 > **not published**. It cannot be installed from a registry yet
-> ([first-party/README.md](../README.md)). Before it is published, the
-> owner has to confirm with Open-Meteo that the free API may be used by an
-> application distributed to many users ([below](#open-meteos-terms)).
+> ([first-party/README.md](../README.md)). Open-Meteo's free API is for
+> non-commercial use only ([below](#open-meteos-terms)), so the published
+> plugin will use MET Norway instead, whose terms allow commercial use and
+> direct calls. That needs gzip support in DeckPilot, a MET Norway
+> provider in this plugin, and the owner's acceptance of MET Norway's terms
+> ([the decision](../../docs/plugin-factory.md#weather-the-provider-decision-2026-11-18)).
 
 ## On a key
 
