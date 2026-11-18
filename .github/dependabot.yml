@@ -15,6 +15,22 @@ updates:
       interval: weekly
     commit-message:
       prefix: build
+  # The dependencies built into the first-party plugins. A merged update
+  # changes the next build only: published versions are rebuilt from the
+  # commit their record pins. Publishing it is a new plugin version.
+  - package-ecosystem: cargo
+    directory: /first-party
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: build
+    groups:
+      first-party:
+        patterns: ["*"]
+    ignore:
+      # Pinned to the DeckPilot commit of tools/deckpilot.env; moved with
+      # that pin by hand (Schemas match DeckPilot).
+      - dependency-name: deckpilot-plugin-sdk
   - package-ecosystem: npm
     directory: /website
     schedule:
