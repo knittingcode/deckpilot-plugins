@@ -21,6 +21,11 @@ jobs:
     uses: ./.github/workflows/_site.yml
     with:
       refresh-timestamp: true
+    # Named, never `secrets: inherit`; the values come from the
+    # registry-timestamp environment of the job that signs (see _site.yml).
+    secrets:
+      REGISTRY_TIMESTAMP_KEY: ${{ secrets.REGISTRY_TIMESTAMP_KEY }}
+      REGISTRY_TIMESTAMP_KEY_PASSWORD: ${{ secrets.REGISTRY_TIMESTAMP_KEY_PASSWORD }}
     permissions:
       contents: write
       actions: read

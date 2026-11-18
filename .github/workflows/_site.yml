@@ -29,6 +29,15 @@ on:
         description: Re-sign timestamp.json of the live registry before deploying
         type: boolean
         default: false
+    # A called workflow sees only the secrets its caller names, also in a job
+    # that names an environment: refresh-timestamp.yml names these two. The
+    # caller has no repository secret of these names, so inside the
+    # registry-timestamp job the environment's own values are the ones used.
+    secrets:
+      REGISTRY_TIMESTAMP_KEY:
+        required: false
+      REGISTRY_TIMESTAMP_KEY_PASSWORD:
+        required: false
 
 permissions: {}
 

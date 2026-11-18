@@ -11,7 +11,10 @@ of docs/architecture.md and docs/separation.md:
 * no pull_request_target or workflow_run triggers, no actions/cache;
 * every remote action pinned to a full commit SHA with a version comment;
 * every actions/checkout sets persist-credentials: false;
-* top-level `permissions: {}` in every workflow.
+* top-level `permissions: {}` in every workflow;
+* a reusable (workflow_call) workflow declares every secret it reads under
+  `on.workflow_call.secrets`, or GitHub hands its jobs an empty value (also
+  in a job that names an environment), and no caller uses `secrets: inherit`.
 """
 
 import re
@@ -40,6 +43,12 @@ ENV_BLOCK = re.compile(r"^(\s*)environment:\s*$")
 NAME = re.compile(r"^\s*name:\s*([A-Za-z0-9_.-]+)\s*$")
 
 
+def declared_secrets(body):
+    """The block under `on.workflow_call.secrets` (empty when there is none)."""
+    m = re.search(r"^    secrets:\s*\n((?:      .*\n|\s*\n)*)", body.split("\npermissions:", 1)[0] + "\n", re.M)
+    return m.group(1) if m else ""
+
+
 def main():
     problems = []
     files = sorted(Path(".github/workflows").glob("*.yml")) + sorted(Path(".github/workflows").glob("*.yaml"))
@@ -56,6 +65,12 @@ def main():
         for name in SECRET.findall(body):
             if name not in ALLOWED_SECRETS:
                 problems.append(f"{path}: secret {name} is not a registry role key")
+        if re.search(r"^\s*secrets:\s*inherit\s*$", body, re.M):
+            problems.append(f"{path}: `secrets: inherit` passes every secret; name the ones needed")
+        if re.search(r"^  workflow_call:\s*$", body, re.M):
+            declared = set(re.findall(r"^      ([A-Za-z0-9_]+):\s*$", declared_secrets(body), re.M))
+            for name in sorted(set(SECRET.findall(body)) - declared):
+                problems.append(f"{path}: secret {name} is read but not declared under on.workflow_call.secrets")
         for i, line in enumerate(code):
             m = USES.match(lines[i])
             if m and not m.group(1).startswith("./"):
