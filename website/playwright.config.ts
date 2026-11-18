@@ -3,7 +3,7 @@ import { defineConfig, devices } from '@playwright/test';
 /**
  * Browser tests run against the two static builds, served the way GitHub
  * Pages serves them (tests/serve.mjs):
- *   site     dist/          the real build (empty registry today)
+ *   site     dist/          the real build: no registry on pull requests, the published one on main
  *   fixture  dist-fixture/  the test-only catalog (never deployed)
  * Build both first: `npm run build && npm run build:fixture`.
  */
