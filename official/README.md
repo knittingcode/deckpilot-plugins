@@ -152,8 +152,9 @@ Not done by anyone yet; creating or rotating these secrets is the owner's:
    separate machines, each with its own strong password:
    `deckpilot-registry keys generate --role publisher --out publisher-a.key`
    (and `publisher-b.key`), or `minisign -G`; keep encrypted offline
-   backups. Note each key id (`untrusted comment: minisign public key:
-   <KEYID>` of the `.pub` file).
+   backups. Note each key id, 16 uppercase hex:
+   `python3 -I tools/lib/minisign_keyid.py publisher-a.key.pub` (the same
+   id the `.pub` file's comment `minisign public key: <KEYID>` names).
 2. In the environment `official-release` (already created: deployment
    tags `deckpilot.*--v*` only, required reviewers, prevent self-review,
    administrators cannot bypass) add the secrets
