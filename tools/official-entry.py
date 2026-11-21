@@ -21,7 +21,8 @@ and `versions/<v>.release.json`, the release and its verification). It
 refuses, before writing anything:
 
 * an id that is not one DeckPilot bundles and official/plugins.json
-  releases (test mode: a fixture of the given official/ only);
+  releases (test mode: a fixture of the given official/ only); a plugin
+  plugins.json marks `held` (source only);
 * a release that is a draft, not published, of another tag, of a commit not
   on main, or whose pre-release flag contradicts the version;
 * assets other than exactly the package and its two signatures,
@@ -209,6 +210,9 @@ def check_id(pid, policy, test):
                       "only those have official entries")
     if not entry or entry["kind"] != "plugin":
         raise Refused(f"{pid} is not released from official/ (official/plugins.json `plugins`)")
+    if entry.get("held") is not None:
+        raise Refused(f"{pid} is held in official/plugins.json ({entry['held']}): its source is on main, "
+                      "but it has no release and no Marketplace entry")
     return entry
 
 
@@ -793,6 +797,7 @@ def matrix(deckpilot):
     candidates = candidate_versions(MARKETPLACE)
     bundled_dir = deckpilot / "plugins/first-party"
     rows = []
+    held = []
     for pid in sorted(BUNDLED_PLUGIN_IDS):
         name = pid.split(".", 1)[1]
         entry = policy.get(pid)
@@ -811,7 +816,10 @@ def matrix(deckpilot):
             signature = f"{latest[0]}: verified, pinned keys ({', '.join(rel['verification']['signers'])})"
         else:
             signature = "no signed release"
-        if privileged(manifest) and not RULES.PRIVILEGED_GATE_OPEN:
+        if entry and entry.get("held") is not None:
+            market = "no: held (source only; privileged-kinds gate closed)"
+            held.append(f"* `{pid}` {manifest.get('version', '?')}: {entry['held']}")
+        elif privileged(manifest) and not RULES.PRIVILEGED_GATE_OPEN:
             market = "no: privileged-kinds gate closed"
         elif not latest:
             market = "no: no signed release"
@@ -857,6 +865,9 @@ def matrix(deckpilot):
         "`release verify`). *Version*: the source (`official/<name>` once moved, else DeckPilot's",
         "at the pin).",
         "",
+        *(["Held (`official/plugins.json` `held`): the source is on main, built, tested and compared;",
+           "`package --first-party` must refuse it, and it is never signed, released or listed.",
+           "", *held, ""] if held else []),
     ])
 
 

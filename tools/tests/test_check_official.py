@@ -19,6 +19,11 @@ CHECK = ROOT / "tools/check-official.py"
 ENV = dict(re.findall(r"^([A-Z_]+)=(\S+)$", (ROOT / "tools/deckpilot.env").read_text(), re.M))
 COMMIT = ENV["DECKPILOT_COMMIT"]
 FIXTURE = "test-fixtures/example-default"
+POLICY = json.loads((ROOT / "official/plugins.json").read_text())
+# The held plugins of the committed plugins.json (source on main, never
+# packaged, signed, released or listed).
+HELD = [e for e in POLICY["plugins"] if e.get("held") is not None]
+H = HELD[0]["path"] if HELD else None
 
 passed = failed = 0
 
@@ -30,12 +35,32 @@ def run(root, *extra):
     return p.returncode, p.stdout + p.stderr
 
 
-def case(name, change, want_ok, message="", extra=()):
+def deckpilot_of(tmp):
+    """A stand-in for the pinned DeckPilot checkout: its fixture, and every
+    held plugin as DeckPilot has it (version 0.1.0, its own repository)."""
+    dp = Path(tmp) / "deckpilot"
+    shutil.copytree(ROOT / "official" / FIXTURE, dp / "plugins/first-party" / FIXTURE)
+    for e in HELD:
+        shutil.copytree(ROOT / "official" / e["path"], dp / "plugins/first-party" / e["path"],
+                        ignore=shutil.ignore_patterns("target"))
+        def back(m, name=e["path"]):
+            m["version"] = "0.1.0"
+            m["repository"] = {"type": "git", "url": "https://github.com/knittingcode/deckpilot",
+                               "directory": f"plugins/first-party/{name}"}
+        edit_json(dp / "plugins/first-party" / e["path"] / "manifest.json", back)
+    return dp
+
+
+def case(name, change, want_ok, message="", extra=(), deckpilot=None):
     global passed, failed
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp) / "official"
         shutil.copytree(ROOT / "official", root, ignore=shutil.ignore_patterns("target"))
         # The fixture's schema test reads ../../../../schemas: not needed here.
+        if deckpilot is not None:
+            dp = deckpilot_of(tmp)
+            deckpilot(dp)
+            extra = (*extra, "--deckpilot", str(dp))
         change(root)
         rc, out = run(root, *extra)
     ok = (rc == 0) == want_ok and re.search(message, out)
@@ -53,8 +78,12 @@ def edit_json(path, fn):
     path.write_text(json.dumps(data, indent=2) + "\n")
 
 
-def manifest(fn):
-    return lambda root: edit_json(root / FIXTURE / "manifest.json", fn)
+def manifest(fn, member=FIXTURE):
+    return lambda root: edit_json(root / member / "manifest.json", fn)
+
+
+def held_entry(fn):
+    return policy(lambda d: fn(next(e for e in d["plugins"] if e["path"] == H)))
 
 
 def policy(fn):
@@ -87,6 +116,46 @@ case("a fixture with a bundled id", manifest(lambda m: m.update(id="deckpilot.gi
 case("a released plugin that DeckPilot does not bundle",
      policy(lambda d: d.update(plugins=d["fixtures"], fixtures=[])), False, "not a plugin DeckPilot bundles")
 case("--release refuses a fixture", lambda r: None, False, "not a released official plugin", extra=["--release", "deckpilot.example-default"])
+# Held plugins: source only. Privileged usages are allowed in source for a
+# held plugin and nothing else; --list marks it, --release refuses it.
+if HELD:
+    e = HELD[0]
+    hm = json.loads((ROOT / "official" / H / "manifest.json").read_text())
+    case("--list marks a held plugin", lambda r: None, True,
+         rf"(?m)^{re.escape(H)} {re.escape(e['id'])} {re.escape(hm['version'])} \S+ held$", extra=["--list"])
+    case("check prints every held plugin with its reason", lambda r: None, True,
+         "(?s)" + "".join(rf"(?=.*held: {re.escape(x['id'])} \S+: {re.escape(x['held'])})" for x in HELD))
+    for x in HELD:
+        case(f"--release refuses held {x['id']}", lambda r: None, False, "not a released official plugin",
+             extra=["--release", x["id"]])
+        case(f"{x['id']} without held is refused (gate closed)",
+             policy(lambda d, i=x["id"]: next(p for p in d["plugins"] if p["id"] == i).pop("held")), False, "gate is closed")
+    case("held for nothing", lambda r: (held_entry(lambda e: e.update(permissions=[]))(r),
+                                        manifest(lambda m: (m.update(permissions=[]), m.pop("contributes", None)), H)(r)),
+         False, "nothing holds it")
+    case("held without a reason", held_entry(lambda e: e.update(held=True)), False, "is a reason")
+    case("held with an empty reason", held_entry(lambda e: e.update(held="  ")), False, "is a reason")
+    case("held does not widen the permission policy",
+         manifest(lambda m: m["permissions"].append({"kind": "storage", "justification": "x"}), H), False, "reviewed policy change")
+    case("held does not widen process execution",
+         lambda r: (held_entry(lambda e: e["permissions"].append("tools"))(r),
+                    manifest(lambda m: m["permissions"].append({"kind": "tools", "tools": [{"executable": "sh"}], "justification": "x"}), H)(r)),
+         False, "process execution")
+    case("the contract equals DeckPilot's but for version and repository", lambda r: None, True, r"member\(s\) checked",
+         deckpilot=lambda dp: None)
+    case("a manifest field that differs from DeckPilot's", manifest(lambda m: m.update(keywords=["x"]), H), False,
+         "`keywords` differs from DeckPilot's", deckpilot=lambda dp: None)
+    case("a locale that differs from DeckPilot's",
+         lambda r: (r / H / "locales/pl.json").write_text((r / H / "locales/pl.json").read_text() + " "), False,
+         "locales/pl.json differs", deckpilot=lambda dp: None)
+    case("a plugin DeckPilot no longer has is not compared", manifest(lambda m: m.update(keywords=["x"]), H), True,
+         r"member\(s\) checked", deckpilot=lambda dp: shutil.rmtree(dp / "plugins/first-party" / H))
+case("a held fixture", policy(lambda d: d["fixtures"][0].update(held="x")), False, "for a plugin only")
+RELEASED = next(e["path"] for e in POLICY["plugins"] if e.get("held") is None)
+case("a privileged kind on a plugin that is not held", lambda r: (
+     policy(lambda d: next(e for e in d["plugins"] if e["path"] == RELEASED)["permissions"].append("hostViews"))(r),
+     manifest(lambda m: m["permissions"].append({"kind": "hostViews", "justification": "x"}), RELEASED)(r)),
+     False, "gate is closed")
 case("versions differ", replace(f"{FIXTURE}/Cargo.toml", 'version = "0.1.0"', 'version = "0.1.1"'), False, "differs from manifest.json")
 
 # Every privileged usage of DeckPilot's privileged.rs `usages`, one by one,
@@ -129,8 +198,12 @@ cli = ROOT / ".work/bin/deckpilot-registry"
 RUST_USAGE = re.compile(r"^- (\S+): .* is only for DeckPilot's own plugins shipped inside the app", re.M)
 BUNDLED = ["docker", "git", "github", "gitlab", "jira", "notifications", "projects", "workflows", "workspace"]
 if deckpilot.is_dir() and cli.is_file():
-    for name in BUNDLED:
-        directory = deckpilot / name
+    # DeckPilot's nine manifests, then every held plugin's manifest here:
+    # what the package step must see refused, counted exactly as Rust does.
+    targets = [(f"DeckPilot's {name}", deckpilot / name, name in {"docker", "git", "projects", "workflows", "workspace"})
+               for name in BUNDLED]
+    targets += [(f"held official/{e['path']}", ROOT / "official" / e["path"], True) for e in HELD]
+    for label, directory, expected_some in targets:
         with tempfile.TemporaryDirectory() as tmp:
             # The manifest is checked before the module is read: any file
             # serves as the module, and the run fails either way.
@@ -139,13 +212,12 @@ if deckpilot.is_dir() and cli.is_file():
                                   "--first-party"], capture_output=True, text=True)
         rust = sorted(RUST_USAGE.findall(out.stdout + out.stderr))
         ours = sorted(path for path, _ in RULES.privileged_usages(json.loads((directory / "manifest.json").read_text())))
-        expected_some = name in {"docker", "git", "projects", "workflows", "workspace"}
         if out.returncode != 0 and rust == ours and bool(rust) == expected_some:
             passed += 1
-            print(f"ok   DeckPilot's {name}: the same {len(rust)} privileged usage(s) as the Rust validator")
+            print(f"ok   {label}: the same {len(rust)} privileged usage(s) as the Rust validator")
         else:
             failed += 1
-            print(f"FAIL DeckPilot's {name}: Rust {rust}, here {ours} (exit {out.returncode})")
+            print(f"FAIL {label}: Rust {rust}, here {ours} (exit {out.returncode})")
 elif os.environ.get("CI") == "true":
     failed += 1
     print("FAIL no pinned DeckPilot checkout and CLI (.work/deckpilot, .work/bin): run tools/build-cli.sh first")

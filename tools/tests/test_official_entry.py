@@ -66,6 +66,16 @@ case("id DeckPilot does not bundle", lambda: E.check_id("deckpilot.pomodoro", po
 case("community id", lambda: E.check_id("acme.weather", policy, False), "not a plugin DeckPilot bundles")
 case("fixture outside test mode", lambda: E.check_id("deckpilot.example-default", policy, False), "not a plugin DeckPilot bundles")
 case("bundled id in test mode", lambda: E.check_id("deckpilot.github", policy, True), "only a fixture")
+WORKFLOWS_HELD = {"id": "deckpilot.workflows", "path": "workflows", "kind": "plugin", "permissions": ["hostViews"],
+                  "held": "hostViews is privileged"}
+case("a held plugin has no entry", lambda: E.check_id("deckpilot.workflows", {**policy, "deckpilot.workflows": WORKFLOWS_HELD}, False), "is held")
+case("a held plugin's manifest is still refused by the entry rules",
+     lambda: E.check_manifest(manifest(pid="deckpilot.workflows", version="0.1.1", perms=[{"kind": "hostViews"}]),
+                              "deckpilot.workflows", "0.1.1", WORKFLOWS_HELD, HOST), "privileged")
+case("the committed official/plugins.json: every held plugin is refused an entry",
+     lambda: [E.check_id(pid, E.official_policy(ROOT / "official"), False)
+              for pid, entry in E.official_policy(ROOT / "official").items() if entry.get("held") is not None]
+     and None, "is held")
 
 # Releases.
 def bundle(**release):

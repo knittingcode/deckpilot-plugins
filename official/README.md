@@ -44,7 +44,7 @@ request with no secret:
 
 | Step | What fails it |
 | --- | --- |
-| `check` (`tools/check-official.py`) | a member not in `plugins.json`; a git dependency not on knittingcode/deckpilot at exactly `DECKPILOT_COMMIT` (no branch, no tag), a path dependency leaving `official/`, a missing or differently pinned `Cargo.lock`; a released id DeckPilot does not bundle; permission kinds other than the policy's; any plugin API 1.9 privileged usage while the gate is closed (an exact mirror of DeckPilot's `privileged.rs`: the four permission kinds, `openUrl.fromParams`, `node.changesContext`, `resource` parameters, variable host sources, host views, `statusItems`, `dashboardCards`; the package step's `package --first-party` runs the Rust validator itself); process execution (`tools`) other than git for `deckpilot.git` and docker for `deckpilot.docker`; `engines` the pinned DeckPilot (`DECKPILOT_VERSION`, `DECKPILOT_PLUGIN_API`) does not satisfy; a fixture that differs from DeckPilot's |
+| `check` (`tools/check-official.py`) | a member not in `plugins.json`; a git dependency not on knittingcode/deckpilot at exactly `DECKPILOT_COMMIT` (no branch, no tag), a path dependency leaving `official/`, a missing or differently pinned `Cargo.lock`; a released id DeckPilot does not bundle; permission kinds other than the policy's; any plugin API 1.9 privileged usage while the gate is closed, except in the source of a `held` plugin (below) (an exact mirror of DeckPilot's `privileged.rs`: the four permission kinds, `openUrl.fromParams`, `node.changesContext`, `resource` parameters, variable host sources, host views, `statusItems`, `dashboardCards`; the package step's `package --first-party` runs the Rust validator itself); process execution (`tools`) other than git for `deckpilot.git` and docker for `deckpilot.docker`; `engines` the pinned DeckPilot (`DECKPILOT_VERSION`, `DECKPILOT_PLUGIN_API`) does not satisfy; a fixture that differs from DeckPilot's |
 | `test` | `cargo test --locked`, `cargo fmt --check`, `cargo clippy -D warnings` |
 | `package` | the manifest schema; the guest build; `deckpilot-registry package --first-party` (manifest rules, size limits, the module check) |
 | `repro` | two clean builds in fresh target directories whose modules or packages differ (local use; CI's reproducibility check is the two independent jobs below) |
@@ -65,6 +65,38 @@ data (same size, same strings). The fixture happened to match at one pin and
 not at the next. So each plugin's first release from here is a **new patch
 version**, which DeckPilot's released-pins guard and the publisher
 verifier's rollback floor enforce.
+
+## Held plugins: source on main, no release
+
+A plugin whose manifest uses a plugin API 1.9 privileged kind (the
+`tools`, `resources`, `projectContext` or `hostViews` permission,
+`openUrl.fromParams`, `node.changesContext`, a `resource` parameter, a
+variable host source, a host view, `statusItems`, `dashboardCards`:
+`privileged_usages` in `tools/check-official.py`, the same usages
+DeckPilot's `privileged.rs` reports) cannot have a release artifact while
+the gate of DeckPilot's publisher signature is closed. The owner approved
+keeping such a plugin's source on main as **held**: its entry in
+`plugins.json` carries `held`, the reason as text.
+
+| Step | A held plugin |
+| --- | --- |
+| `check` | allowed in source with its privileged usages; its permission policy, process allow-list and contract against DeckPilot's `plugins/first-party/<name>` apply as to any plugin; `held` is refused on a fixture, without a reason, with no privileged usage, or once the gate is open; prints each held plugin with its reason |
+| `test`, `compare` | as any plugin |
+| `package`, `fresh-build`, `repro` | the module is built (and reproducible); `deckpilot-registry package --first-party` must **refuse** it for its privileged usages, and the step fails if it is accepted or refused for another reason |
+| `sign-test` | skipped: there is no package |
+| `resolve`, `release-build` (official-release.yml) | refused: not a released plugin |
+| `official-entry.py` | refused: no Marketplace entry; the entry rules refuse privileged usages in any case |
+
+`tools/tests/test_check_official.py` holds the privileged-usage count of
+each held manifest to the pinned Rust validator's. Removing `held` is a
+reviewed change after the security review of DeckPilot's
+`docs/marketplace/publisher-review-request.md` opens the gate here and in
+DeckPilot. Until a held plugin is released, DeckPilot keeps bundling its
+own build of the version it shipped.
+
+| Plugin | Held for |
+| --- | --- |
+| `deckpilot.workflows` 0.1.1 | the `hostViews` permission and the `workflows` host view |
 
 ## Releases
 

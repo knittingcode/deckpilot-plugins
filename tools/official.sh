@@ -28,6 +28,15 @@
 #                  production key is pinned. Keys are scratch.
 # all              check, test, package, repro, compare, sign-test.
 #
+# A `held` plugin (plugins.json: its source is on main while a plugin API
+# 1.9 privileged kind keeps it from a release) is checked, tested, built
+# and compared like any other, but never packaged, signed or released:
+# package (and fresh-build, repro) builds its module and requires
+# `package --first-party` to REFUSE its manifest for its privileged usages
+# (and fails if the packager ever accepts it: removing `held` is a
+# reviewed change); sign-test skips it; resolve and release-build refuse
+# it; official-entry.py gives it no Marketplace entry.
+#
 # fresh-build SUMS one build of every member and its packages in a fresh
 #                  target directory, nothing run first; sha256 of each module
 #                  and package to SUMS. official.yml runs it in two separate
@@ -168,8 +177,31 @@ package_all() {
     "$SCHEMA_CHECK" --schemas "$REPO_ROOT/schemas" \
       "https://knittingcode.github.io/deckpilot-plugins/v1/schemas/plugin-manifest.schema.json" \
       "$dir/manifest.json" >&2 || die "$dir/manifest.json does not match the manifest schema"
+    if [ "$kind" = held ]; then
+      held_refused "$dir" "$module" "$out/$id-$version.dpplugin" "$id"
+      continue
+    fi
     "$CLI" package --plugin-dir "$dir" --module "$module" --out "$out/$id-$version.dpplugin" --first-party >&2
   done < <(list --list)
+}
+
+# held_refused DIR MODULE OUT ID: the packager must refuse a held plugin,
+# for its privileged usages only, and write nothing.
+held_refused() {
+  local dir=$1 module=$2 pkg=$3 id=$4 log
+  log=$(mktemp)
+  if "$CLI" package --plugin-dir "$dir" --module "$module" --out "$pkg" --first-party >"$log" 2>&1; then
+    rm -f "$pkg" "$log"
+    die "$id is held, but package --first-party accepted it: has the gate opened? (removing \`held\` is a reviewed change)"
+  fi
+  if ! grep -q "is only for DeckPilot's own plugins shipped inside the app" "$log"; then
+    cat "$log" >&2
+    rm -f "$log"
+    die "$id: package --first-party refused it for another reason than its privileged usages"
+  fi
+  rm -f "$log"
+  [ ! -e "$pkg" ] || die "$id: a refused package left $pkg behind"
+  note "$id: held; module built, package --first-party refused for its privileged usages, as required"
 }
 
 package() {
@@ -182,6 +214,10 @@ package() {
   local path id version crate kind
   while read -r path id version crate kind; do
     local pkg=$PACKAGES/$id-$version.dpplugin
+    if [ "$kind" = held ]; then
+      summary "| \`$id\` | $version | held | \`$(sha "$(module_of "$OUT/target-guest" "$crate")")\` | refused (privileged kinds) | |"
+      continue
+    fi
     summary "| \`$id\` | $version | $kind | \`$(sha "$(module_of "$OUT/target-guest" "$crate")")\` | \`$(sha "$pkg")\` | $(size "$pkg") |"
   done < <(list --list)
 }
@@ -197,6 +233,10 @@ repro() {
     a=$(sha "$(module_of "$OUT/repro-a" "$crate")")
     b=$(sha "$(module_of "$OUT/repro-b" "$crate")")
     [ "$a" = "$b" ] || die "$id: two clean builds differ ($a, $b)"
+    if [ "$kind" = held ]; then
+      note "$id $version: module reproducible ($a); held, no package"
+      continue
+    fi
     a=$(sha "$OUT/repro-a-packages/$id-$version.dpplugin")
     b=$(sha "$OUT/repro-b-packages/$id-$version.dpplugin")
     [ "$a" = "$b" ] || die "$id: the packages of two clean builds differ ($a, $b)"
@@ -218,7 +258,7 @@ compare() {
     ours=$(sha "$(module_of "$OUT/target-guest" "$crate")")
     theirs=$OUT/deckpilot/bundled/$id/plugin.wasm
     if [ ! -f "$theirs" ]; then
-      [ "$kind" = plugin ] || die "$id: DeckPilot's build has no $id"
+      [ "$kind" != fixture ] || die "$id: DeckPilot's build has no $id"
       note "$id: DeckPilot no longer builds it (consumed as an artifact)"
       continue
     fi
@@ -304,6 +344,11 @@ sign_test() {
     note "$id: $what refused"
   }
   while read -r path id version crate kind; do
+    if [ "$kind" = held ]; then
+      [ ! -e "$PACKAGES/$id-$version.dpplugin" ] || die "$id is held, but a package of it exists"
+      note "$id: held, no package; nothing is signed"
+      continue
+    fi
     pkg=$PACKAGES/$id-$version.dpplugin
     local name=$id-$version.dpplugin
     sigs=$OUT/signatures/$id
@@ -407,6 +452,10 @@ fresh_build() {
   : >"$sums"
   while read -r path id version crate kind; do
     printf '%s  module %s\n' "$(sha "$(module_of "$OUT/fresh" "$crate")")" "$id-$version" >>"$sums"
+    if [ "$kind" = held ]; then
+      printf 'held  package %s.dpplugin refused (privileged kinds)\n' "$id-$version" >>"$sums"
+      continue
+    fi
     printf '%s  package %s.dpplugin (%s bytes)\n' "$(sha "$OUT/fresh-packages/$id-$version.dpplugin")" \
       "$id-$version" "$(size "$OUT/fresh-packages/$id-$version.dpplugin")" >>"$sums"
   done < <(list --list)

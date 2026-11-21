@@ -209,6 +209,18 @@ expect fail "a signature by a key DeckPilot does not pin" "key $KB signed, but D
 pin 2 2
 expect fail "the pinned verifier accepts one signature alone" "accept .* alone: the threshold is not two" -- env STUB_ACCEPT_ONE=1 "$root/tools/official.sh" release-verify "$ID" "$two" "$VERSION" "$SHA" "$SIZE" "$KA" "$KB"
 
+echo "== held plugins (official/plugins.json \`held\`): no release"
+# Every held plugin of the committed plugins.json: its tag does not resolve
+# and release-build refuses it before anything is built, so no package
+# reaches sign-a, sign-b, verify or release.
+held=$(jq -r '.plugins[] | select(.held != null) | .id' "$root/official/plugins.json")
+for hid in $held; do
+  hpath=$(jq -r --arg id "$hid" '.plugins[] | select(.id == $id) | .path' "$root/official/plugins.json")
+  hversion=$(jq -r .version "$root/official/$hpath/manifest.json")
+  expect fail "resolve refuses the tag of held $hid" "is not a released official plugin" -- official resolve "$hid--v$hversion"
+  expect fail "release-build refuses held $hid" "is not a released official plugin" -- official release-build "$hid" "$hversion"
+done
+
 echo "== the key test (official-test-sign.yml)"
 # (A well-formed tag then needs its commit on main: not testable on a pull
 # request's merge commit; official-test-sign.yml's resolve job checks it.)
