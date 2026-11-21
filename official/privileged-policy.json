@@ -19,58 +19,35 @@
                 },
                 {
                   "name": "version",
-                  "options": [
-                    "--format"
-                  ]
+                  "options": ["--format"]
                 },
                 {
                   "name": "compose version",
-                  "options": [
-                    "--short"
-                  ]
+                  "options": ["--short"]
                 },
                 {
                   "name": "ps",
-                  "options": [
-                    "--no-trunc",
-                    "--format",
-                    "--all",
-                    "--filter"
-                  ]
+                  "options": ["--no-trunc", "--format", "--all", "--filter"]
                 },
                 {
                   "name": "compose ps",
-                  "options": [
-                    "--format",
-                    "--all"
-                  ]
+                  "options": ["--format", "--all"]
                 },
                 {
                   "name": "compose logs",
-                  "options": [
-                    "--tail",
-                    "--since",
-                    "--no-color"
-                  ]
+                  "options": ["--tail", "--since", "--no-color"]
                 },
                 {
                   "name": "logs",
-                  "options": [
-                    "--tail",
-                    "--since"
-                  ]
+                  "options": ["--tail", "--since"]
                 },
                 {
                   "name": "compose up",
-                  "options": [
-                    "--detach"
-                  ]
+                  "options": ["--detach"]
                 },
                 {
                   "name": "compose down",
-                  "options": [
-                    "--remove-orphans"
-                  ]
+                  "options": ["--remove-orphans"]
                 },
                 {
                   "name": "compose restart"
@@ -87,9 +64,7 @@
         },
         {
           "kind": "profile",
-          "read": [
-            "project"
-          ],
+          "read": ["project"],
           "justification": "t:permissions.profile"
         },
         {
@@ -112,10 +87,7 @@
           "what": "a `resource` parameter",
           "value": {
             "type": "resource",
-            "kinds": [
-              "dockerEnvironment",
-              "directory"
-            ]
+            "kinds": ["dockerEnvironment", "directory"]
           }
         },
         {
@@ -123,10 +95,7 @@
           "what": "a `resource` parameter",
           "value": {
             "type": "resource",
-            "kinds": [
-              "dockerEnvironment",
-              "directory"
-            ]
+            "kinds": ["dockerEnvironment", "directory"]
           }
         },
         {
@@ -134,11 +103,7 @@
           "what": "a `resource` parameter",
           "value": {
             "type": "resource",
-            "kinds": [
-              "directory",
-              "file",
-              "dockerEnvironment"
-            ]
+            "kinds": ["directory", "file", "dockerEnvironment"]
           }
         },
         {
@@ -146,11 +111,7 @@
           "what": "a `resource` parameter",
           "value": {
             "type": "resource",
-            "kinds": [
-              "directory",
-              "file",
-              "dockerEnvironment"
-            ]
+            "kinds": ["directory", "file", "dockerEnvironment"]
           }
         },
         {
@@ -158,11 +119,7 @@
           "what": "a `resource` parameter",
           "value": {
             "type": "resource",
-            "kinds": [
-              "directory",
-              "file",
-              "dockerEnvironment"
-            ]
+            "kinds": ["directory", "file", "dockerEnvironment"]
           }
         },
         {
@@ -170,11 +127,7 @@
           "what": "a `resource` parameter",
           "value": {
             "type": "resource",
-            "kinds": [
-              "directory",
-              "file",
-              "dockerEnvironment"
-            ]
+            "kinds": ["directory", "file", "dockerEnvironment"]
           }
         },
         {
@@ -182,11 +135,7 @@
           "what": "a `resource` parameter",
           "value": {
             "type": "resource",
-            "kinds": [
-              "directory",
-              "file",
-              "dockerEnvironment"
-            ]
+            "kinds": ["directory", "file", "dockerEnvironment"]
           }
         },
         {
@@ -194,10 +143,7 @@
           "what": "a `resource` parameter",
           "value": {
             "type": "resource",
-            "kinds": [
-              "dockerEnvironment",
-              "directory"
-            ]
+            "kinds": ["dockerEnvironment", "directory"]
           }
         }
       ]
@@ -214,36 +160,22 @@
               "subcommands": [
                 {
                   "name": "status",
-                  "options": [
-                    "--porcelain=v2",
-                    "--branch",
-                    "-z",
-                    "--untracked-files"
-                  ]
+                  "options": ["--porcelain=v2", "--branch", "-z", "--untracked-files"]
                 },
                 {
                   "name": "log",
-                  "options": [
-                    "-1",
-                    "--no-show-signature",
-                    "--format"
-                  ]
+                  "options": ["-1", "--no-show-signature", "--format"]
                 },
                 {
                   "name": "config",
-                  "options": [
-                    "--get"
-                  ]
+                  "options": ["--get"]
                 },
                 {
                   "name": "remote"
                 },
                 {
                   "name": "rev-parse",
-                  "options": [
-                    "--verify",
-                    "-q"
-                  ]
+                  "options": ["--verify", "-q"]
                 },
                 {
                   "name": "ls-remote"
@@ -262,9 +194,7 @@
         },
         {
           "kind": "profile",
-          "read": [
-            "project"
-          ],
+          "read": ["project"],
           "justification": "t:permissions.profile"
         },
         {
@@ -287,9 +217,7 @@
           "what": "a `resource` parameter",
           "value": {
             "type": "resource",
-            "kinds": [
-              "directory"
-            ]
+            "kinds": ["directory"]
           }
         },
         {
@@ -297,9 +225,7 @@
           "what": "a `resource` parameter",
           "value": {
             "type": "resource",
-            "kinds": [
-              "directory"
-            ]
+            "kinds": ["directory"]
           }
         },
         {
@@ -307,9 +233,7 @@
           "what": "a `resource` parameter",
           "value": {
             "type": "resource",
-            "kinds": [
-              "directory"
-            ]
+            "kinds": ["directory"]
           }
         },
         {
@@ -317,9 +241,7 @@
           "what": "a `resource` parameter",
           "value": {
             "type": "resource",
-            "kinds": [
-              "directory"
-            ]
+            "kinds": ["directory"]
           }
         },
         {
@@ -327,9 +249,7 @@
           "what": "a `resource` parameter",
           "value": {
             "type": "resource",
-            "kinds": [
-              "directory"
-            ]
+            "kinds": ["directory"]
           }
         },
         {
@@ -337,9 +257,7 @@
           "what": "a `resource` parameter",
           "value": {
             "type": "resource",
-            "kinds": [
-              "directory"
-            ]
+            "kinds": ["directory"]
           }
         },
         {
@@ -347,9 +265,7 @@
           "what": "a `resource` parameter",
           "value": {
             "type": "resource",
-            "kinds": [
-              "application"
-            ]
+            "kinds": ["application"]
           }
         }
       ]
@@ -370,9 +286,7 @@
         },
         {
           "kind": "profile",
-          "read": [
-            "project"
-          ],
+          "read": ["project"],
           "justification": "t:permissions.profile"
         },
         {
@@ -436,16 +350,12 @@
         {
           "path": "contributes.statusItems",
           "what": "`statusItems`",
-          "value": [
-            "activeProject"
-          ]
+          "value": ["activeProject"]
         },
         {
           "path": "contributes.dashboardCards",
           "what": "`dashboardCards`",
-          "value": [
-            "activeProject"
-          ]
+          "value": ["activeProject"]
         }
       ]
     },
@@ -488,9 +398,7 @@
         },
         {
           "kind": "profile",
-          "read": [
-            "project"
-          ],
+          "read": ["project"],
           "justification": "t:permissions.profile"
         }
       ],
@@ -508,9 +416,7 @@
           "what": "a `resource` parameter",
           "value": {
             "type": "resource",
-            "kinds": [
-              "application"
-            ]
+            "kinds": ["application"]
           }
         },
         {
@@ -518,10 +424,7 @@
           "what": "a `resource` parameter",
           "value": {
             "type": "resource",
-            "kinds": [
-              "directory",
-              "file"
-            ]
+            "kinds": ["directory", "file"]
           }
         },
         {
@@ -529,9 +432,7 @@
           "what": "a `resource` parameter",
           "value": {
             "type": "resource",
-            "kinds": [
-              "application"
-            ]
+            "kinds": ["application"]
           }
         },
         {
@@ -539,9 +440,7 @@
           "what": "a `resource` parameter",
           "value": {
             "type": "resource",
-            "kinds": [
-              "application"
-            ]
+            "kinds": ["application"]
           }
         }
       ]
