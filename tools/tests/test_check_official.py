@@ -67,7 +67,7 @@ def replace(rel, old, new):
     return change
 
 
-case("the committed tree passes", lambda r: None, True, "1 member")
+case("the committed tree passes", lambda r: None, True, r"[0-9]+ member\(s\) checked")
 case("--list", lambda r: None, True, r"test-fixtures/example-default deckpilot.example-default 0\.1\.0 deckpilot-example-default fixture", extra=["--list"])
 case("another SDK rev", replace("Cargo.toml", COMMIT, "0" * 40), False, "must be pinned to rev")
 case("a branch instead of a rev", replace("Cargo.toml", f'rev = "{COMMIT}"', 'branch = "main"'), False, "branch or tag")
