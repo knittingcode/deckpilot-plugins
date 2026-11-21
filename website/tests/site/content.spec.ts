@@ -31,7 +31,7 @@ test.describe('homepage', () => {
   test('states the release status and shows no invented plugins', async ({ page, request }) => {
     const ids = await catalogIds(request);
     await page.goto('en/');
-    await expect(page.locator('#status')).toContainText('DeckPilot 0.7.0, the first release with plugin support, installs plugins from its Marketplace page');
+    await expect(page.locator('#status')).toContainText('DeckPilot 0.10.0, the current release, installs plugins from its Marketplace; 0.7.0 was the first release with plugin support');
     await expect(page.locator('#status')).not.toContainText('next DeckPilot release');
     if (ids.length === 0) {
       await expect(page.locator('#featured')).toContainText('No plugins in this build');

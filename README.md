@@ -22,11 +22,15 @@ local-first Stream Deck controller and automation app.
 > offline roots, 1-of-2; index and timestamp keys in protected
 > environments; the timestamp is re-signed daily). It serves DeckPilot's own
 > first-party plugins, published through `publish.yml`. The registry is
-> not open to other publishers yet. DeckPilot
-> [0.7.0](https://github.com/knittingcode/deckpilot/releases/tag/v0.7.0), the first
-> release with plugin support, installs them from its Marketplace page
-> (Settings › Extensions › Plugins). What remains before the registry opens
-> to the public:
+> not open to other publishers yet. DeckPilot installs them from its
+> Marketplace since 0.7.0, the first release with plugin support. The
+> current release is
+> [0.10.0](https://github.com/knittingcode/deckpilot/releases/tag/v0.10.0)
+> (plugin API 1.9). Its Marketplace opens from the toolbar, and installed
+> plugins are managed in Settings › Plugins. Git, Docker, Workspace,
+> Projects, GitHub, GitLab, Jira and Workflows are now DeckPilot's own
+> plugins bundled with the app; they never come from this registry. What
+> remains before the registry opens to the public:
 > [docs/production-readiness.md](docs/production-readiness.md) ("Before
 > opening the registry to the public").
 

@@ -128,7 +128,7 @@ const plugins = [
       source_repository: 'example/room-lights',
       versions: [
         version('sample.room-lights', '0.9.0-beta.2', '2026-07-21T15:30:00Z', {
-          engines: { deckpilot: '>=0.8.0 <1.0.0', pluginApi: '^1.0' },
+          engines: { deckpilot: '>=0.11.0 <1.0.0', pluginApi: '^1.0' },
           platforms: ['macos', 'linux'],
           permissions: [
             { kind: 'network', hosts: [], methods: ['GET', 'PUT'], userOrigins: [{ setting: 'bridgeUrl' }], justification: 'Talks to the lighting bridge whose address you enter in the settings.' },

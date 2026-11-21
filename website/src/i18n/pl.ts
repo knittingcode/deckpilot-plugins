@@ -38,7 +38,7 @@ export const pl: Dictionary = {
 
   status: {
     badge: 'Rejestr działa',
-    short: 'Podpisany rejestr wtyczek działa. DeckPilot 0.7.0, pierwsze wydanie z obsługą wtyczek, instaluje wtyczki ze swojej strony Marketplace.',
+    short: 'Podpisany rejestr wtyczek działa. DeckPilot 0.10.0, bieżące wydanie, instaluje wtyczki ze swojego Marketplace; pierwszym wydaniem z obsługą wtyczek był 0.7.0.',
   },
 
   footer: {
@@ -207,11 +207,11 @@ export const pl: Dictionary = {
         },
         {
           q: 'Czy mogę już instalować wtyczki?',
-          a: 'Tak, w DeckPilocie 0.7.0, pierwszym wydaniu z obsługą wtyczek. Wtyczki są domyślnie włączone. Wtyczki wymienione na tej witrynie są opublikowane w podpisanym rejestrze, a DeckPilot instaluje je ze swojej strony Marketplace. Integracje DeckPilota z GitHubem, GitLabem i Jirą oraz jego powiadomienia również działają jako wtyczki dołączone do aplikacji. DeckPilot 0.6.0 nie obsługuje wtyczek.',
+          a: 'Tak, w DeckPilocie 0.7.0, pierwszym wydaniu z obsługą wtyczek, lub nowszym; bieżące wydanie to 0.10.0. Wtyczki są domyślnie włączone. Wtyczki wymienione na tej witrynie są opublikowane w podpisanym rejestrze, a DeckPilot instaluje je ze swojego Marketplace. Git, Docker, Workspace, Projects, GitHub, GitLab, Jira i Workflows oraz powiadomienia DeckPilota to własne wtyczki DeckPilota dołączone do aplikacji. DeckPilot 0.6.0 nie obsługuje wtyczek.',
         },
         {
           q: 'Jak wygląda instalacja wtyczki?',
-          a: 'Wtyczki instaluje się na stronie Marketplace w DeckPilocie, w Settings › Extensions › Plugins. Wybierasz wtyczkę, przeglądasz uprawnienia, o które prosi, i zatwierdzasz instalację. Ta witryna jest katalogiem i dokumentacją: nie ma tu przycisku instalacji, a DeckPilot nie obsługuje linków instalacyjnych.',
+          a: 'Wtyczki instaluje się z Marketplace w DeckPilocie. Od DeckPilota 0.8.0 otwiera się on z paska narzędzi głównego okna; w wersji 0.10.0 zainstalowanymi wtyczkami można też zarządzać w Settings › Plugins, a w wersji 0.7.0 Marketplace znajduje się w Settings › Extensions › Plugins. Wybierasz wtyczkę, przeglądasz uprawnienia, o które prosi, i zatwierdzasz instalację. Ta witryna jest katalogiem i dokumentacją: nie ma tu przycisku instalacji, a DeckPilot nie obsługuje linków instalacyjnych.',
         },
         {
           q: 'Jak sprawdzane są wtyczki?',
@@ -307,7 +307,7 @@ export const pl: Dictionary = {
     emptyStatus: [
       'Podpisany rejestr produkcyjny działa, a jego znacznik czasu jest codziennie podpisywany na nowo.',
       'Publikuje własne wtyczki DeckPilota. Nie jest jeszcze otwarty dla innych wydawców.',
-      'DeckPilot 0.7.0 jest pierwszym wydaniem z obsługą wtyczek. DeckPilot 0.6.0 jej nie zawiera.',
+      'DeckPilot 0.7.0 jest pierwszym wydaniem z obsługą wtyczek, a 0.10.0 to bieżące wydanie. DeckPilot 0.6.0 nie obsługuje wtyczek.',
     ],
     emptyStatusLink: 'Co zostało do zrobienia przed otwarciem rejestru dla innych wydawców',
     errorTitle: 'Wyszukiwanie jest niedostępne',
@@ -342,8 +342,8 @@ export const pl: Dictionary = {
     noPermissions: 'Ta wtyczka nie prosi o żadne uprawnienia. Jej akcje działają w całości wewnątrz piaskownicy.',
     install: 'Jak zainstalować',
     installSteps: [
-      'Zainstaluj DeckPilota w wersji 0.7.0 lub nowszej. Wersja 0.7.0 jest pierwszą z obsługą wtyczek, a wtyczki są w niej domyślnie włączone.',
-      'Otwórz stronę Marketplace w DeckPilocie (Settings › Extensions › Plugins) i znajdź wtyczkę {name}.',
+      'Zainstaluj DeckPilota w wersji 0.7.0 lub nowszej; bieżące wydanie to 0.10.0. Wersja 0.7.0 jest pierwszą z obsługą wtyczek, a wtyczki są w niej domyślnie włączone.',
+      'Otwórz Marketplace w DeckPilocie i znajdź wtyczkę {name}. Od DeckPilota 0.8.0 Marketplace otwiera się z paska narzędzi; w wersji 0.7.0 znajduje się w Settings › Extensions › Plugins.',
       'Przejrzyj wymagane uprawnienia i zainstaluj wtyczkę. Przed instalacją DeckPilot weryfikuje podpisy rejestru oraz skrót sha256 i rozmiar pakietu.',
       'Włącz wtyczkę i przyznaj jej uprawnienia. Wtyczka jest instalowana jako wyłączona i do tego momentu nie może nic zrobić.',
     ],
@@ -460,9 +460,9 @@ export const pl: Dictionary = {
     previous: 'Poprzednia',
     next: 'Następna',
     pagination: 'Poprzednia i następna strona',
-    statusTitle: 'DeckPilot 0.7.0 obsługuje wtyczki',
+    statusTitle: 'DeckPilot 0.10.0 obsługuje API wtyczek 1.9',
     status:
-      'To pierwsze wydanie z obsługą wtyczek, a wtyczki są w nim domyślnie włączone. Podpisany rejestr działa i publikuje własne wtyczki DeckPilota; nie jest jeszcze otwarty dla innych wydawców. SDK ma wersję 0.x i nie jest opublikowane jako pakiet, więc jego API w Ruście może się jeszcze zmienić.',
+      'Obsługa wtyczek istnieje od DeckPilota 0.7.0, a wtyczki są domyślnie włączone; bieżące wydanie 0.10.0 udostępnia API wtyczek 1.9, którego najnowsze dodatki są przeznaczone wyłącznie dla własnych wtyczek DeckPilota dołączonych do aplikacji. Podpisany rejestr działa i publikuje własne wtyczki DeckPilota; nie jest jeszcze otwarty dla innych wydawców. SDK ma wersję 0.x i nie jest opublikowane jako pakiet, więc jego API w Ruście może się jeszcze zmienić.',
     verified: 'Sprawdzono z kodem DeckPilota w commicie {commit}.',
     source: 'Źródłowa dokumentacja SDK w repozytorium DeckPilota',
   },

@@ -7,7 +7,7 @@ order: 3
 
 `deckpilot-plugin-sdk` is the Rust crate you write a plugin with. It declares the plugin and its actions, checks parameters before your code runs, wraps every capability of guest ABI 1 in a typed method, and generates the WebAssembly exports. This page is a map of the crate; the other pages go into each part.
 
-> **Status:** The crate is version 0.1.0, implements plugin API 1.0 and guest ABI 1, and is not published to crates.io. See [Getting started](../getting-started/#how-you-get-the-sdk) for how to depend on it. While it is 0.x, a minor version may change the Rust API.
+> **Status:** The crate is version 0.1.0, implements plugin API 1.0 to 1.9 (DeckPilot 0.10.0 provides 1.9; the 1.9 additions except `Context::profile` are only for DeckPilot's own bundled plugins) and guest ABI 1, and is not published to crates.io. See [Getting started](../getting-started/#how-you-get-the-sdk) for how to depend on it. While it is 0.x, a minor version may change the Rust API.
 
 ## A whole plugin
 
@@ -56,6 +56,7 @@ In a real plugin crate one more line, `deckpilot_plugin_sdk::plugin!(plugin);`, 
 | `CapabilityError`, `CapabilityErrorKind`, `NetworkErrorKind` | Why a capability call failed |
 | `RunContext`, `RunTrigger`, `RunCause` | What started the current run |
 | `LogLevel`, `NotifySeverity`, `ActionOutcome` | Log levels, notification looks, the wire form of a result |
+| `Controls`, `Control`, `Input` | The controls and inputs an action works on (plugin API 1.3) |
 
 ## Defining a plugin
 
@@ -65,7 +66,34 @@ In a real plugin crate one more line, `deckpilot_plugin_sdk::plugin!(plugin);`, 
 
 `Plugin::validate()` checks ids, keys, uniqueness, kinds and defaults against the manifest's rules. Call it in a unit test. An invalid definition fails every invocation with the code `plugin-error`.
 
+`Plugin::requires_api(ApiLevel)` declares the plugin API level the plugin cannot work without; the manifest declares the same level in `engines.pluginApi`. Without it the plugin needs 1.0. See [Compatibility](../compatibility/#enginespluginapi).
+
 Details: [Actions](../actions/) and [Parameters](../parameters/).
+
+## Controls
+
+Plugin API 1.3, since DeckPilot 0.8.0, lets an action say which controls it works on: keys, dials (encoders) or touch zones, and which inputs of each. `Action::controls(Controls)` declares them; `Controls::new()` chained with `.key(..)`, `.encoder(..)` or `.touch_zone(..)` lists the `Input`s per kind. This example from the crate's documentation binds an action to a key press or click and to a dial turned clockwise:
+
+```rust
+use deckpilot_plugin_sdk::prelude::*;
+use deckpilot_plugin_sdk::ApiLevel;
+
+fn next(_: &mut Context<'_>, _: &Args<'_>) -> ActionResult {
+    Ok(Output::ok())
+}
+
+fn plugin() -> Plugin {
+    Plugin::new("acme.pager", "1.0.0")
+        .requires_api(ApiLevel { major: 1, minor: 3 })
+        .action(Action::new("next", next).controls(
+            Controls::new()
+                .key([Input::Press, Input::Click])
+                .encoder([Input::RotateClockwise]),
+        ))
+}
+```
+
+Declaring controls needs `requires_api` 1.3: `Plugin::validate` refuses them below it. The manifest entry of the action declares the same `controls` (`Controls::to_json()` gives that form), and `testing::manifest_mismatches` compares the two. An action without controls works on keys only. See [Manifest format](../manifest/#controls) and the [canonical description](https://github.com/knittingcode/deckpilot/blob/main/docs/marketplace/sdk/actions.md#controls).
 
 ## The `plugin!` macro
 
@@ -111,14 +139,19 @@ Outside WebAssembly, a capability call that does not go through a `MockHost` fai
 | Constant | Value | Meaning |
 | --- | --- | --- |
 | `deckpilot_plugin_sdk::SDK_VERSION` | `0.1.0` | The crate's own version |
-| `deckpilot_plugin_sdk::API_LEVEL` | 1.0 | The plugin API level; the manifest declares `"pluginApi": "^1.0"` |
+| `deckpilot_plugin_sdk::API_LEVEL` | 1.0 | The plugin API level a plugin needs unless it calls `Plugin::requires_api`; the manifest then declares `"pluginApi": "^1.0"` |
+| `deckpilot_plugin_sdk::LATEST_API_LEVEL` | 1.9 | The highest plugin API level the SDK implements (at the DeckPilot v0.10.0 commit) |
+| `deckpilot_plugin_sdk::CONTROLS_API_LEVEL` | 1.3 | The level that introduced `Action::controls` |
+| `deckpilot_plugin_sdk::DIALOGS_API_LEVEL` | 1.5 | The level that introduced `Context::dialog` |
+| `deckpilot_plugin_sdk::LOCALIZATION_API_LEVEL` | 1.6 | The level that introduced `Context::locale` and `Context::t` |
+| `deckpilot_plugin_sdk::PRIVILEGED_API_LEVEL` | 1.9 | The level of the operations of DeckPilot's own bundled plugins and of `Context::profile` |
 | `deckpilot_plugin_sdk::ABI_VERSION` | 1 | The guest ABI, asserted at compile time |
 
 See [Compatibility](../compatibility/).
 
 ## What the SDK does not offer
 
-ABI 1 has no file system, process, clipboard or shell access, no clock and no random source. `std::time::SystemTime::now()` and random number generators fail or panic in the module. There are no timers, no background work, no streaming HTTP and no WebSockets, and a plugin cannot read variables, the active profile or the project.
+ABI 1 has no file system, process, clipboard or shell access. The time and random bytes come only from the agent, through `Context::now` and `Context::random_bytes` (plugin API 1.1); `std::time::SystemTime::now()` and random number generators fail or panic in the module. There are no timers, no background work, no streaming HTTP and no WebSockets, and a plugin cannot read variables, the active profile or the project.
 
 The SDK also declares `Param::number` and `Param::secret`. Manifest version 1 has no parameter kind for them, so they work under `MockHost` but cannot be reached through the agent; see [Parameters](../parameters/#kinds-the-manifest-does-not-have).
 

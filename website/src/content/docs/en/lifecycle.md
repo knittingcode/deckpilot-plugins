@@ -102,8 +102,8 @@ The original design and the JavaScript type declarations describe more than ABI 
 - **No background work.** No timers and no intervals. The `background` permission exists in the manifest schema but has no effect. A plugin runs only while one of its actions runs.
 - **No activation hooks with capabilities.** Init and shutdown are the only hooks, and they cannot make capability calls.
 - **No settings-changed notification.** Read `Context::settings()` in each invocation.
-- **No button state.** The manifest's `state` field validates, but nothing pulls state from a plugin. There is no device access.
-- **No clock and no sleep.** A module cannot read the time or wait.
+- **Button state only through key state.** From plugin API 1.2 the agent asks an action's state handler what its key shows ([key state](https://github.com/knittingcode/deckpilot/blob/main/docs/marketplace/sdk/actions.md#key-state)); a plugin has no other device access. From plugin API 1.3 an action can declare the dials and touch zones it works on; see [Manifest format](../manifest/#controls).
+- **No sleep.** A module cannot wait. It reads the time only from the agent, with `Context::now` (plugin API 1.1).
 - **No progress reports** from a running action.
 
 One thing a handler can learn about its invocation is what started it: `Context::run_context()` returns whether a key, a gesture, the app or a workflow started the run, and for a workflow whether the user, a schedule or an event did. It does not expose a deadline or an attempt number.

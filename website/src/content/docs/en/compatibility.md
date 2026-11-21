@@ -12,12 +12,13 @@ A plugin carries several version numbers, each answering a different question: w
 | Fact | Today |
 | --- | --- |
 | Plugin support | Included since DeckPilot 0.7.0, with plugins on by default. DeckPilot 0.6.0 does not include it. An agent built from source needs the `plugins` cargo feature; `--disable-plugins` or `DECKPILOT_ENABLE_PLUGINS=0` turns plugins off |
-| Public DeckPilot versions | [v0.7.0](https://github.com/knittingcode/deckpilot/releases/tag/v0.7.0) (2026-11-18), the current stable release and the first with plugin support. Before it, v0.6.0 (2026-11-17), the first stable release, without plugin support, and the pre-releases v0.6.0-alpha.3 and v0.6.0-alpha.4 |
+| Public DeckPilot versions | [v0.10.0](https://github.com/knittingcode/deckpilot/releases/tag/v0.10.0) (2026-11-21), the current stable release, with plugin API 1.9. [v0.9.0](https://github.com/knittingcode/deckpilot/releases/tag/v0.9.0) (2026-11-20), with plugin API 1.4. [v0.8.1](https://github.com/knittingcode/deckpilot/releases/tag/v0.8.1) and [v0.8.0](https://github.com/knittingcode/deckpilot/releases/tag/v0.8.0) (2026-11-19), with plugin API 1.3. [v0.7.0](https://github.com/knittingcode/deckpilot/releases/tag/v0.7.0) (2026-11-18), the first release with plugin support, with plugin API 1.2. Before them, v0.6.0 (2026-11-17), the first stable release, without plugin support, and the pre-releases v0.6.0-alpha.3 and v0.6.0-alpha.4 |
 | Rust SDK | `deckpilot-plugin-sdk` 0.1.0, not published to crates.io |
 | JavaScript SDK | Type declarations only; cannot build or run a plugin |
 | Registry | Live at `https://knittingcode.github.io/deckpilot-plugins/v1/`, signed with production key set 1. Publishes DeckPilot's own plugins; not open to other publishers yet |
+| Bundled plugins | Since DeckPilot 0.10.0, Git, Docker, Workspace, Projects, GitHub, GitLab, Jira and Workflows are DeckPilot's own plugins bundled with the app, together with notifications (`deckpilot.git`, `deckpilot.docker`, `deckpilot.workspace`, `deckpilot.projects`, `deckpilot.github`, `deckpilot.gitlab`, `deckpilot.jira`, `deckpilot.workflows`, `deckpilot.notifications`). They come only from the application bundle, never from a registry |
 
-Plugin API 1.x, guest ABI 1 and manifest version 1 are what the `main` branch of DeckPilot implements.
+Plugin API 1.x (1.9 in DeckPilot 0.10.0), guest ABI 1 and manifest version 1 are what DeckPilot implements.
 
 ## The version numbers
 
@@ -25,7 +26,7 @@ Plugin API 1.x, guest ABI 1 and manifest version 1 are what the `main` branch of
 | --- | --- | --- | --- |
 | Manifest version | `manifestVersion` | `1` | The only version the agent reads |
 | Guest ABI | `runtime.abi`; the module's `dp_abi_version` export | `1` | The host loads only ABI 1 modules |
-| Plugin API level | `engines.pluginApi` | `1.0` | `^MAJOR.MINOR`: same major, at least this minor |
+| Plugin API level | `engines.pluginApi` | DeckPilot 0.7.0 provides `1.2`, 0.8.x `1.3`, 0.9.0 `1.4`, 0.10.0 `1.9` | `^MAJOR.MINOR`: same major, at least this minor |
 | DeckPilot version | `engines.deckpilot` | `>=0.5.0 <1.0.0` in the examples | A range matched against the agent's version |
 | SDK version | `engines.sdk` | `0.1.0` | Informational |
 | Plugin version | `version` | yours | Semantic versioning with a restricted pre-release form |
@@ -49,7 +50,43 @@ The registry client checks the range before an install, and the agent checks it 
 
 ### `engines.pluginApi`
 
-The plugin API level the module needs, written `^MAJOR.MINOR`. The agent provides level 1.0, so `^1.0` is the only value that installs today.
+The plugin API level the module needs, written `^MAJOR.MINOR`: the same major level, and at least this minor level. An agent below it does not install the plugin and reports the version as incompatible.
+
+| DeckPilot | Plugin API it provides | `pluginApi` values that install |
+| --- | --- | --- |
+| 0.6.0 | none: no plugin support | none |
+| 0.7.0 | 1.2 | `^1.0` to `^1.2` |
+| 0.8.0, 0.8.1 | 1.3 | `^1.0` to `^1.3` |
+| 0.9.0 | 1.4 | `^1.0` to `^1.4` |
+| 0.10.0 | 1.9 | `^1.0` to `^1.9` |
+
+Each minor level adds something a plugin can use:
+
+| Level | Adds |
+| --- | --- |
+| 1.1 | The time (`Context::now`) and random bytes (`Context::random_bytes`) |
+| 1.2 | Key state: an action's state handler draws its key ([Actions](../actions/)) |
+| 1.3 | Per action, the controls and inputs it works on (`controls`), and up to four toolbar entries (`navigation`) that open views DeckPilot draws itself (`views`); see [Manifest format](../manifest/#controls) |
+| 1.4 | A view's `context` (the device and profile selectors shown with it), and `dependencies`: up to 16 other plugins the plugin needs, which DeckPilot resolves and installs with it before download. An action's `requiresDependencies` names the optional ones it cannot run without. A dependency grants nothing |
+| 1.5 | The `dialogs` permission and `Context::dialog`: standard confirmation, alert, form and selection dialogs that DeckPilot draws, only in a run the user started, without secret fields |
+| 1.6 | Translations: `locales/<tag>.json` files in the package, `locales` and `defaultLocale` in the manifest, `t:` keys in manifest texts, `Context::locale` and `Context::t` |
+| 1.7 | An action's `editorNavigation`: what running it does to the page or layout a device shows, for the Device Editor's preview |
+| 1.8 | An action's `title` (a suggested and a dynamic title, its position), and `contributes.visualAssets`: icons and backgrounds for DeckPilot's Icon and Background Libraries |
+| 1.9 | Mostly for DeckPilot's own bundled plugins; see [below](#plugin-api-19) |
+
+Declare `^1.0` unless the plugin cannot work without a later addition. A call an agent does not know is answered as unsupported, so a plugin that can do without it keeps `^1.0` and runs on every DeckPilot with plugin support. A plugin that declares a higher level raises it in code too, with `Plugin::requires_api`; `testing::manifest_mismatches` compares the two.
+
+A manifest that uses `controls`, `navigation` or `views` must declare `"pluginApi": "^1.3"`; the manifest validator refuses a lower level, and agents below 1.3 refuse such a manifest anyway. Since DeckPilot 0.8.0 is the first release that provides 1.3, such a plugin should also declare `"deckpilot": ">=0.8.0"` (for example `">=0.8.0 <1.0.0"`), so that DeckPilot 0.7.0 does not offer it. Plugins that declare `^1.0` to `^1.2` keep working on DeckPilot 0.8.0.
+
+The same holds for later levels: a manifest that uses a 1.4 to 1.8 addition must declare that level, and should name the first release that provides it as the lower bound of `engines.deckpilot`: `">=0.9.0"` for 1.4, `">=0.10.0"` for 1.5 to 1.8. Every plugin that declares a lower level keeps working on DeckPilot 0.10.0.
+
+### Plugin API 1.9
+
+Plugin API 1.9 is the platform on which DeckPilot 0.10.0 moved Git, Docker, Workspace, Projects and Workflows out of its core into its own bundled plugins. Its additions are the permissions `tools` (brokered `git` and `docker` runs), `resources`, `projectContext` and `hostViews`, `openUrl` with `fromParams`, `resource` parameters, an action's `requiresPermissions`, and variables whose value DeckPilot computes from the active project. All of these are accepted **only** from DeckPilot's own plugins shipped inside the app, whose every file matches the pins compiled into the agent. A third-party manifest, a package from a registry (a `deckpilot.*` one included), and a sideloaded or developer package that declares one are refused (`first-party-only`), and the registry's tooling refuses them too. Process execution in general, the shell, the file system and plugin UI code stay never grantable for every publisher.
+
+The one 1.9 addition open to every publisher is the `profile` permission (`Context::profile`: the active profile's name and, with `project`, the active project); see [Permissions](../permissions/). A third-party plugin that does not use it has no reason to declare `^1.9`.
+
+The full rules are in DeckPilot's [permissions reference](https://github.com/knittingcode/deckpilot/blob/v0.10.0/docs/marketplace/sdk/permissions.md#plugin-api-19-first-party-bundled-plugins-only).
 
 ### `engines.sdk`
 

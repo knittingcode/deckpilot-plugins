@@ -42,7 +42,7 @@ Każde uprawnienie wymaga pola `justification` o długości od 10 do 200 znaków
 
 ## Rodzaje uprawnień
 
-Schemat wersji manifestu 1 definiuje dziewięć rodzajów. Cztery mają skutek w ABI 1, jeden podnosi limit, a cztery przechodzą walidację, ale na razie na nic nie pozwalają.
+Schemat wersji manifestu 1 definiuje dziesięć rodzajów, które może zadeklarować każda wtyczka. Cztery mają skutek w ABI 1, jeden podnosi limit, trzy mają skutek od poziomu API wtyczek podanego w tabeli, a dwa przechodzą walidację, ale na razie na nic nie pozwalają.
 
 | Rodzaj | Pola | Status w ABI 1 |
 | --- | --- | --- |
@@ -51,14 +51,17 @@ Schemat wersji manifestu 1 definiuje dziewięć rodzajów. Cztery mają skutek w
 | `notifications` | `routing` (opcjonalne) | **Działa.** Pozwala na `Context::notify` |
 | `openUrl` | `hosts` (od 0 do 16), `userOrigins` | **Działa.** Pozwala na `Context::open_url` dla stron `https://<host>` oraz serwera, który użytkownik wpisał i na który zezwolił |
 | `storage` | `quotaKb` (od 257 do 10 240) | **Działa.** Podnosi limit pamięci trwałej z 256 KiB do `quotaKb` KiB. Sama pamięć trwała nie wymaga uprawnienia |
-| `profile` | `read` (`profile`, `project`) | **Tylko w schemacie.** Żadna funkcja hosta w ABI 1 nie odczytuje profilu ani projektu |
+| `profile` | `read` (`profile`, `project`) | **API wtyczek 1.9** (DeckPilot 0.10.0). Pozwala na `Context::profile`: nazwę aktywnego profilu z `profile` oraz identyfikator, klucz i nazwę aktywnego projektu z `project`. Przed 1.9 tylko w schemacie |
 | `variables` | `read` (identyfikatory zmiennych innych właścicieli) | **Tylko w schemacie.** ABI 1 nie ma funkcji hosta do odczytu zmiennych. Własne zmienne wtyczki nie wymagają uprawnienia |
 | `background` | `minIntervalSeconds` (od 15 do 86 400) | **Tylko w schemacie.** ABI 1 nie ma pracy w tle ani timerów |
-| `device` | `state`, `icons` (wartości logiczne) | **Tylko w schemacie.** ABI 1 nie ma dostępu do urządzenia |
+| `device` | `state`, `icons` (wartości logiczne) | **`state` działa** od API wtyczek 1.2: agent pyta wtyczkę, co pokazują klawisze przypisane do jej akcji ([Akcje](../actions/)); nic z urządzenia nie trafia do wtyczki. `icons` tylko w schemacie |
+| `dialogs` | | **API wtyczek 1.5** (DeckPilot 0.10.0). Pozwala na `Context::dialog`: standardowe okna dialogowe rysowane przez DeckPilota, tylko w uruchomieniu rozpoczętym przez użytkownika |
 
 Zadeklarowanie rodzaju, który na razie nic nie robi, jest dozwolone, ale i tak kosztuje użytkownika decyzję o zgodzie. Deklaruj tylko to, co twój kod faktycznie wywołuje.
 
 Niektórych rzeczy nigdy nie da się przyznać i nie mają one w ogóle swojego rodzaju: to między innymi system plików, procesy, powłoka i schowek. Crate manifestu odrzuca takie rodzaje z jasnym komunikatem.
+
+API wtyczek 1.9 dodaje rodzaje `tools`, `resources`, `projectContext` i `hostViews`. Mogą je deklarować wyłącznie własne wtyczki DeckPilota dostarczane wewnątrz aplikacji; każdy inny manifest, który to robi, jest odrzucany. Zobacz [Zgodność wersji](../compatibility/#api-wtyczek-19).
 
 ### Sieć
 

@@ -39,7 +39,7 @@ export const en = {
 
   status: {
     badge: 'Registry live',
-    short: 'The signed plugin registry is live. DeckPilot 0.7.0, the first release with plugin support, installs plugins from its Marketplace page.',
+    short: 'The signed plugin registry is live. DeckPilot 0.10.0, the current release, installs plugins from its Marketplace; 0.7.0 was the first release with plugin support.',
   },
 
   footer: {
@@ -208,11 +208,11 @@ export const en = {
         },
         {
           q: 'Can I install plugins today?',
-          a: 'Yes, with DeckPilot 0.7.0, the first release with plugin support. Plugins are on by default. The plugins listed on this site are published in the signed registry, and DeckPilot installs them from its Marketplace page. DeckPilot’s GitHub, GitLab and Jira integrations and its notifications also run as plugins bundled with the app. DeckPilot 0.6.0 does not include plugin support.',
+          a: 'Yes, with DeckPilot 0.7.0, the first release with plugin support, or later; the current release is 0.10.0. Plugins are on by default. The plugins listed on this site are published in the signed registry, and DeckPilot installs them from its Marketplace. Git, Docker, Workspace, Projects, GitHub, GitLab, Jira and Workflows, and DeckPilot’s notifications, are DeckPilot’s own plugins bundled with the app. DeckPilot 0.6.0 does not include plugin support.',
         },
         {
           q: 'How does installing a plugin work?',
-          a: 'From the Marketplace page inside DeckPilot, under Settings › Extensions › Plugins. You pick a plugin, review the permissions it requests and approve the install. This website is a catalog and documentation: it has no install button, and DeckPilot has no install links.',
+          a: 'From the Marketplace inside DeckPilot. Since DeckPilot 0.8.0 it opens from the toolbar of the main window; in 0.10.0 installed plugins are also managed in Settings › Plugins, and in 0.7.0 the Marketplace is under Settings › Extensions › Plugins. You pick a plugin, review the permissions it requests and approve the install. This website is a catalog and documentation: it has no install button, and DeckPilot has no install links.',
         },
         {
           q: 'How are plugins reviewed?',
@@ -308,7 +308,7 @@ export const en = {
     emptyStatus: [
       'The signed production registry is live, and its timestamp is re-signed daily.',
       'It publishes DeckPilot’s own plugins. It is not open to other publishers yet.',
-      'DeckPilot 0.7.0 is the first release with plugin support. DeckPilot 0.6.0 does not include it.',
+      'DeckPilot 0.7.0 is the first release with plugin support, and 0.10.0 is the current release. DeckPilot 0.6.0 does not include plugin support.',
     ],
     emptyStatusLink: 'What remains before the registry opens to other publishers',
     errorTitle: 'Search is unavailable',
@@ -343,8 +343,8 @@ export const en = {
     noPermissions: 'This plugin requests no permissions. Its actions run entirely inside the sandbox.',
     install: 'How to install',
     installSteps: [
-      'Install DeckPilot 0.7.0 or later. 0.7.0 is the first release with plugin support, and plugins are on by default.',
-      'Open the Marketplace page in DeckPilot (Settings › Extensions › Plugins) and find {name}.',
+      'Install DeckPilot 0.7.0 or later; the current release is 0.10.0. 0.7.0 is the first release with plugin support, and plugins are on by default.',
+      'Open the Marketplace in DeckPilot and find {name}. Since DeckPilot 0.8.0 the Marketplace opens from the toolbar; in 0.7.0 it is under Settings › Extensions › Plugins.',
       'Review the requested permissions and install. DeckPilot verifies the registry’s signatures and the package’s sha256 and size before installing.',
       'Enable the plugin and grant its permissions. A plugin is installed disabled and can do nothing until then.',
     ],
@@ -461,9 +461,9 @@ export const en = {
     previous: 'Previous',
     next: 'Next',
     pagination: 'Previous and next page',
-    statusTitle: 'DeckPilot 0.7.0 supports plugins',
+    statusTitle: 'DeckPilot 0.10.0 supports plugin API 1.9',
     status:
-      'It is the first release with plugin support, and plugins are on by default. The signed registry is live and publishes DeckPilot’s own plugins; it is not open to other publishers yet. The SDK is 0.x and not published as a package, so its Rust API can still change.',
+      'Plugin support exists since DeckPilot 0.7.0, with plugins on by default; 0.10.0, the current release, provides plugin API 1.9, whose newest additions are for DeckPilot’s own bundled plugins only. The signed registry is live and publishes DeckPilot’s own plugins; it is not open to other publishers yet. The SDK is 0.x and not published as a package, so its Rust API can still change.',
     verified: 'Checked against DeckPilot at commit {commit}.',
     source: 'Canonical SDK documentation in the DeckPilot repository',
   },

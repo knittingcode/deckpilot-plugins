@@ -33,7 +33,7 @@ Poniższe reguły pochodzą z JSON Schema (draft 2020-12) w pliku [plugins/schem
 | `assets` | nie | `keyIcons` (co najwyżej 64 pliki PNG według nazwy), `screenshots` (co najwyżej 8 plików PNG), `readme` (`"README.md"`), `changelog` (`"CHANGELOG.md"`). Wszystko, co tu wymieniono, trafia do pakietu |
 | `permissions` | tak | Tablica o co najwyżej 16 pozycjach; może być pusta. Zobacz [Uprawnienia](../permissions/) |
 | `supports` | nie | Rodziny urządzeń, których wtyczka wymaga lub których używa. Akceptowane przez schemat, nieużywane przez agenta w tej wersji |
-| `contributes` | tak | `actions`, `variables`, `settings`, `credentials`, `errorCodes`; każde z nich jest opcjonalne |
+| `contributes` | tak | `actions`, `variables`, `settings`, `credentials`, `errorCodes`, `navigation`, `views`; każde z nich jest opcjonalne |
 
 ## Akcje
 
@@ -48,8 +48,32 @@ Poniższe reguły pochodzą z JSON Schema (draft 2020-12) w pliku [plugins/schem
 | `parameters` | tak | Co najwyżej 32; może być puste. Zobacz [Parametry i ustawienia](../parameters/) |
 | `node` | nie | Kontrakt węzła workflow: wyjścia, limit czasu, ponawianie i efekt. Zobacz [Akcje](../actions/#metadane-węzła) |
 | `requiresProject`, `deprecated`, `replacedBy` | nie | `replacedBy` wskazuje inną akcję tej wtyczki i wymaga `deprecated: true` |
-| `state` | nie | Walidowane, ale ABI 1 nie ma wywołania stanu, więc stan przycisku nigdy nie jest pobierany z wtyczki |
-| `device` | nie | Akceptowane, nieużywane |
+| `state` | nie | Odświeżanie stanu klawisza (`onEvents` albo `every` z `intervalSeconds` od 1 do 86 400; wymaga `effect: readOnly`). Od API wtyczek 1.2 agent pyta procedurę stanu akcji o klawisze widoczne na urządzeniu, najwyżej co 5 sekund; wymaga to uprawnienia `device` z `state: true`. Zobacz [stan klawisza](https://github.com/knittingcode/deckpilot/blob/main/docs/marketplace/sdk/actions.md#key-state) w dokumentacji DeckPilota |
+| `device` | nie | `{ "requires": [...] }`. Akceptowane, nieużywane: nigdy nie pozwala przypisać akcji do pokrętła ani strefy dotykowej; do tego służy `controls` |
+| `controls` | nie | API wtyczek 1.3: kontrolki i wejścia, na których działa akcja. Bez tego pola tylko klawisze. Zobacz [Kontrolki](#kontrolki) |
+
+### Kontrolki
+
+`controls` wymaga `"engines": { "pluginApi": "^1.3" }` oraz, aby DeckPilot 0.7.0 nie oferował wtyczki, `"deckpilot": ">=0.8.0"`. Dla każdego rodzaju kontrolki pole wymienia wejścia, do których można przypisać akcję:
+
+```json
+"controls": { "key": ["press", "click", "long-press"],
+              "encoder": ["rotate-clockwise", "rotate-counter-clockwise"] }
+```
+
+| Rodzaj | Wejścia, które może wymienić |
+| --- | --- |
+| `key` | `press`, `release`, `click`, `double-click`, `long-press` |
+| `encoder` (pokrętło) | `rotate-clockwise`, `rotate-counter-clockwise`, `press`, `release`, `click`, `double-click`, `long-press` (pięć ostatnich tylko na pokrętłach, które można wcisnąć) |
+| `touchZone` | `tap`, `long-touch`, `swipe` |
+
+- Co najmniej jeden rodzaj; każdy rodzaj wymienia od 1 do 8 wejść, każde raz, i tylko wejścia, które kontrolka tego rodzaju może wytworzyć.
+- Rodzaj, którego brak, nie jest obsługiwany: edytory nie oferują tam akcji, zapis takiego przypisania jest odrzucany, a agent nie uruchamia przypisania zapisanego wcześniej. DeckPilot 0.8.0 zachowuje takie przypisanie i pokazuje je jako niedostępne.
+- Bez `controls` akcja działa tylko na klawiszach, ze wszystkimi wejściami klawisza: to domyślne zachowanie każdego manifestu sprzed 1.3. `device.requires`, nawet `["dials"]`, nie dodaje żadnego rodzaju.
+- Akcja pokrętła uruchamia się raz na każde zdarzenie obrotu zgłoszone przez urządzenie, niezależnie od liczby ząbków.
+- W SDK akcja deklaruje to samo za pomocą `Action::controls`; zobacz [Przegląd SDK](../sdk/#kontrolki).
+
+Pełne reguły opisują [dokumentacja manifestu w DeckPilocie](https://github.com/knittingcode/deckpilot/blob/main/docs/marketplace/sdk/manifest.md#controls) i [docs/device-controls.md](https://github.com/knittingcode/deckpilot/blob/main/docs/device-controls.md).
 
 ## Zmienne
 
@@ -82,6 +106,31 @@ Poniższe reguły pochodzą z JSON Schema (draft 2020-12) w pliku [plugins/schem
 | `queryName` | Wymagane przy `query`: `[A-Za-z0-9_.-]{1,64}` |
 | `setupUrl` | Adres URL https, pod którym użytkownik tworzy sekret |
 
+## Pozycje paska narzędzi i widoki
+
+`contributes.navigation` i `contributes.views` wymagają `"engines": { "pluginApi": "^1.3" }` oraz, aby DeckPilot 0.7.0 nie oferował wtyczki, `"deckpilot": ">=0.8.0"`. Każda pozycja nawigacji to przycisk na pasku narzędzi głównego okna DeckPilota, który otwiera widok rysowany przez samego DeckPilota. Wtyczka nie dostarcza do niego HTML-a, adresu URL ani kodu.
+
+```json
+"navigation": [{ "id": "dashboard", "label": "Status",
+                 "icon": { "light": "assets/nav.svg", "dark": "assets/nav-dark.svg" },
+                 "view": "dashboard" }],
+"views": [{ "id": "dashboard", "kind": "variables" }]
+```
+
+| Pole | Reguła |
+| --- | --- |
+| `navigation` | Co najwyżej 4 pozycje, unikalne identyfikatory |
+| `navigation[].id` | `[a-z][a-z0-9]*(-[a-z0-9]+)*`, od 1 do 32 znaków |
+| `navigation[].label` | Od 1 do 24 znaków, bez spacji na początku i na końcu, bez znaków sterujących |
+| `navigation[].icon` | Jedna ścieżka dla obu motywów albo `{ "light", "dark" }` z co najmniej jedną z nich |
+| `navigation[].view` | Identyfikator jednego z `views` |
+| `views` | Co najwyżej 8 widoków, unikalne identyfikatory; `id` jak `navigation[].id` |
+| `views[].kind` | `variables` (zmienne wtyczki, na żywo), `actions` (Action Library z akcjami wtyczki) lub `settings` (ustawienia wtyczki) |
+
+Ikona to plik pakietu w katalogu `assets/`, z rozszerzeniem `.png`, `.webp` lub `.svg`. Jest sprawdzana przy budowaniu pakietu i przy instalacji: PNG lub WebP o rozmiarze najwyżej 256 KiB i 512×512 pikseli albo SVG o rozmiarze najwyżej 64 KiB, bez skryptów, `<foreignObject>`, procedur obsługi zdarzeń, linków zewnętrznych, `data:` i `javascript:`, importów stylów i encji. Agent ponownie oczyszcza SVG za każdym razem, gdy je udostępnia, a aplikacja pokazuje ikony wyłącznie jako obrazy, z własną ikoną, gdy nie ma czego pokazać. Pozycje pojawiają się tylko dla zainstalowanych i włączonych wtyczek; te, które się nie mieszczą, są w menu *More plugin views*.
+
+Pełne reguły dotyczące ikon opisuje [dokumentacja manifestu w DeckPilocie](https://github.com/knittingcode/deckpilot/blob/main/docs/marketplace/sdk/manifest.md#contributesnavigation-and-contributesviews).
+
 ## Kody błędów
 
 `contributes.errorCodes` przypisuje co najwyżej 64 kodom ich znaczenie o długości od 1 do 200 znaków. Kod pasuje do `[a-z][a-z0-9]*(-[a-z0-9]+)*`, ma co najwyżej 64 znaki i nie może ponownie deklarować kodu wspólnego. Zobacz [Akcje](../actions/#kody-błędów).
@@ -92,7 +141,7 @@ Trzy kontrole pilnują zgodności manifestu z kodem:
 
 - **Identyfikatory akcji.** Kiedy proces hosta ładuje moduł, nadzorca porównuje identyfikatory akcji zgłaszane przez moduł z identyfikatorami w manifeście i odrzuca niezgodność.
 - **Parametry.** Agent waliduje każde wywołanie względem manifestu, zanim uruchomi się proces hosta, a SDK waliduje je ponownie względem deklaracji `Param`.
-- **Test jednostkowy.** `testing::manifest_mismatches` wymienia każdą różnicę w identyfikatorze, wersji, `engines.pluginApi`, `engines.sdk`, identyfikatorach akcji i ich kolejności oraz w `required`, rodzaju, ograniczeniach, opcjach i wartości domyślnej każdego parametru. Zobacz [Testowanie](../testing/).
+- **Test jednostkowy.** `testing::manifest_mismatches` wymienia każdą różnicę w identyfikatorze, wersji, `engines.pluginApi`, `engines.sdk`, identyfikatorach akcji i ich kolejności, w `controls` akcji oraz w `required`, rodzaju, ograniczeniach, opcjach i wartości domyślnej każdego parametru. Zobacz [Testowanie](../testing/).
 
 ## Pełny przykład
 

@@ -17,6 +17,52 @@ and the commit pinned here (`tools/deckpilot.env`) includes them. Sections 1 to 
 taken; where a row of the matrix says **Missing** for one of these, read
 its section in 6.
 
+**Update, 2026-11-19.** Plugin API 1.3 is on DeckPilot's `main` (#333,
+#341, #343) and ships in DeckPilot 0.8.0, whose agent provides 1.3 (0.7.0
+provides 1.2). A manifest can now declare, per action, the controls and
+inputs it works on (`contributes.actions[].controls`: keys, dials
+(encoders) and touch zones; without it, keys only, as before), and up to
+four toolbar entries (`contributes.navigation`) that open views DeckPilot
+draws itself (`contributes.views`: the plugin's variables, its actions or
+its settings), with validated icons (PNG or WebP up to 256 KiB and
+512×512, SVG up to 64 KiB without scripts). The SDK has
+`Action::controls(..)` (`LATEST_API_LEVEL` 1.3; `API_LEVEL`, the default a
+plugin needs, stays 1.0). A manifest using any of them must declare
+`"pluginApi": "^1.3"` and should declare `engines.deckpilot` `">=0.8.0"`;
+plugins declaring `^1.0` to `^1.2` keep working on 0.8.0. This narrows the
+**Device capabilities** row of the matrix: an action can be bound to a
+dial or a touch zone, but still no operation reports a device, its grid or
+its image size. The registry tooling validates such a manifest once
+`tools/deckpilot.env` pins DeckPilot 0.8.0 or later (v0.10.0 since PR #59;
+plugin API 1.9). Reference: DeckPilot's `docs/marketplace/sdk/manifest.md` and
+`docs/device-controls.md`.
+
+**Update, 2026-11-21.** DeckPilot 0.9.0 (2026-11-20) provides plugin API
+1.4 and DeckPilot 0.10.0 provides 1.9 (0.8.0 and 0.8.1 provide 1.3).
+Plugin API 1.4 adds a view's `context` and manifest `dependencies` with
+actions' `requiresDependencies`: other plugins a plugin needs, resolved
+before download. 1.5 adds the `dialogs` permission (`Context::dialog`:
+standard dialogs DeckPilot draws, only in a run the user started), 1.6
+translations (`locales/<tag>.json`, `t:` texts, `Context::t`), 1.7 an
+action's `editorNavigation`, and 1.8 an action's `title` suggestions and
+`contributes.visualAssets` (icons and backgrounds for DeckPilot's
+libraries). The plugins here can use all of these. Plugin API 1.9 is the
+platform on which DeckPilot moved Git, Docker, Workspace, Projects and
+Workflows out of its core: the permissions `tools` (brokered `git` and
+`docker`), `resources`, `projectContext` and `hostViews`, `openUrl` with
+`fromParams`, `resource` parameters and an action's
+`requiresPermissions`. They are accepted **only** from DeckPilot's own
+plugins shipped inside the app. A registry package, a `deckpilot.*` one
+included, and a sideloaded or developer package that declares one are
+refused (`first-party-only`), so none of the plugins here can use them.
+The one 1.9 addition open to every publisher is the `profile` permission
+(`Context::profile`). DeckPilot now bundles nine plugins:
+`deckpilot.docker`, `.git`, `.github`, `.gitlab`, `.jira`,
+`.notifications`, `.projects`, `.workflows` and `.workspace`, and never
+takes them from a registry. Reference: DeckPilot's
+`docs/marketplace/sdk/permissions.md` ("Plugin API 1.9: first-party bundled
+plugins only") and `docs/marketplace/module-migration.md` §7, §11.
+
 The rule for everything below: a plugin uses only capabilities that exist.
 Where one is missing, the plugin waits for a narrow, permission-controlled
 capability that is reviewed on its own; nothing here asks for unrestricted

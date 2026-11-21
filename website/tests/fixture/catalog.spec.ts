@@ -156,7 +156,7 @@ test.describe('plugin page', () => {
     await expect(details).toContainText('Jun 18, 2026');
     await expect(details).toContainText('macOS, Windows and Linux');
     await expect(details).toContainText('>=0.5.0 <1.0.0');
-    await expect(details).toContainText('Includes the current release v0.7.0.');
+    await expect(details).toContainText('Includes the current release v0.10.0.');
     await expect(details).not.toContainText('does not include plugin support');
     await expect(details).toContainText('Apache-2.0');
     await expect(details.getByRole('link', { name: 'example/build-status' })).toHaveAttribute('href', 'https://github.com/example/build-status');
@@ -178,8 +178,8 @@ test.describe('plugin page', () => {
     await expect(history.getByRole('link', { name: 'Compare with 1.1.0' })).toHaveAttribute('href', /github\.com\/example\/build-status\/compare\/[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/);
 
     await expect(page.locator('#install-title')).toHaveText('How to install');
-    await expect(page.getByRole('main')).toContainText('Install DeckPilot 0.7.0 or later. 0.7.0 is the first release with plugin support');
-    await expect(page.getByRole('main')).toContainText('Open the Marketplace page in DeckPilot (Settings › Extensions › Plugins) and find Build Status.');
+    await expect(page.getByRole('main')).toContainText('Install DeckPilot 0.7.0 or later; the current release is 0.10.0. 0.7.0 is the first release with plugin support');
+    await expect(page.getByRole('main')).toContainText('Open the Marketplace in DeckPilot and find Build Status. Since DeckPilot 0.8.0 the Marketplace opens from the toolbar; in 0.7.0 it is under Settings › Extensions › Plugins.');
     await expect(page.getByRole('main')).toContainText('This website has no install button');
     await expect(page.getByRole('main').getByRole('link', { name: /^install/i })).toHaveCount(0);
     await expect(page.getByRole('main').getByRole('button', { name: /install/i })).toHaveCount(0);
@@ -191,7 +191,7 @@ test.describe('plugin page', () => {
     await expect(page.getByRole('main')).toContainText('Pre-release');
     const details = page.getByRole('complementary');
     await expect(details).toContainText('macOS, Linux');
-    await expect(details).toContainText('Does not include the current release v0.7.0');
+    await expect(details).toContainText('Does not include the current release v0.10.0');
     await expect(page.locator('[data-permission="telepathy"]')).toContainText('Other permission');
     await expect(page.locator('[data-permission="network"]')).toContainText('a server address you enter yourself');
     await expect(page.locator('#actions-title + p')).toContainText('not shown here');

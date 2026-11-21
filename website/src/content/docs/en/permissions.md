@@ -42,7 +42,7 @@ Every permission needs a `justification` of 10 to 200 characters. The consent di
 
 ## Permission kinds
 
-The schema of manifest version 1 defines nine kinds. Four have an effect in ABI 1, one raises a limit, and four validate but allow nothing yet.
+The schema of manifest version 1 defines ten kinds that any plugin may declare. Four have an effect in ABI 1, one raises a limit, three have an effect from the plugin API level named in the table, and two validate but allow nothing yet.
 
 | Kind | Fields | Status in ABI 1 |
 | --- | --- | --- |
@@ -51,14 +51,17 @@ The schema of manifest version 1 defines nine kinds. Four have an effect in ABI 
 | `notifications` | `routing` (optional) | **Usable.** Allows `Context::notify` |
 | `openUrl` | `hosts` (0 to 16), `userOrigins` | **Usable.** Allows `Context::open_url` for `https://<host>` pages, and for the server the user entered and allowed |
 | `storage` | `quotaKb` (257 to 10,240) | **Usable.** Raises the storage quota from 256 KiB to `quotaKb` KiB. Storage itself needs no permission |
-| `profile` | `read` (`profile`, `project`) | **Schema only.** No ABI 1 capability reads the profile or the project |
+| `profile` | `read` (`profile`, `project`) | **Plugin API 1.9** (DeckPilot 0.10.0). Allows `Context::profile`: the active profile's name with `profile`, the active project's id, key and name with `project`. Before 1.9, schema only |
 | `variables` | `read` (variable ids of other owners) | **Schema only.** ABI 1 has no capability to read variables. A plugin's own variables need no permission |
 | `background` | `minIntervalSeconds` (15 to 86,400) | **Schema only.** ABI 1 has no background work or timers |
-| `device` | `state`, `icons` (booleans) | **Schema only.** ABI 1 has no device access |
+| `device` | `state`, `icons` (booleans) | **`state` usable** from plugin API 1.2: the agent asks the plugin what the keys bound to its actions show ([Actions](../actions/)); nothing of a device reaches the plugin. `icons` is schema only |
+| `dialogs` | | **Plugin API 1.5** (DeckPilot 0.10.0). Allows `Context::dialog`: standard dialogs DeckPilot draws, only in a run the user started |
 
 Declaring a kind that does nothing yet is allowed, but it still costs the user a consent decision. Declare only what your code calls.
 
 Some things are never grantable and have no kind at all: the file system, processes, the shell and the clipboard, among others. The manifest crate refuses such kinds with a clear message.
+
+Plugin API 1.9 adds the kinds `tools`, `resources`, `projectContext` and `hostViews`. Only DeckPilot's own plugins shipped inside the app may declare them; any other manifest that does is refused. See [Compatibility](../compatibility/#plugin-api-19).
 
 ### Network
 
