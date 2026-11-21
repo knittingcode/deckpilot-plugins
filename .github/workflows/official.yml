@@ -32,6 +32,8 @@ jobs:
           persist-credentials: false
       - name: Tests of the official/ rules
         run: python3 -I tools/tests/test_check_official.py
+      - name: Tests of the official Marketplace entry rules
+        run: python3 -I tools/tests/test_official_entry.py
       - name: The pinned toolchain with rustfmt, clippy and the wasm target
         run: |
           channel=$(sed -n 's/^channel *= *"\([0-9.]*\)".*/\1/p' rust-toolchain.toml)
@@ -51,3 +53,7 @@ jobs:
         run: tools/official.sh compare
       - name: Throwaway publisher signature, release verify, released-pins guard
         run: tools/official.sh sign-test
+      - name: Candidate Marketplace entries and the compatibility matrix
+        run: python3 -I tools/official-entry.py check
+      - name: Marketplace entries from throwaway-signed fixture releases (refusals, discovery, dependencies, update offer)
+        run: tools/tests/test-official-marketplace.sh
