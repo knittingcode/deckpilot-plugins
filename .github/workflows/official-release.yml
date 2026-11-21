@@ -14,12 +14,17 @@
 #             commit on main
 #   gate      UNPRIVILEGED: official-release is protected as required, and
 #             every required check of main passed for the tagged commit
-#   build     UNPRIVILEGED (no environment, no secret, contents: read): two
-#             clean builds from the tagged commit, compared; the package
-#   sign      environment official-release, the publisher key: builds
-#             nothing; re-checks the package against the build job's
-#             sha256 and size, signs it, verifies it with the keys pinned in
-#             the DeckPilot build (never --keys) and audits the result
+#   checks    UNPRIVILEGED: checks, tests, the comparison with DeckPilot
+#   build-a,  UNPRIVILEGED (no environment, no secret, contents: read): two
+#   build-b   independent builds of the tagged commit, each on its own fresh
+#             runner with nothing run before it; module and package sha256
+#   sign      environment official-release, the publisher key: builds no
+#             plugin; both builds must agree on module and package; re-checks
+#             build-a's package against its sha256 and size; one step signs
+#             (release sign with the tag's id and version, nothing else),
+#             the next, without the key, verifies with the keys pinned in
+#             the DeckPilot build (never --keys), the rollback floor and the
+#             revocations, and audits the result
 #   release   contents: write: uploads package and signature to the GitHub
 #             Release of the tag (never creates a tag)
 #
@@ -94,6 +99,10 @@ jobs:
       - name: official-release deploys official release tags only, with a reviewer
         env:
           GH_TOKEN: ${{ github.token }}
+          # Owner settings (docs/separation.md): at least N listed reviewers,
+          # and the person who starts a run cannot approve it.
+          REQUIRE_REVIEWERS: ${{ vars.OFFICIAL_RELEASE_REQUIRE_REVIEWERS }}
+          REQUIRE_PREVENT_SELF_REVIEW: ${{ vars.OFFICIAL_RELEASE_REQUIRE_PREVENT_SELF_REVIEW }}
         run: tools/check-environment.sh official-release
       - name: Every required check of main passed for the tagged commit
         env:
@@ -101,16 +110,14 @@ jobs:
           COMMIT: ${{ needs.resolve.outputs.commit }}
         run: tools/check-required-checks.sh "$COMMIT"
 
-  build:
-    name: Build the package
+  checks:
+    # The tests and checks run here, apart from the builds that are released.
+    name: Checks, tests and the comparison with DeckPilot
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     permissions:
       contents: read
-    outputs:
-      sha256: ${{ steps.build.outputs.sha256 }}
-      size: ${{ steps.build.outputs.size }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -123,26 +130,91 @@ jobs:
             --component rustfmt --component clippy --target wasm32-unknown-unknown
       - name: Build the pinned deckpilot-registry and schema-check
         run: tools/build-cli.sh
-      - name: Checks, tests and the canary
+      - name: Checks, tests and the comparison with DeckPilot's build
         run: |
           tools/official.sh check
           tools/official.sh test
           tools/official.sh compare
+
+  build-a:
+    # One of two independent builds: its own fresh runner (fresh CARGO_HOME
+    # and target directory), nothing run before it, no tests and no other
+    # build scripts. `sign` compares module and package of both.
+    name: Build A (independent)
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    outputs:
+      module: ${{ steps.build.outputs.module }}
+      sha256: ${{ steps.build.outputs.sha256 }}
+      size: ${{ steps.build.outputs.size }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.resolve.outputs.commit }}
+      - name: The pinned toolchain with the wasm target
+        run: |
+          channel=$(sed -n 's/^channel *= *"\([0-9.]*\)".*/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal --no-self-update --target wasm32-unknown-unknown
+      - name: Build the pinned deckpilot-registry and schema-check
+        run: tools/build-cli.sh
       - id: build
-        name: Two clean builds, compared, and the package
+        name: One build in a fresh target directory, and the package
         env:
           ID: ${{ needs.resolve.outputs.id }}
-        run: tools/official.sh release-build "$ID" | tee -a "$GITHUB_OUTPUT"
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: tools/official.sh release-build "$ID" "$VERSION" | tee -a "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: official-package
+          name: official-package-a
+          path: .work/official/release
+          retention-days: 1
+          if-no-files-found: error
+
+  build-b:
+    # One of two independent builds: its own fresh runner (fresh CARGO_HOME
+    # and target directory), nothing run before it, no tests and no other
+    # build scripts. `sign` compares module and package of both.
+    name: Build B (independent)
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    outputs:
+      module: ${{ steps.build.outputs.module }}
+      sha256: ${{ steps.build.outputs.sha256 }}
+      size: ${{ steps.build.outputs.size }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.resolve.outputs.commit }}
+      - name: The pinned toolchain with the wasm target
+        run: |
+          channel=$(sed -n 's/^channel *= *"\([0-9.]*\)".*/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal --no-self-update --target wasm32-unknown-unknown
+      - name: Build the pinned deckpilot-registry and schema-check
+        run: tools/build-cli.sh
+      - id: build
+        name: One build in a fresh target directory, and the package
+        env:
+          ID: ${{ needs.resolve.outputs.id }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: tools/official.sh release-build "$ID" "$VERSION" | tee -a "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: official-package-b
           path: .work/official/release
           retention-days: 1
           if-no-files-found: error
 
   sign:
     name: Sign the package
-    needs: [resolve, gate, build]
+    needs: [resolve, gate, checks, build-a, build-b]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: official-release
@@ -153,21 +225,38 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ needs.resolve.outputs.commit }}
+      - name: The two independent builds agree on module and package
+        env:
+          A_MODULE: ${{ needs.build-a.outputs.module }}
+          A_SHA256: ${{ needs.build-a.outputs.sha256 }}
+          A_SIZE: ${{ needs.build-a.outputs.size }}
+          B_MODULE: ${{ needs.build-b.outputs.module }}
+          B_SHA256: ${{ needs.build-b.outputs.sha256 }}
+          B_SIZE: ${{ needs.build-b.outputs.size }}
+        run: tools/official.sh release-compare "$A_MODULE" "$A_SHA256" "$A_SIZE" "$B_MODULE" "$B_SHA256" "$B_SIZE"
       - name: Build the pinned deckpilot-registry (DeckPilot code only, no plugin code)
         run: tools/build-cli.sh
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: official-package
+          name: official-package-a
           path: ${{ runner.temp }}/official
-      - name: Check, sign, and verify with the keys pinned in DeckPilot
+      # The only step with the publisher key: it signs and does nothing else.
+      - name: Sign (release sign with the tag's id and version)
         env:
           DECKPILOT_PUBLISHER_KEY: ${{ secrets.DECKPILOT_PUBLISHER_KEY }}
           DECKPILOT_PUBLISHER_KEY_PASSWORD: ${{ secrets.DECKPILOT_PUBLISHER_KEY_PASSWORD }}
           ID: ${{ needs.resolve.outputs.id }}
           VERSION: ${{ needs.resolve.outputs.version }}
-          SHA256: ${{ needs.build.outputs.sha256 }}
-          SIZE: ${{ needs.build.outputs.size }}
+          SHA256: ${{ needs.build-a.outputs.sha256 }}
+          SIZE: ${{ needs.build-a.outputs.size }}
         run: tools/official.sh release-sign "$ID" "$RUNNER_TEMP/official" "$VERSION" "$SHA256" "$SIZE"
+      - name: Verify with the keys pinned in DeckPilot, the rollback floor and the revocations
+        env:
+          ID: ${{ needs.resolve.outputs.id }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          SHA256: ${{ needs.build-a.outputs.sha256 }}
+          SIZE: ${{ needs.build-a.outputs.size }}
+        run: tools/official.sh release-verify "$ID" "$RUNNER_TEMP/official" "$VERSION" "$SHA256" "$SIZE"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: official-signed
@@ -177,7 +266,7 @@ jobs:
 
   release:
     name: Upload the release assets
-    needs: [resolve, build, sign]
+    needs: [resolve, build-a, sign]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -198,6 +287,6 @@ jobs:
           TAG: ${{ needs.resolve.outputs.tag }}
           ID: ${{ needs.resolve.outputs.id }}
           VERSION: ${{ needs.resolve.outputs.version }}
-          SHA256: ${{ needs.build.outputs.sha256 }}
-          SIZE: ${{ needs.build.outputs.size }}
+          SHA256: ${{ needs.build-a.outputs.sha256 }}
+          SIZE: ${{ needs.build-a.outputs.size }}
         run: tools/official.sh release-upload "$TAG" "$ID" "$VERSION" "$RUNNER_TEMP/official" "$SHA256" "$SIZE"

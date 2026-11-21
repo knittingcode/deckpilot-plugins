@@ -55,7 +55,18 @@ needs an application release.
 - `tools/check-hygiene.py` refuses committed keys and generated output.
 - `tools/check-environment.sh official-release`: tags `deckpilot.*--v*`
   only, a required reviewer (no ruleset stands in for one), no
-  administrator bypass. `publish.yml`'s tag filter excludes the official
+  administrator bypass; stricter on the owner's settings
+  (`OFFICIAL_RELEASE_REQUIRE_REVIEWERS`,
+  `OFFICIAL_RELEASE_REQUIRE_PREVENT_SELF_REVIEW`,
+  [official/README.md](../official/README.md)).
+- `tools/check-workflows.py` also reads `secrets['NAME']` and refuses any
+  other use of the secrets context (`toJSON(secrets)`, a computed index)
+  and an environment named by an expression.
+- `tools/resolve-tag.sh` refuses the plugins DeckPilot bundles itself,
+  whatever `publish.yml`'s tag filter says.
+- `tools/build-cli.sh` and `tools/check-schemas.sh` build or read DeckPilot
+  only at a commit of its `main` branch, never a fork's commit served under
+  its URL. `publish.yml`'s tag filter excludes the official
   plugins' tags, which only `official-release.yml` takes.
 
 The first-party publisher key is DeckPilot's (its public key is pinned in

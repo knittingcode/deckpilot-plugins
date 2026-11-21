@@ -48,9 +48,12 @@ BUNDLED_PLUGIN_IDS = frozenset({
     "deckpilot.docker", "deckpilot.git", "deckpilot.github", "deckpilot.gitlab", "deckpilot.jira",
     "deckpilot.notifications", "deckpilot.projects", "deckpilot.workflows", "deckpilot.workspace",
 })
-# Plugin API 1.9's privileged kinds (PermissionKind::is_first_party_only and
-# the other usages of IssueCode::FirstPartyOnly).
+# Plugin API 1.9's privileged permission kinds
+# (PermissionKind::is_first_party_only). Every privileged usage, permissions
+# and the rest, is privileged_usages() below.
 PRIVILEGED_KINDS = frozenset({"tools", "resources", "projectContext", "hostViews"})
+# ViewKind::is_host_view: the app's own screens.
+HOST_VIEW_KINDS = frozenset({"workflows", "projects"})
 # The privileged-kinds gate of DeckPilot's publisher signature: closed until
 # the security review. Opening it is a reviewed change here AND in DeckPilot.
 PRIVILEGED_GATE_OPEN = False
@@ -145,6 +148,51 @@ def range_ok(text, version):
     return True
 
 
+def privileged_usages(manifest):
+    """Every use of a plugin API 1.9 privileged kind, as (JSON path, what).
+
+    Mirrors `usages` in DeckPilot's crates/deckpilot-plugin-manifest/src/
+    privileged.rs at the pinned commit exactly (each usage there reports
+    IssueCode::FirstPartyOnly): privileged permission kinds,
+    `openUrl.fromParams`, `node.changesContext`, `resource` action
+    parameters, variable host sources, host views, `statusItems` and
+    `dashboardCards` (present at all, even empty). The package step's
+    `deckpilot-registry package --first-party` runs the Rust validator on
+    the same manifest; tools/tests/test_check_official.py holds this mirror
+    to DeckPilot's own manifests.
+    """
+    found = []
+    m = manifest if isinstance(manifest, dict) else {}
+    for i, p in enumerate(m.get("permissions") or []):
+        if not isinstance(p, dict):
+            continue
+        if p.get("kind") in PRIVILEGED_KINDS:
+            found.append((f"permissions[{i}]", f"the `{p['kind']}` permission"))
+        elif p.get("kind") == "openUrl" and p.get("fromParams") is True:
+            found.append((f"permissions[{i}].fromParams", "`openUrl.fromParams`"))
+    contributes = m.get("contributes") if isinstance(m.get("contributes"), dict) else {}
+    for a, action in enumerate(contributes.get("actions") or []):
+        if not isinstance(action, dict):
+            continue
+        node = action.get("node") if isinstance(action.get("node"), dict) else {}
+        if node.get("changesContext") is True:
+            found.append((f"contributes.actions[{a}].node.changesContext", "`node.changesContext`"))
+        for q, parameter in enumerate(action.get("parameters") or []):
+            if isinstance(parameter, dict) and parameter.get("kind") == "resource":
+                found.append((f"contributes.actions[{a}].parameters[{q}].kind", "a `resource` parameter"))
+    for i, variable in enumerate(contributes.get("variables") or []):
+        if isinstance(variable, dict) and variable.get("source") is not None:
+            found.append((f"contributes.variables[{i}].source", f"the host source `{variable['source']}`"))
+    for i, view in enumerate(contributes.get("views") or []):
+        if isinstance(view, dict) and view.get("kind") in HOST_VIEW_KINDS:
+            found.append((f"contributes.views[{i}].kind", f"the `{view['kind']}` view"))
+    if contributes.get("statusItems") is not None:
+        found.append(("contributes.statusItems", "`statusItems`"))
+    if contributes.get("dashboardCards") is not None:
+        found.append(("contributes.dashboardCards", "`dashboardCards`"))
+    return found
+
+
 def check_permissions(where, entry, manifest):
     declared = [p.get("kind") for p in manifest.get("permissions", [])]
     allowed = entry.get("permissions")
@@ -162,12 +210,11 @@ def check_permissions(where, entry, manifest):
                 problem(f"{where}: process execution (`tools`) is only for "
                         f"{', '.join(f'{k} ({v[0]})' for k, v in PROCESS_ALLOW_LIST.items())}; "
                         f"{manifest.get('id')} asks for {names or 'it'}")
-        if kind in PRIVILEGED_KINDS and not PRIVILEGED_GATE_OPEN:
-            problem(f"{where}: `{kind}` is a plugin API 1.9 privileged kind; a signed release artifact "
-                    "cannot carry it while the gate is closed (DeckPilot "
+    if not PRIVILEGED_GATE_OPEN:
+        for path, what in privileged_usages(manifest):
+            problem(f"{where}: {path}: {what} is a plugin API 1.9 privileged kind; a signed release "
+                    "artifact cannot carry it while the gate is closed (DeckPilot "
                     "docs/marketplace/publisher-review-request.md)")
-        if p.get("fromParams") and not PRIVILEGED_GATE_OPEN:
-            problem(f"{where}: `openUrl.fromParams` is privileged; the gate is closed")
 
 
 def main():

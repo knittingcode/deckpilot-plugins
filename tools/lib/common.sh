@@ -19,6 +19,41 @@ summary() {
   fi
 }
 
+# Where repositories are fetched from (tests point it at local repositories).
+GIT_BASE=${DECKPILOT_PLUGINS_GIT_BASE:-https://github.com}
+
+# require_on_main OWNER/NAME SHA: SHA is a commit of OWNER/NAME's main
+# branch (an ancestor of, or equal to, its tip), or die. GitHub serves any
+# commit of a repository's fork network by SHA, so a commit that exists only
+# in a fork would otherwise build as "DeckPilot" (and run as
+# deckpilot-registry next to the signing keys). Checked in a separate,
+# treeless clone of main's full history before anything of SHA is fetched;
+# nothing of a commit outside main is ever downloaded.
+require_on_main() {
+  local repo=$1 sha=$2 dir=$WORK/main-check
+  [[ $repo =~ ^[A-Za-z0-9-]{1,39}/[A-Za-z0-9._-]{1,100}$ ]] || die "bad repository $repo"
+  [[ $sha =~ ^[0-9a-f]{40}$ ]] || die "bad commit $sha"
+  rm -rf "$dir"
+  mkdir -p "$dir"
+  git -C "$dir" init -q
+  git -C "$dir" -c protocol.version=2 fetch -q --filter=tree:0 "$GIT_BASE/$repo.git" \
+    "+refs/heads/main:refs/remotes/origin/main" || die "the main branch of $repo cannot be fetched"
+  if ! git -C "$dir" cat-file -e "$sha^{commit}" 2>/dev/null ||
+    ! git -C "$dir" merge-base --is-ancestor "$sha" refs/remotes/origin/main; then
+    rm -rf "$dir"
+    die "$sha is not a commit of $repo's main branch; refusing to build it (a fork's commit is served under the same URL)"
+  fi
+  rm -rf "$dir"
+}
+
+# fetch_deckpilot DIR: DeckPilot at DECKPILOT_COMMIT in DIR, only once that
+# commit is known to be on DeckPilot's main (require_on_main), also when DIR
+# already holds it.
+fetch_deckpilot() {
+  require_on_main "$DECKPILOT_REPOSITORY" "$DECKPILOT_COMMIT"
+  fetch_commit "$1" "$DECKPILOT_REPOSITORY" "$DECKPILOT_COMMIT"
+}
+
 # fetch_commit DIR OWNER/NAME SHA: a checkout of exactly SHA in DIR.
 fetch_commit() {
   local dir=$1 repo=$2 sha=$3
@@ -30,7 +65,7 @@ fetch_commit() {
   rm -rf "$dir"
   mkdir -p "$dir"
   git -C "$dir" init -q
-  git -C "$dir" -c protocol.version=2 fetch -q --depth 1 "https://github.com/$repo.git" "$sha"
+  git -C "$dir" -c protocol.version=2 fetch -q --depth 1 "$GIT_BASE/$repo.git" "$sha"
   git -C "$dir" checkout -q --detach FETCH_HEAD
   [ "$(git -C "$dir" rev-parse HEAD)" = "$sha" ] || die "$repo did not resolve to $sha"
 }

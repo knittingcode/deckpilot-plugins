@@ -118,7 +118,10 @@ case("downgrade", lambda: E.check_order("deckpilot.github", "0.2.0", ["0.2.1"]),
 case("pre-release below a release", lambda: E.check_order("deckpilot.github", "0.3.0-rc.1", ["0.3.0"]), "downgrade")
 
 # check: committed candidates.
-def committed(change):
+def committed(change, signed_change=None, pin=True):
+    """A committed candidate; `signed_change` edits only the manifest that
+    was signed (what `check` reads at the release commit); `pin=False`
+    leaves the record's manifest_sha256 unset."""
     def run():
         with tempfile.TemporaryDirectory() as tmp:
             off, mp = Path(tmp) / "official", Path(tmp) / "marketplace"
@@ -129,16 +132,30 @@ def committed(change):
             tag = "deckpilot.github--v0.2.1"
             url = f"https://github.com/knittingcode/deckpilot-plugins/releases/download/{tag}/deckpilot.github-0.2.1.dpplugin"
             record = {"version": "0.2.1", "engines": {"deckpilot": ">=0.6.0 <1.0.0", "pluginApi": "^1.0"},
-                      "permissions": [{"kind": "network"}],
+                      "permissions": [{"kind": "network"}, {"kind": "credentials"}, {"kind": "openUrl"}],
                       "source": {"repository": "knittingcode/deckpilot-plugins", "tag": tag, "commit": "a" * 40, "path": "official/github"},
                       "package": {"url": url, "sha256": "b" * 64, "size": 10}}
             release = {"tag": tag, "commit": "a" * 40, "package": {"sha256": "b" * 64, "size": 10},
                        "verification": {"keys": "pinned", "signers": ["k"]}}
             (mp / "deckpilot.github/plugin.json").write_text(json.dumps({"id": "deckpilot.github"}))
             change(record, release, mp)
+            signed = {"id": "deckpilot.github", "version": "0.2.1", "publisher": {"id": "deckpilot"},
+                      "engines": json.loads(json.dumps(record["engines"])),
+                      "permissions": json.loads(json.dumps(record["permissions"]))}
+            if "dependencies" in record:
+                signed["dependencies"] = record["dependencies"]
+            if signed_change:
+                signed_change(signed)
+            signed_bytes = json.dumps(signed, indent=2).encode()
+            if pin:
+                record["manifest_sha256"] = E.hashlib.sha256(signed_bytes).hexdigest()
+            reads = []
+            E.SIGNED_MANIFEST = lambda commit, path: reads.append((commit, path)) or signed_bytes
             (v / "0.2.1.json").write_text(json.dumps(record))
             (v / "0.2.1.release.json").write_text(json.dumps(release))
             problems = E.check_candidates(off, mp, Path(tmp) / "no-deckpilot", HOST)
+            if not problems and reads != [("a" * 40, "github")]:
+                raise E.Refused(f"the signed manifest was read as {reads}")
             if problems:
                 raise E.Refused("; ".join(problems))
     return run
@@ -149,9 +166,17 @@ case("committed: sha differs from the release", committed(lambda r, rel, mp: r["
 case("committed: url not the release asset", committed(lambda r, rel, mp: r["package"].update(url="https://example.com/x.dpplugin")), "not the release asset")
 case("committed: privileged kind", committed(lambda r, rel, mp: r["permissions"].append({"kind": "hostViews"})), "privileged")
 case("committed: unmet dependency", committed(lambda r, rel, mp: r.update(dependencies=[dep("deckpilot.projects", ">=0.1.0")])), "unmet")
+case("committed: manifest_sha256 is not the signed manifest's", committed(lambda r, rel, mp: None, pin=False), "manifest_sha256")
+case("committed: permissions differ from the signed manifest",
+     committed(lambda r, rel, mp: None, lambda m: m["permissions"].append({"kind": "credentials"})), "permissions differ")
+case("committed: engines differ from the signed manifest",
+     committed(lambda r, rel, mp: None, lambda m: m["engines"].update(pluginApi="^1.1")), "engines differ")
+case("committed: the signed manifest uses statusItems",
+     committed(lambda r, rel, mp: None, lambda m: m.update(contributes={"statusItems": []})), "privileged")
 case("committed: id DeckPilot does not bundle",
      committed(lambda r, rel, mp: (mp / "deckpilot.pomodoro/versions").mkdir(parents=True)), "not a plugin DeckPilot bundles")
 
+E.SIGNED_MANIFEST = E.git_manifest
 case("the marketplace gate mirrors DeckPilot (X12)", lambda: (not E.MARKETPLACE_SERVES_BUNDLED) or (_ for _ in ()).throw(E.Refused("open")))
 
 print(f"official-entry: {passed} passed, {failed} failed")

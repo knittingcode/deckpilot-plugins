@@ -44,10 +44,11 @@ request with no secret:
 
 | Step | What fails it |
 | --- | --- |
-| `check` (`tools/check-official.py`) | a member not in `plugins.json`; a git dependency not on knittingcode/deckpilot at exactly `DECKPILOT_COMMIT` (no branch, no tag), a path dependency leaving `official/`, a missing or differently pinned `Cargo.lock`; a released id DeckPilot does not bundle; permission kinds other than the policy's; any plugin API 1.9 privileged kind while the gate is closed; process execution (`tools`) other than git for `deckpilot.git` and docker for `deckpilot.docker`; `engines` the pinned DeckPilot (`DECKPILOT_VERSION`, `DECKPILOT_PLUGIN_API`) does not satisfy; a fixture that differs from DeckPilot's |
+| `check` (`tools/check-official.py`) | a member not in `plugins.json`; a git dependency not on knittingcode/deckpilot at exactly `DECKPILOT_COMMIT` (no branch, no tag), a path dependency leaving `official/`, a missing or differently pinned `Cargo.lock`; a released id DeckPilot does not bundle; permission kinds other than the policy's; any plugin API 1.9 privileged usage while the gate is closed (an exact mirror of DeckPilot's `privileged.rs`: the four permission kinds, `openUrl.fromParams`, `node.changesContext`, `resource` parameters, variable host sources, host views, `statusItems`, `dashboardCards`; the package step's `package --first-party` runs the Rust validator itself); process execution (`tools`) other than git for `deckpilot.git` and docker for `deckpilot.docker`; `engines` the pinned DeckPilot (`DECKPILOT_VERSION`, `DECKPILOT_PLUGIN_API`) does not satisfy; a fixture that differs from DeckPilot's |
 | `test` | `cargo test --locked`, `cargo fmt --check`, `cargo clippy -D warnings` |
 | `package` | the manifest schema; the guest build; `deckpilot-registry package --first-party` (manifest rules, size limits, the module check) |
-| `repro` | two clean builds in fresh target directories whose modules or packages differ |
+| `repro` | two clean builds in fresh target directories whose modules or packages differ (local use; CI's reproducibility check is the two independent jobs below) |
+| `fresh-build` (jobs *Independent build A* and *B*, then *Two independent builds are byte-identical*) | two builds on separate fresh runners, with nothing of `official/` run before them (no tests, no other build scripts), whose module or package sha256 differ |
 | `compare` | nothing: it reports whether each module equals DeckPilot's `plugins/first-party/build.sh` output at the pin (see below) |
 | `sign-test` | `release sign` with a throwaway publisher key, `release verify` (claim, signature, compatibility, rollback floor from DeckPilot's `released-pins.json`, audit log), DeckPilot's released-pins guard on the verified files, and the keys pinned in DeckPilot not refusing for the expected reason (none provisioned) |
 
@@ -75,13 +76,28 @@ owner creates (tags are admin-only), only when the owner has set it up:
 2. `gate`: `tools/check-environment.sh official-release` (tags
    `deckpilot.*--v*` only, a required reviewer, no administrator bypass) and
    every required check of `main` passed for the commit.
-3. `build` (no secret): checks, tests, two clean builds compared, the package.
-4. `sign` (environment `official-release`): re-checks the package against
-   the build job's sha256 and size, `release sign --key-env` (the key never
-   touches the disk), then `release verify` with the keys pinned in the
-   DeckPilot build, never `--keys`, for each platform, with the audit log.
-5. `release`: package and `.minisig` on the GitHub Release of the tag
+3. `checks` (no secret): checks, tests, the comparison with DeckPilot.
+4. `build-a` and `build-b` (no secret): two independent builds of the tagged
+   commit, each on its own fresh runner, with nothing run before them;
+   module sha256, package sha256 and size.
+5. `sign` (environment `official-release`): both builds must agree on
+   module and package; build-a's package is re-checked against its sha256
+   and size. One step, the only one with the key, runs `release sign --id
+   --version` with the tag's id and version (the package must say the same;
+   every check that parses the package runs before the key is loaded, and
+   the key never touches the disk). The next step, without the key, runs
+   `release verify` with the keys pinned in the DeckPilot build (never
+   `--keys`), DeckPilot's rollback floor (`released-pins.json`) and
+   revocations (`artifacts.json`), for each platform, with the audit log.
+6. `release`: package and `.minisig` on the GitHub Release of the tag
    (draft, both assets, then published; never a tag).
+
+Every job that builds or runs `deckpilot-registry` builds it from
+`DECKPILOT_COMMIT` only after checking that the commit is on DeckPilot's
+`main` (`require_on_main` in `tools/lib/common.sh`, run by
+`tools/build-cli.sh` and `tools/check-schemas.sh`): GitHub serves a fork's
+commits under DeckPilot's URL, and such a commit would otherwise build as
+the verifier that runs next to the key.
 
 `publish.yml` (the registry) excludes these tags.
 
@@ -104,6 +120,25 @@ Not done by anyone yet; creating or rotating these secrets is the owner's:
    `docs/marketplace/publisher-review-request.md` done (it also decides
    whether the privileged-kinds gate may open for Wave C).
 5. Set the repository variable `OFFICIAL_RELEASE_ENABLED` to `true`.
+
+Decisions only the owner can make (nothing here changes live settings):
+
+- **Who may approve a signing run.** `check-environment.sh official-release`
+  needs one required reviewer by default. The repository variables
+  `OFFICIAL_RELEASE_REQUIRE_REVIEWERS` (for example `2`: at least two listed
+  reviewers; GitHub then waits for one of them) and
+  `OFFICIAL_RELEASE_REQUIRE_PREVENT_SELF_REVIEW` (`true`: the environment's
+  "Prevent self-review" must be on, so whoever starts a run cannot approve
+  it) make the gate stricter; together they mean someone other than the
+  person who pushed the tag approves the signature. Set the environment
+  first, then the variables.
+- **Required checks.** The `main` ruleset requires six checks; *Official
+  plugins* (the official/ pipeline and the two independent builds) is not
+  among them. Adding *Build, test, check and package official plugins*,
+  *Two independent builds are byte-identical* and *Build, test and package first-party plugins* to
+  the required checks of the *Protect main* ruleset only adds conditions
+  (nothing is weakened), and makes `check-required-checks.sh` hold every
+  release to them. Changing a ruleset is the owner's.
 
 Then the first plugin moves (Wave B): its source under `official/<name>`
 at a new patch version, listed in `plugins.json` with its permissions; a

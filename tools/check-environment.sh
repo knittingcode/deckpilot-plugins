@@ -27,6 +27,16 @@
 #   official-release (the first-party publisher key) accepts only a required
 #   reviewer: no ruleset stands in for it.
 #
+# Stricter reviewer rules, for any environment, set by the owner as
+# repository variables the workflow passes in (unset: as above):
+#   REQUIRE_REVIEWERS=N        at least N reviewers listed on the environment
+#                              (GitHub then needs ONE of them to approve; N >= 2
+#                              with PREVENT_SELF_REVIEW means someone other than
+#                              the person who started the run approves)
+#   REQUIRE_PREVENT_SELF_REVIEW=true   the environment's "prevent self-review"
+#                              is on: whoever triggers a run cannot approve it
+# A reviewer requirement is never met by a ruleset.
+#
 # GitHub creates a missing environment, unprotected, the first time a job
 # names it, so this check runs before that job and stops the run.
 #
@@ -59,6 +69,17 @@ policies=$("$gh" api "repos/$repo/environments/$name/deployment-branch-policies"
 
 reviewers=$(jq '[.protection_rules[]? | select(.type == "required_reviewers") | .reviewers[]?] | length' <<< "$environment") \
   || fail "the protection rules of $name cannot be read"
+min=${REQUIRE_REVIEWERS:-}
+self=${REQUIRE_PREVENT_SELF_REVIEW:-}
+[[ -z $min || $min =~ ^[1-6]$ ]] || fail "REQUIRE_REVIEWERS must be 1 to 6, not '$min'"
+[[ -z $self || $self == true || $self == false ]] || fail "REQUIRE_PREVENT_SELF_REVIEW must be true or false, not '$self'"
+if [ -n "$min" ] && [ "$reviewers" -lt "$min" ]; then
+  fail "$name lists $reviewers required reviewer(s); REQUIRE_REVIEWERS asks for at least $min"
+fi
+if [ "$self" = true ]; then
+  [ "$(jq '[.protection_rules[]? | select(.type == "required_reviewers") | .prevent_self_review] | any' <<< "$environment")" = true ] \
+    || fail "$name allows self-review; REQUIRE_PREVENT_SELF_REVIEW asks that the person who starts a run cannot approve it"
+fi
 if [ "$reviewers" -ge 1 ]; then
   echo "$name: $reviewers required reviewer(s); deploys $want only; administrators cannot bypass it"
   exit 0

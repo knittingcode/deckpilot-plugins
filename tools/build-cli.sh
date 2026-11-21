@@ -3,12 +3,14 @@
 # - deckpilot-registry from DeckPilot at tools/deckpilot.env's commit
 #   (--locked, feature `publish`), with DeckPilot's own pinned toolchain;
 # - schema-check from tools/schema-check (--locked).
+# The pinned commit must be on DeckPilot's main (tools/lib/common.sh
+# require_on_main): never a fork's commit served under DeckPilot's URL.
 # Nothing is downloaded except the pinned DeckPilot commit, crates verified
 # by the Cargo.lock checksums, and the toolchain rustup verifies.
 . "$(dirname "$0")/lib/common.sh"
 
 note "DeckPilot $DECKPILOT_REPOSITORY@$DECKPILOT_COMMIT"
-fetch_commit "$DECKPILOT_DIR" "$DECKPILOT_REPOSITORY" "$DECKPILOT_COMMIT"
+fetch_deckpilot "$DECKPILOT_DIR"
 mkdir -p "$WORK/bin"
 
 note "building deckpilot-registry"

@@ -46,7 +46,13 @@ FORBIDDEN = {
     "APPLE_": "DeckPilot's Apple signing secrets are never used here",
 }
 USES = re.compile(r"^\s*-?\s*uses:\s*([^\s#]+)\s*(#.*)?$")
-SECRET = re.compile(r"secrets\.([A-Za-z0-9_]+)")
+# A secret in either expression syntax: secrets.X, secrets['X'], secrets["X"].
+SECRET = re.compile(r"""secrets\s*(?:\.\s*([A-Za-z0-9_]+)|\[\s*['"]([A-Za-z0-9_]+)['"]\s*\])""")
+# Any other use of the secrets context: a computed index (secrets[x]), the
+# whole context (toJSON(secrets), secrets in an expression), so no rule here
+# can be passed by naming a secret indirectly.
+SECRETS_CONTEXT = re.compile(r"\bsecrets\b(?!\s*(?:\.\s*[A-Za-z0-9_]+|\[\s*['\"][A-Za-z0-9_]+['\"]\s*\]))")
+EXPRESSION = re.compile(r"\$\{\{(.*?)\}\}")
 ENV_INLINE = re.compile(r"^\s*environment:\s*([A-Za-z0-9_.-]+)\s*$")
 ENV_BLOCK = re.compile(r"^(\s*)environment:\s*$")
 NAME = re.compile(r"^\s*name:\s*([A-Za-z0-9_.-]+)\s*$")
@@ -72,7 +78,12 @@ def main():
         if not re.search(r"^permissions:\s*\{\}\s*$", text, re.M):
             problems.append(f"{path}: top-level `permissions: {{}}` is required")
         publisher = path.name == PUBLISHER_WORKFLOW
-        for name in SECRET.findall(body):
+        names = [a or b for a, b in SECRET.findall(body)]
+        for i, line in enumerate(code):
+            if any(SECRETS_CONTEXT.search(e) for e in EXPRESSION.findall(line)):
+                problems.append(f"{path}:{i + 1}: the secrets context is used other than as secrets.NAME "
+                                "or secrets['NAME'] (toJSON(secrets), a computed index): name each secret")
+        for name in names:
             if publisher:
                 if name not in PUBLISHER_SECRETS:
                     problems.append(f"{path}: secret {name} is not the publisher key")
@@ -84,7 +95,7 @@ def main():
             problems.append(f"{path}: `secrets: inherit` passes every secret; name the ones needed")
         if re.search(r"^  workflow_call:\s*$", body, re.M):
             declared = set(re.findall(r"^      ([A-Za-z0-9_]+):\s*$", declared_secrets(body), re.M))
-            for name in sorted(set(SECRET.findall(body)) - declared):
+            for name in sorted(set(names) - declared):
                 problems.append(f"{path}: secret {name} is read but not declared under on.workflow_call.secrets")
         for i, line in enumerate(code):
             m = USES.match(lines[i])
@@ -100,10 +111,14 @@ def main():
                         problems.append(f"{path}:{i + 1}: actions/checkout without persist-credentials: false")
             m = ENV_INLINE.match(line)
             env = m.group(1) if m else None
+            if re.match(r"^\s*environment:", line) and "${{" in line:
+                env = "<an expression>"
             b = ENV_BLOCK.match(line)
             if b and i + 1 < len(code):
                 n = NAME.match(code[i + 1])
                 env = n.group(1) if n else "<unnamed>"
+                if "${{" in code[i + 1]:
+                    env = "<an expression>"
             allowed = {PUBLISHER_ENVIRONMENT} if publisher else ALLOWED_ENVIRONMENTS
             if env is not None and env not in allowed:
                 problems.append(f"{path}:{i + 1}: environment {env} is not allowed")

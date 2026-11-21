@@ -552,6 +552,26 @@ def cmd_generate(args):
 
 # ---------------------------------------------------------------- check
 
+def git_manifest(commit, path):
+    """official/<path>/manifest.json at `commit` (fetched from origin when
+    the checkout lacks it)."""
+    if not COMMIT.fullmatch(commit or ""):
+        raise Refused(f"{commit!r} is not a commit")
+    spec = f"{commit}:official/{path}/manifest.json"
+    show = subprocess.run(["git", "-C", str(ROOT), "show", spec], capture_output=True)
+    if show.returncode != 0:
+        subprocess.run(["git", "-C", str(ROOT), "fetch", "-q", "--depth", "1", "origin", commit],
+                       capture_output=True)
+        show = subprocess.run(["git", "-C", str(ROOT), "show", spec], capture_output=True)
+    if show.returncode != 0:
+        raise Refused(f"official/{path}/manifest.json at {commit[:12]} cannot be read")
+    return show.stdout
+
+
+# Where `check` reads the signed manifest (replaced in the unit tests).
+SIGNED_MANIFEST = git_manifest
+
+
 def check_candidates(official, marketplace, deckpilot, host):
     problems = []
     policy = official_policy(official)
@@ -589,9 +609,21 @@ def check_candidates(official, marketplace, deckpilot, host):
                 manifest = {"id": pid, "version": version, "publisher": {"id": "deckpilot"},
                             "engines": record.get("engines", {}), "permissions": record.get("permissions", []),
                             "dependencies": record.get("dependencies", [])}
-                for p in manifest["permissions"]:
-                    if p.get("kind") in RULES.PRIVILEGED_KINDS and not RULES.PRIVILEGED_GATE_OPEN:
-                        raise Refused(f"`{p['kind']}` is privileged and the gate is closed")
+                # The record against the manifest that was signed: the
+                # source manifest at the release commit, whose sha256 the
+                # record pins (the package carries it byte for byte).
+                signed = SIGNED_MANIFEST(release["commit"], entry["path"])
+                if hashlib.sha256(signed).hexdigest() != record.get("manifest_sha256"):
+                    raise Refused("manifest_sha256 is not the signed manifest's (official/"
+                                  f"{entry['path']}/manifest.json at {release['commit'][:12]})")
+                signed_manifest = json.loads(signed)
+                for field in ("permissions", "engines"):
+                    if record.get(field) != signed_manifest.get(field):
+                        raise Refused(f"the record's {field} differ from the signed manifest's")
+                if (record.get("dependencies") or []) != (signed_manifest.get("dependencies") or []):
+                    raise Refused("the record's dependencies differ from the signed manifest's")
+                check_manifest(signed_manifest, pid, version, entry, host)
+                manifest = {**manifest, **signed_manifest}
                 candidates = {k: [v for v in vs if k != pid] for k, vs in existing.items()}
                 resolve_dependencies(manifest, candidates, bundled, host, set(policy))
             except (Refused, KeyError, TypeError) as e:
@@ -653,7 +685,7 @@ def fmt_dependencies(manifest):
 
 
 def privileged(manifest):
-    return any(p.get("kind") in RULES.PRIVILEGED_KINDS or p.get("fromParams") for p in manifest.get("permissions", []))
+    return bool(RULES.privileged_usages(manifest))
 
 
 def matrix(deckpilot):

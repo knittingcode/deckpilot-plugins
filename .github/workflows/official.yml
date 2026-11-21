@@ -30,8 +30,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Tests of the official/ rules
-        run: python3 -I tools/tests/test_check_official.py
       - name: Tests of the official Marketplace entry rules
         run: python3 -I tools/tests/test_official_entry.py
       - name: The pinned toolchain with rustfmt, clippy and the wasm target
@@ -41,14 +39,14 @@ jobs:
             --component rustfmt --component clippy --target wasm32-unknown-unknown
       - name: Build the pinned deckpilot-registry and schema-check (and fetch the pinned DeckPilot)
         run: tools/build-cli.sh
+      - name: Tests of the official/ rules (and the privileged-kinds mirror against DeckPilot's manifests)
+        run: python3 -I tools/tests/test_check_official.py
       - name: Layout, SDK pin, permission policy, compatibility, fixtures equal DeckPilot's
         run: tools/official.sh check
       - name: Unit tests, formatting, clippy
         run: tools/official.sh test
       - name: Manifest schema, wasm modules, packages
         run: tools/official.sh package
-      - name: Two clean builds are byte-identical
-        run: tools/official.sh repro
       - name: Compare with DeckPilot's plugins/first-party/build.sh at the pin (informational)
         run: tools/official.sh compare
       - name: Throwaway publisher signature, release verify, released-pins guard
@@ -57,3 +55,78 @@ jobs:
         run: python3 -I tools/official-entry.py check
       - name: Marketplace entries from throwaway-signed fixture releases (refusals, discovery, dependencies, update offer)
         run: tools/tests/test-official-marketplace.sh
+
+  build-a:
+    # One of two independent builds: its own fresh runner (fresh CARGO_HOME
+    # and target directory), nothing of official/ run before it (no tests,
+    # no other build). `reproducible` compares the two.
+    name: Independent build A
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The pinned toolchain with the wasm target
+        run: |
+          channel=$(sed -n 's/^channel *= *"\([0-9.]*\)".*/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal --no-self-update --target wasm32-unknown-unknown
+      - name: Build the pinned deckpilot-registry and schema-check
+        run: tools/build-cli.sh
+      - name: One build of every member and its packages
+        run: tools/official.sh fresh-build "$RUNNER_TEMP/sums-a.txt"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sums-a
+          path: ${{ runner.temp }}/sums-a.txt
+          retention-days: 1
+          if-no-files-found: error
+
+  build-b:
+    # One of two independent builds: its own fresh runner (fresh CARGO_HOME
+    # and target directory), nothing of official/ run before it (no tests,
+    # no other build). `reproducible` compares the two.
+    name: Independent build B
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The pinned toolchain with the wasm target
+        run: |
+          channel=$(sed -n 's/^channel *= *"\([0-9.]*\)".*/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal --no-self-update --target wasm32-unknown-unknown
+      - name: Build the pinned deckpilot-registry and schema-check
+        run: tools/build-cli.sh
+      - name: One build of every member and its packages
+        run: tools/official.sh fresh-build "$RUNNER_TEMP/sums-b.txt"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sums-b
+          path: ${{ runner.temp }}/sums-b.txt
+          retention-days: 1
+          if-no-files-found: error
+
+  reproducible:
+    name: Two independent builds are byte-identical
+    needs: [build-a, build-b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: sums-*
+          path: ${{ runner.temp }}/sums
+          merge-multiple: true
+      - name: Modules and packages of both builds agree
+        run: |
+          cd "$RUNNER_TEMP/sums"
+          if [ ! -s sums-a.txt ] || [ ! -s sums-b.txt ]; then echo "::error::a build wrote no sums"; exit 1; fi
+          cat sums-a.txt
+          diff sums-a.txt sums-b.txt || { echo "::error::the two independent builds differ"; exit 1; }
