@@ -80,16 +80,21 @@ owner creates (tags are admin-only), only when the owner has set it up:
 4. `build-a` and `build-b` (no secret): two independent builds of the tagged
    commit, each on its own fresh runner, with nothing run before them;
    module sha256, package sha256 and size.
-5. `sign` (environment `official-release`): both builds must agree on
-   module and package; build-a's package is re-checked against its sha256
-   and size. One step, the only one with the key, runs `release sign --id
+5. `cli` (no secret) builds the pinned `deckpilot-registry` (DeckPilot code
+   only) and hands it on as an artifact with its sha256.
+6. `sign` (environment `official-release`) compiles nothing: it installs
+   the `cli` job's binaries only if their sha256 match
+   (`tools/cli-artifact.sh`), and fetches the pinned DeckPilot checkout with
+   git for its `released-pins.json` and `artifacts.json`. Both builds must
+   agree on module and package; build-a's package is re-checked against
+   its sha256 and size. One step, the only one with the key, runs `release sign --id
    --version` with the tag's id and version (the package must say the same;
    every check that parses the package runs before the key is loaded, and
    the key never touches the disk). The next step, without the key, runs
    `release verify` with the keys pinned in the DeckPilot build (never
    `--keys`), DeckPilot's rollback floor (`released-pins.json`) and
    revocations (`artifacts.json`), for each platform, with the audit log.
-6. `release`: package and `.minisig` on the GitHub Release of the tag
+7. `release`: package and `.minisig` on the GitHub Release of the tag
    (draft, both assets, then published; never a tag).
 
 Every job that builds or runs `deckpilot-registry` builds it from
@@ -98,6 +103,14 @@ Every job that builds or runs `deckpilot-registry` builds it from
 `tools/build-cli.sh` and `tools/check-schemas.sh`): GitHub serves a fork's
 commits under DeckPilot's URL, and such a commit would otherwise build as
 the verifier that runs next to the key.
+
+No job that holds a signing key compiles anything: `publish.yml`'s and
+`_site.yml`'s registry signing jobs install the tools from a `cli` job the
+same way, and `tools/check-workflows.py` refuses `build-cli.sh`, `cargo`,
+`rustup`, `rustc`, `build-plugin.sh` and `official.sh` build steps in a job
+of `registry-release`, `registry-timestamp` or `official-release`, so no
+build script of a locked dependency can run in, or linger into, a step
+that gets a key.
 
 `publish.yml` (the registry) excludes these tags.
 

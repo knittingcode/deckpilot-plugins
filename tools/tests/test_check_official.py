@@ -6,6 +6,7 @@ each (stdlib only; run with python3 -I). No network, no cargo.
 """
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -98,37 +99,58 @@ def first_action(fn):
     return manifest(lambda m: fn(m["contributes"]["actions"][0]))
 
 
+# The shapes below are the manifests' own (DeckPilot's projects, git,
+# workspace and workflows manifests at the pin): ParameterKind is tagged by
+# `type`, a variable source is `host:project.*`, a view has id and kind.
 for name, change, path in [
-    ("openUrl.fromParams", manifest(lambda m: m["permissions"].append({"kind": "openUrl", "fromParams": True, "justification": "x"})), r"permissions\[1\]\.fromParams"),
+    ("openUrl.fromParams", manifest(lambda m: m["permissions"].append({"kind": "openUrl", "hosts": [], "fromParams": True, "justification": "x"})), r"permissions\[1\]\.fromParams"),
     ("node.changesContext", first_action(lambda a: a.setdefault("node", {}).__setitem__("changesContext", True)), r"node\.changesContext"),
-    ("a resource parameter", first_action(lambda a: a["parameters"].append({"key": "repo", "label": "Repo", "kind": "resource", "kinds": ["folder"]})), r"parameters\[\d+\]\.kind: a `resource` parameter"),
-    ("a variable host source", contributes("variables", [{"id": "project", "label": "Project", "type": "text", "source": "activeProject"}]), r"variables\[0\]\.source"),
-    ("a host view", contributes("views", [{"id": "w", "label": "Workflows", "kind": "workflows"}]), r"views\[0\]\.kind: the `workflows` view"),
+    ("a resource parameter", first_action(lambda a: a["parameters"].append({"key": "repository", "label": "Repository", "kind": {"type": "resource", "kinds": ["directory"]}})), r"parameters\[\d+\]\.kind: a `resource` parameter"),
+    ("a variable host source", contributes("variables", [{"id": "current.id", "name": "Project id", "valueType": {"type": "string"}, "scope": "project", "requires": ["project"], "source": "host:project.id"}]), r"variables\[0\]\.source: the host source `host:project\.id`"),
+    ("a host view", contributes("views", [{"id": "workflows", "kind": "workflows"}]), r"views\[0\]\.kind: the `workflows` view"),
     ("statusItems, even empty", contributes("statusItems", []), r"contributes\.statusItems"),
     ("dashboardCards, even empty", contributes("dashboardCards", []), r"contributes\.dashboardCards"),
 ]:
     case(f"privileged: {name}", change, False, path + r".*gate is closed")
+# A parameter kind that is not a resource is not one.
+case("a text parameter is not privileged", first_action(lambda a: a["parameters"].append({"key": "x", "label": "X", "kind": {"type": "text"}})), True, r"member\(s\) checked")
 
-# The mirror against DeckPilot's own bundled manifests (the pinned checkout
-# of tools/build-cli.sh, when it exists): the five plugins that use the
-# privileged kinds have usages, the four others none.
+# The mirror against the Rust validator itself, on DeckPilot's nine bundled
+# manifests at the pin: the pinned deckpilot-registry's `package
+# --first-party` (Manifest::validate_first_party) reports every privileged
+# usage as `- <path>: ... is only for DeckPilot's own plugins shipped inside
+# the app`; privileged_usages must report exactly the same paths. In CI
+# (CI=true) the pinned checkout and CLI are required.
 spec = __import__("importlib.util").util.spec_from_file_location("check_official", CHECK)
 RULES = __import__("importlib.util").util.module_from_spec(spec)
 spec.loader.exec_module(RULES)
 deckpilot = ROOT / ".work/deckpilot/plugins/first-party"
-if deckpilot.is_dir():
-    for name, privileged in [("docker", True), ("git", True), ("projects", True), ("workflows", True),
-                             ("workspace", True), ("github", False), ("gitlab", False), ("jira", False),
-                             ("notifications", False)]:
-        found = RULES.privileged_usages(json.loads((deckpilot / name / "manifest.json").read_text()))
-        if bool(found) == privileged:
+cli = ROOT / ".work/bin/deckpilot-registry"
+RUST_USAGE = re.compile(r"^- (\S+): .* is only for DeckPilot's own plugins shipped inside the app", re.M)
+BUNDLED = ["docker", "git", "github", "gitlab", "jira", "notifications", "projects", "workflows", "workspace"]
+if deckpilot.is_dir() and cli.is_file():
+    for name in BUNDLED:
+        directory = deckpilot / name
+        with tempfile.TemporaryDirectory() as tmp:
+            # The manifest is checked before the module is read: any file
+            # serves as the module, and the run fails either way.
+            out = subprocess.run([str(cli), "package", "--plugin-dir", str(directory), "--module",
+                                  str(directory / "manifest.json"), "--out", str(Path(tmp) / "x.dpplugin"),
+                                  "--first-party"], capture_output=True, text=True)
+        rust = sorted(RUST_USAGE.findall(out.stdout + out.stderr))
+        ours = sorted(path for path, _ in RULES.privileged_usages(json.loads((directory / "manifest.json").read_text())))
+        expected_some = name in {"docker", "git", "projects", "workflows", "workspace"}
+        if out.returncode != 0 and rust == ours and bool(rust) == expected_some:
             passed += 1
-            print(f"ok   DeckPilot's {name}: {len(found)} privileged usage(s)")
+            print(f"ok   DeckPilot's {name}: the same {len(rust)} privileged usage(s) as the Rust validator")
         else:
             failed += 1
-            print(f"FAIL DeckPilot's {name}: {found}")
+            print(f"FAIL DeckPilot's {name}: Rust {rust}, here {ours} (exit {out.returncode})")
+elif os.environ.get("CI") == "true":
+    failed += 1
+    print("FAIL no pinned DeckPilot checkout and CLI (.work/deckpilot, .work/bin): run tools/build-cli.sh first")
 else:
-    print("note: no pinned DeckPilot checkout (.work/deckpilot); its manifests not compared")
+    print("note: no pinned DeckPilot checkout and CLI; the mirror is not compared with the Rust validator")
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

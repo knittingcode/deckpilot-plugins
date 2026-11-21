@@ -50,8 +50,12 @@ their release, dependencies, append-only order) and that
 docs/official-compatibility-matrix.md is current. `matrix` writes it.
 
 No command signs, tags, uploads, publishes or touches registry/: the
-plugins DeckPilot bundles are never in the signed index while DeckPilot
-refuses a bundled id from a registry (MARKETPLACE_SERVES_BUNDLED).
+candidates are never copied into the signed index here
+(MARKETPLACE_SERVES_BUNDLED). DeckPilot's agent takes an official plugin,
+a bundled one included, from a registry only as a release signed by the
+first-party publisher keys compiled into it, verified before install, and
+refuses it outright while no publisher key is pinned (knittingcode/
+deckpilot#378, apps/agent/src/plugins/official.rs).
 """
 
 import argparse
@@ -76,10 +80,13 @@ MARKETPLACE = ROOT / "official/marketplace"
 MATRIX = ROOT / "docs/official-compatibility-matrix.md"
 PLATFORMS = ("macos", "windows", "linux")
 BUILDER = "1.0.0"
-# DeckPilot's agent refuses every bundled id from any registry
-# (apps/agent/src/plugins/service.rs, `is_bundled_id`; X12). While that
-# holds, a candidate entry is never copied into registry/. Changing it is a
-# reviewed change in DeckPilot first, then here.
+# Whether this repository copies candidate entries of the bundled plugins
+# into registry/ (the signed index). It does not. DeckPilot's agent
+# (apps/agent/src/plugins/service.rs `fetch`/`pins`, official.rs) accepts an
+# official plugin from a registry only as a first-party release signed by
+# the publisher keys compiled into it, verified before install, and refuses
+# it before any download while no publisher key is pinned (none is). Serving
+# them is a reviewed change here once a key is pinned and released.
 MARKETPLACE_SERVES_BUNDLED = False
 
 TAG = re.compile(r"(deckpilot\.[a-z0-9][a-z0-9-]{0,62})--v((?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
@@ -727,7 +734,7 @@ def matrix(deckpilot):
         elif not latest:
             market = "no: no signed release"
         elif not MARKETPLACE_SERVES_BUNDLED:
-            market = f"candidate {latest[0]}; not served (DeckPilot never takes a bundled id from a registry)"
+            market = f"candidate {latest[0]}; not served yet (DeckPilot takes it only as a publisher-verified release)"
         else:
             market = f"yes, {latest[0]}"
         rows.append(f"| `{pid}` | {source} | {manifest.get('version', '?')} | {shipped.get(pid, '—')} | "
@@ -752,7 +759,7 @@ def matrix(deckpilot):
         f"| SDK pin (`official/Cargo.toml` rev) | `{sdk_pin()}` |",
         f"| Publisher keys pinned in DeckPilot | {provisioned} |",
         f"| Privileged-kinds gate | {'open' if RULES.PRIVILEGED_GATE_OPEN else 'closed'} |",
-        f"| Registry serves bundled ids | {'yes' if MARKETPLACE_SERVES_BUNDLED else 'no (agent refuses them, X12)'} |",
+        f"| Registry serves bundled ids | {'yes' if MARKETPLACE_SERVES_BUNDLED else 'no (not copied into registry/; DeckPilot accepts them only as publisher-verified releases, and none while no key is pinned)'} |",
         "",
         "| Plugin | Source | Version | Shipped in DeckPilot | `engines.deckpilot` | `engines.pluginApi` | Permissions | Dependencies | Signature | Marketplace |",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",

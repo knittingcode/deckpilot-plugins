@@ -52,7 +52,15 @@ SECRET = re.compile(r"""secrets\s*(?:\.\s*([A-Za-z0-9_]+)|\[\s*['"]([A-Za-z0-9_]
 # whole context (toJSON(secrets), secrets in an expression), so no rule here
 # can be passed by naming a secret indirectly.
 SECRETS_CONTEXT = re.compile(r"\bsecrets\b(?!\s*(?:\.\s*[A-Za-z0-9_]+|\[\s*['\"][A-Za-z0-9_]+['\"]\s*\]))")
-EXPRESSION = re.compile(r"\$\{\{(.*?)\}\}")
+# An expression, also across lines.
+EXPRESSION = re.compile(r"\$\{\{(.*?)\}\}", re.S)
+# `if:` is an expression even without ${{ }}; its value may continue on
+# more-indented lines (a block scalar or a folded condition).
+IF_CONDITION = re.compile(r"^(\s*)(?:-\s+)?if:\s*(.*(?:\n\1\s+.*)*)", re.M)
+# The environments whose jobs hold signing keys: nothing compiles there.
+SIGNING_ENVIRONMENTS = {"registry-release", "registry-timestamp", "official-release"}
+COMPILES = re.compile(r"\b(build-cli\.sh|build-plugin\.sh|cargo|rustup|rustc)\b|official\.sh\s+(?!release-sign|release-verify|release-compare|fetch-deckpilot)")
+JOB = re.compile(r"^  ([A-Za-z0-9_-]+):\s*$", re.M)
 ENV_INLINE = re.compile(r"^\s*environment:\s*([A-Za-z0-9_.-]+)\s*$")
 ENV_BLOCK = re.compile(r"^(\s*)environment:\s*$")
 NAME = re.compile(r"^\s*name:\s*([A-Za-z0-9_.-]+)\s*$")
@@ -79,10 +87,24 @@ def main():
             problems.append(f"{path}: top-level `permissions: {{}}` is required")
         publisher = path.name == PUBLISHER_WORKFLOW
         names = [a or b for a, b in SECRET.findall(body)]
-        for i, line in enumerate(code):
-            if any(SECRETS_CONTEXT.search(e) for e in EXPRESSION.findall(line)):
-                problems.append(f"{path}:{i + 1}: the secrets context is used other than as secrets.NAME "
-                                "or secrets['NAME'] (toJSON(secrets), a computed index): name each secret")
+        expressions = EXPRESSION.findall(body) + [m.group(2) for m in IF_CONDITION.finditer(body)]
+        if any(SECRETS_CONTEXT.search(e) for e in expressions):
+            problems.append(f"{path}: the secrets context is used other than as secrets.NAME "
+                            "or secrets['NAME'] (toJSON(secrets), a computed index, also in `if:` "
+                            "conditions and multi-line expressions): name each secret")
+        jobs = body.split("\njobs:\n", 1)[1] if "\njobs:\n" in body else ""
+        starts = [m for m in JOB.finditer(jobs)]
+        for k, m in enumerate(starts):
+            chunk = jobs[m.end(): starts[k + 1].start() if k + 1 < len(starts) else len(jobs)]
+            env = re.search(r"^    environment:\s*([A-Za-z0-9_.-]+)\s*$", chunk, re.M) or \
+                re.search(r"^    environment:\s*\n\s+name:\s*([A-Za-z0-9_.-]+)", chunk, re.M)
+            if env and env.group(1) in SIGNING_ENVIRONMENTS:
+                for run in re.findall(r"run:\s*(\|[^\n]*\n(?:\s{10,}.*\n?)*|.*)", chunk):
+                    hit = COMPILES.search(run)
+                    if hit:
+                        problems.append(f"{path}: job {m.group(1)} (environment {env.group(1)}) runs "
+                                        f"`{hit.group(0).strip()}`: nothing compiles where a signing key is; "
+                                        "build in an unprivileged job and install the result (tools/cli-artifact.sh)")
         for name in names:
             if publisher:
                 if name not in PUBLISHER_SECRETS:

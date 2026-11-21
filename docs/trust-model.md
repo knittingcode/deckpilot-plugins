@@ -67,8 +67,11 @@ The plugins the application bundles (`deckpilot.docker`,
 `deckpilot.git`, `deckpilot.github`, `deckpilot.gitlab`,
 `deckpilot.jira`, `deckpilot.notifications`, `deckpilot.projects`,
 `deckpilot.workflows`, `deckpilot.workspace`) keep their pinned-digest
-trust as their only source: the agent refuses them from any registry,
-and *Submission rules* refuses records for them. Only the owner's pull
+trust in the application bundle. The agent takes one from a registry only
+as a release signed by the first-party publisher keys compiled into it,
+verified before install, and refuses it before any download while no
+publisher key is pinned (none is; knittingcode/deckpilot#378). This
+registry does not serve them: *Submission rules* refuses records for them. Only the owner's pull
 requests may change `deckpilot.*` records.
 
 Withdrawing the authorization is `keyset rotate --no-first-party`, signed

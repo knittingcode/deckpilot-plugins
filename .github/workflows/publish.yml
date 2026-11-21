@@ -14,8 +14,11 @@
 #   build             UNPRIVILEGED (no environment, no secret, contents: read):
 #                     rebuilds every recorded package from its pinned source
 #                     at the tagged commit; plugin build scripts run here only
+#   cli               UNPRIVILEGED: builds the pinned deckpilot-registry
+#                     (DeckPilot code only), an artifact with its sha256
 #   sign              environment registry-release, index and timestamp keys:
-#                     builds nothing; takes the packages of `build` from this
+#                     builds and compiles nothing (installs the cli job's
+#                     binaries, sha256 checked); takes the packages of `build` from this
 #                     run, re-checks every sha256 and size against the
 #                     reviewed pins, signs, verify-site as an existing client
 #   release           contents: write: uploads the verified package to the
@@ -147,9 +150,39 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  cli:
+    # The pinned tools, built here and nowhere near a key: the signing
+    # job installs these binaries after checking their sha256 and
+    # compiles nothing (tools/cli-artifact.sh).
+    name: Build the pinned deckpilot-registry
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      registry: ${{ steps.pack.outputs.registry }}
+      schema: ${{ steps.pack.outputs.schema }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.resolve.outputs.commit }}
+      - name: Build the pinned deckpilot-registry and schema-check (DeckPilot code only)
+        run: tools/build-cli.sh
+      - id: pack
+        name: The binaries and their sha256
+        run: tools/cli-artifact.sh pack "$RUNNER_TEMP/cli" | tee -a "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: deckpilot-cli
+          path: ${{ runner.temp }}/cli
+          retention-days: 1
+          if-no-files-found: error
+
   sign:
     name: Sign the registry
-    needs: [resolve, gate, build]
+    needs: [resolve, gate, build, cli]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: registry-release
@@ -160,8 +193,15 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ needs.resolve.outputs.commit }}
-      - name: Build the pinned deckpilot-registry (DeckPilot code only, no plugin code)
-        run: tools/build-cli.sh
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: deckpilot-cli
+          path: ${{ runner.temp }}/cli
+      - name: Install the cli job's deckpilot-registry (sha256 checked; nothing compiles here)
+        env:
+          REGISTRY_SHA256: ${{ needs.cli.outputs.registry }}
+          SCHEMA_SHA256: ${{ needs.cli.outputs.schema }}
+        run: tools/cli-artifact.sh install "$RUNNER_TEMP/cli" "$REGISTRY_SHA256" "$SCHEMA_SHA256"
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: packages

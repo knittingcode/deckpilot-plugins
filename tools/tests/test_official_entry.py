@@ -177,7 +177,7 @@ case("committed: id DeckPilot does not bundle",
      committed(lambda r, rel, mp: (mp / "deckpilot.pomodoro/versions").mkdir(parents=True)), "not a plugin DeckPilot bundles")
 
 E.SIGNED_MANIFEST = E.git_manifest
-case("the marketplace gate mirrors DeckPilot (X12)", lambda: (not E.MARKETPLACE_SERVES_BUNDLED) or (_ for _ in ()).throw(E.Refused("open")))
+case("candidates are not copied into registry/ (MARKETPLACE_SERVES_BUNDLED)", lambda: (not E.MARKETPLACE_SERVES_BUNDLED) or (_ for _ in ()).throw(E.Refused("open")))
 
 print(f"official-entry: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

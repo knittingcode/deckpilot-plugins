@@ -31,6 +31,9 @@
 #                  jobs and compares them.
 #
 # Release (official-release.yml only):
+# fetch-deckpilot  the pinned DeckPilot checkout (a commit of its main; git
+#                  only, nothing compiled), for the signing job's
+#                  released-pins.json and artifacts.json.
 # resolve TAG      TAG is <id>--v<version> of a released plugin whose
 #                  manifest has that version, at a commit on main.
 # release-build ID VERSION
@@ -398,6 +401,7 @@ case $what in
   compare) compare ;;
   sign-test) sign_test ;;
   all) check; run_tests; package; repro; compare; sign_test ;;
+  fetch-deckpilot) fetch_deckpilot "$DECKPILOT_DIR" ;;
   resolve) resolve "${2:?TAG}" ;;
   fresh-build) fresh_build "${2:?SUMS}" ;;
   release-build) release_build "${2:?ID}" "${3:?VERSION}" ;;
