@@ -1,0 +1,449 @@
+{
+  "$comment": "The reviewed privileged policy (docs/marketplace/publisher-signature.md, \"Privileged plugins\"): for each of DeckPilot's own plugins that uses plugin API 1.9's privileged kinds, the one version that may be released as a signed artifact and staged as a bundled plugin, its exact `permissions` and every privileged construct it declares (`path` and `what` as Manifest::privileged_usages names them, and the JSON `value` at that path for the constructs outside `permissions`). Compiled into deckpilot-plugin-registry (privileged_policy.rs) and copied byte for byte to knittingcode/deckpilot-plugins official/privileged-policy.json. It opens nothing on its own: the gate is the compiled constant PRIVILEGED_GATE_OPEN, and an open gate also needs `review` (the independent security review's sign-off, docs/marketplace/publisher-review-request.md) with outcome `approved`. Anything not listed here exactly is refused.",
+  "privilegedPolicyVersion": 1,
+  "review": null,
+  "minThreshold": 2,
+  "plugins": [
+    {
+      "id": "deckpilot.docker",
+      "version": "0.1.1",
+      "permissions": [
+        {
+          "kind": "tools",
+          "tools": [
+            {
+              "executable": "docker",
+              "subcommands": [
+                {
+                  "name": "context show"
+                },
+                {
+                  "name": "version",
+                  "options": ["--format"]
+                },
+                {
+                  "name": "compose version",
+                  "options": ["--short"]
+                },
+                {
+                  "name": "ps",
+                  "options": ["--no-trunc", "--format", "--all", "--filter"]
+                },
+                {
+                  "name": "compose ps",
+                  "options": ["--format", "--all"]
+                },
+                {
+                  "name": "compose logs",
+                  "options": ["--tail", "--since", "--no-color"]
+                },
+                {
+                  "name": "logs",
+                  "options": ["--tail", "--since"]
+                },
+                {
+                  "name": "compose up",
+                  "options": ["--detach"]
+                },
+                {
+                  "name": "compose down",
+                  "options": ["--remove-orphans"]
+                },
+                {
+                  "name": "compose restart"
+                }
+              ],
+              "modify": true
+            }
+          ],
+          "justification": "t:permissions.tools"
+        },
+        {
+          "kind": "resources",
+          "justification": "t:permissions.resources"
+        },
+        {
+          "kind": "profile",
+          "read": ["project"],
+          "justification": "t:permissions.profile"
+        },
+        {
+          "kind": "device",
+          "state": true,
+          "justification": "t:permissions.device"
+        }
+      ],
+      "constructs": [
+        {
+          "path": "permissions[0]",
+          "what": "the `tools` permission"
+        },
+        {
+          "path": "permissions[1]",
+          "what": "the `resources` permission"
+        },
+        {
+          "path": "contributes.actions[0].parameters[1].kind",
+          "what": "a `resource` parameter",
+          "value": {
+            "type": "resource",
+            "kinds": ["dockerEnvironment", "directory"]
+          }
+        },
+        {
+          "path": "contributes.actions[1].parameters[3].kind",
+          "what": "a `resource` parameter",
+          "value": {
+            "type": "resource",
+            "kinds": ["dockerEnvironment", "directory"]
+          }
+        },
+        {
+          "path": "contributes.actions[2].parameters[0].kind",
+          "what": "a `resource` parameter",
+          "value": {
+            "type": "resource",
+            "kinds": ["directory", "file", "dockerEnvironment"]
+          }
+        },
+        {
+          "path": "contributes.actions[3].parameters[0].kind",
+          "what": "a `resource` parameter",
+          "value": {
+            "type": "resource",
+            "kinds": ["directory", "file", "dockerEnvironment"]
+          }
+        },
+        {
+          "path": "contributes.actions[4].parameters[0].kind",
+          "what": "a `resource` parameter",
+          "value": {
+            "type": "resource",
+            "kinds": ["directory", "file", "dockerEnvironment"]
+          }
+        },
+        {
+          "path": "contributes.actions[5].parameters[0].kind",
+          "what": "a `resource` parameter",
+          "value": {
+            "type": "resource",
+            "kinds": ["directory", "file", "dockerEnvironment"]
+          }
+        },
+        {
+          "path": "contributes.actions[6].parameters[4].kind",
+          "what": "a `resource` parameter",
+          "value": {
+            "type": "resource",
+            "kinds": ["directory", "file", "dockerEnvironment"]
+          }
+        },
+        {
+          "path": "contributes.actions[6].parameters[8].kind",
+          "what": "a `resource` parameter",
+          "value": {
+            "type": "resource",
+            "kinds": ["dockerEnvironment", "directory"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "deckpilot.git",
+      "version": "0.1.1",
+      "permissions": [
+        {
+          "kind": "tools",
+          "tools": [
+            {
+              "executable": "git",
+              "subcommands": [
+                {
+                  "name": "status",
+                  "options": ["--porcelain=v2", "--branch", "-z", "--untracked-files"]
+                },
+                {
+                  "name": "log",
+                  "options": ["-1", "--no-show-signature", "--format"]
+                },
+                {
+                  "name": "config",
+                  "options": ["--get"]
+                },
+                {
+                  "name": "remote"
+                },
+                {
+                  "name": "rev-parse",
+                  "options": ["--verify", "-q"]
+                },
+                {
+                  "name": "ls-remote"
+                }
+              ],
+              "network": true
+            }
+          ],
+          "justification": "t:permissions.tools"
+        },
+        {
+          "kind": "resources",
+          "paths": true,
+          "open": true,
+          "justification": "t:permissions.resources"
+        },
+        {
+          "kind": "profile",
+          "read": ["project"],
+          "justification": "t:permissions.profile"
+        },
+        {
+          "kind": "device",
+          "state": true,
+          "justification": "t:permissions.device"
+        }
+      ],
+      "constructs": [
+        {
+          "path": "permissions[0]",
+          "what": "the `tools` permission"
+        },
+        {
+          "path": "permissions[1]",
+          "what": "the `resources` permission"
+        },
+        {
+          "path": "contributes.actions[0].parameters[0].kind",
+          "what": "a `resource` parameter",
+          "value": {
+            "type": "resource",
+            "kinds": ["directory"]
+          }
+        },
+        {
+          "path": "contributes.actions[1].parameters[0].kind",
+          "what": "a `resource` parameter",
+          "value": {
+            "type": "resource",
+            "kinds": ["directory"]
+          }
+        },
+        {
+          "path": "contributes.actions[2].parameters[0].kind",
+          "what": "a `resource` parameter",
+          "value": {
+            "type": "resource",
+            "kinds": ["directory"]
+          }
+        },
+        {
+          "path": "contributes.actions[3].parameters[0].kind",
+          "what": "a `resource` parameter",
+          "value": {
+            "type": "resource",
+            "kinds": ["directory"]
+          }
+        },
+        {
+          "path": "contributes.actions[4].parameters[0].kind",
+          "what": "a `resource` parameter",
+          "value": {
+            "type": "resource",
+            "kinds": ["directory"]
+          }
+        },
+        {
+          "path": "contributes.actions[5].parameters[0].kind",
+          "what": "a `resource` parameter",
+          "value": {
+            "type": "resource",
+            "kinds": ["directory"]
+          }
+        },
+        {
+          "path": "contributes.actions[5].parameters[2].kind",
+          "what": "a `resource` parameter",
+          "value": {
+            "type": "resource",
+            "kinds": ["application"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "deckpilot.projects",
+      "version": "0.1.1",
+      "permissions": [
+        {
+          "kind": "projectContext",
+          "select": true,
+          "justification": "t:permissions.projectContext"
+        },
+        {
+          "kind": "resources",
+          "paths": true,
+          "justification": "t:permissions.resources"
+        },
+        {
+          "kind": "profile",
+          "read": ["project"],
+          "justification": "t:permissions.profile"
+        },
+        {
+          "kind": "hostViews",
+          "justification": "t:permissions.hostViews"
+        }
+      ],
+      "constructs": [
+        {
+          "path": "permissions[0]",
+          "what": "the `projectContext` permission"
+        },
+        {
+          "path": "permissions[1]",
+          "what": "the `resources` permission"
+        },
+        {
+          "path": "permissions[3]",
+          "what": "the `hostViews` permission"
+        },
+        {
+          "path": "contributes.actions[0].node.changesContext",
+          "what": "`node.changesContext`",
+          "value": true
+        },
+        {
+          "path": "contributes.actions[1].node.changesContext",
+          "what": "`node.changesContext`",
+          "value": true
+        },
+        {
+          "path": "contributes.actions[6].node.changesContext",
+          "what": "`node.changesContext`",
+          "value": true
+        },
+        {
+          "path": "contributes.actions[7].node.changesContext",
+          "what": "`node.changesContext`",
+          "value": true
+        },
+        {
+          "path": "contributes.variables[0].source",
+          "what": "the host source `host:project.id`",
+          "value": "host:project.id"
+        },
+        {
+          "path": "contributes.variables[1].source",
+          "what": "the host source `host:project.key`",
+          "value": "host:project.key"
+        },
+        {
+          "path": "contributes.variables[2].source",
+          "what": "the host source `host:project.name`",
+          "value": "host:project.name"
+        },
+        {
+          "path": "contributes.views[0].kind",
+          "what": "the `projects` view",
+          "value": "projects"
+        },
+        {
+          "path": "contributes.statusItems",
+          "what": "`statusItems`",
+          "value": ["activeProject"]
+        },
+        {
+          "path": "contributes.dashboardCards",
+          "what": "`dashboardCards`",
+          "value": ["activeProject"]
+        }
+      ]
+    },
+    {
+      "id": "deckpilot.workflows",
+      "version": "0.1.1",
+      "permissions": [
+        {
+          "kind": "hostViews",
+          "justification": "t:permissions.hostViews"
+        }
+      ],
+      "constructs": [
+        {
+          "path": "permissions[0]",
+          "what": "the `hostViews` permission"
+        },
+        {
+          "path": "contributes.views[0].kind",
+          "what": "the `workflows` view",
+          "value": "workflows"
+        }
+      ]
+    },
+    {
+      "id": "deckpilot.workspace",
+      "version": "0.1.1",
+      "permissions": [
+        {
+          "kind": "resources",
+          "open": true,
+          "paths": true,
+          "justification": "t:permissions.resources"
+        },
+        {
+          "kind": "openUrl",
+          "hosts": [],
+          "fromParams": true,
+          "justification": "t:permissions.openUrl"
+        },
+        {
+          "kind": "profile",
+          "read": ["project"],
+          "justification": "t:permissions.profile"
+        }
+      ],
+      "constructs": [
+        {
+          "path": "permissions[0]",
+          "what": "the `resources` permission"
+        },
+        {
+          "path": "permissions[1].fromParams",
+          "what": "`openUrl.fromParams`"
+        },
+        {
+          "path": "contributes.actions[0].parameters[0].kind",
+          "what": "a `resource` parameter",
+          "value": {
+            "type": "resource",
+            "kinds": ["application"]
+          }
+        },
+        {
+          "path": "contributes.actions[0].parameters[2].kind",
+          "what": "a `resource` parameter",
+          "value": {
+            "type": "resource",
+            "kinds": ["directory", "file"]
+          }
+        },
+        {
+          "path": "contributes.actions[1].parameters[1].kind",
+          "what": "a `resource` parameter",
+          "value": {
+            "type": "resource",
+            "kinds": ["application"]
+          }
+        },
+        {
+          "path": "contributes.actions[2].parameters[5].kind",
+          "what": "a `resource` parameter",
+          "value": {
+            "type": "resource",
+            "kinds": ["application"]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -40,6 +40,10 @@ def deckpilot_of(tmp):
     held plugin as DeckPilot has it (version 0.1.0, its own repository)."""
     dp = Path(tmp) / "deckpilot"
     shutil.copytree(ROOT / "official" / FIXTURE, dp / "plugins/first-party" / FIXTURE)
+    # The reviewed privileged policy, as the pinned DeckPilot carries it.
+    record = dp / "crates/deckpilot-plugin-registry/publisher/privileged-policy.json"
+    record.parent.mkdir(parents=True)
+    shutil.copy(ROOT / "official/privileged-policy.json", record)
     for e in HELD:
         shutil.copytree(ROOT / "official" / e["path"], dp / "plugins/first-party" / e["path"],
                         ignore=shutil.ignore_patterns("target"))
@@ -108,7 +112,8 @@ case("a lock on another DeckPilot rev", replace("Cargo.lock", COMMIT, "1" * 40),
 case("a member not in plugins.json", policy(lambda d: d.update(fixtures=[])), False, "not in plugins.json")
 case("a permission outside the policy", manifest(lambda m: m["permissions"].append({"kind": "storage", "justification": "x"})), False, "reviewed policy change")
 case("process execution", manifest(lambda m: m["permissions"].append({"kind": "tools", "tools": [{"executable": "git"}], "justification": "x"})), False, r"process execution|privileged kind")
-case("a privileged kind", manifest(lambda m: m["permissions"].append({"kind": "hostViews", "justification": "x"})), False, "gate is closed")
+case("a privileged kind", manifest(lambda m: m["permissions"].append({"kind": "hostViews", "justification": "x"})), False,
+     "gate is closed|does not admit it")
 case("a plugin API the pin does not provide", manifest(lambda m: m["engines"].update(pluginApi="^1.99")), False, "not satisfied")
 case("a DeckPilot range without the pin", manifest(lambda m: m["engines"].update(deckpilot=">=0.11.0 <1.0.0")), False, "does not accept")
 case("another publisher", manifest(lambda m: m["publisher"].update(id="acme")), False, "publisher.id")
@@ -155,8 +160,141 @@ RELEASED = next(e["path"] for e in POLICY["plugins"] if e.get("held") is None)
 case("a privileged kind on a plugin that is not held", lambda r: (
      policy(lambda d: next(e for e in d["plugins"] if e["path"] == RELEASED)["permissions"].append("hostViews"))(r),
      manifest(lambda m: m["permissions"].append({"kind": "hostViews", "justification": "x"}), RELEASED)(r)),
-     False, "gate is closed")
+     False, "gate is closed|does not admit it")
 case("versions differ", replace(f"{FIXTURE}/Cargo.toml", 'version = "0.1.0"', 'version = "0.1.1"'), False, "differs from manifest.json")
+
+# The reviewed privileged policy (official/privileged-policy.json, a copy of
+# DeckPilot's). The gate is closed in this repository; the cases with the
+# gate open run a copy of check-official.py with PRIVILEGED_GATE_OPEN = True
+# (the test's only), on a tree whose policy records an approved review.
+GATE_LINE = "PRIVILEGED_GATE_OPEN = False\n"
+REVIEW = {"reviewer": "throwaway test reviewer", "date": "2026-11-21", "outcome": "approved",
+          "record": "tools/tests/test_check_official.py"}
+PRIVILEGED = ["docker", "git", "projects", "workflows", "workspace"]
+
+
+def run_open(root, *extra):
+    script = Path(root).parent / "check-official-open.py"
+    text = CHECK.read_text()
+    assert text.count(GATE_LINE) == 1
+    script.write_text(text.replace(GATE_LINE, "PRIVILEGED_GATE_OPEN = True\n"))
+    args = [sys.executable, "-I", str(script), "--root", str(root), "--commit", COMMIT,
+            "--app-version", ENV["DECKPILOT_VERSION"], "--plugin-api", ENV["DECKPILOT_PLUGIN_API"], *extra]
+    p = subprocess.run(args, capture_output=True, text=True)
+    return p.returncode, p.stdout + p.stderr
+
+
+def case_open(name, change, want_ok, message="", extra=(), release=PRIVILEGED, deckpilot=None):
+    """With the gate open: `release` are the plugins no longer held."""
+    global passed, failed
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "official"
+        shutil.copytree(ROOT / "official", root, ignore=shutil.ignore_patterns("target"))
+        edit_json(root / "privileged-policy.json", lambda d: d.update(review=dict(REVIEW)))
+        edit_json(root / "plugins.json",
+                  lambda d: [e.pop("held", None) for e in d["plugins"] if e["path"] in release])
+        if deckpilot is not None:
+            dp = Path(tmp) / "deckpilot"
+            deckpilot(root, dp)
+            extra = (*extra, "--deckpilot", str(dp))
+        change(root)
+        rc, out = run_open(root, *extra)
+    ok = (rc == 0) == want_ok and re.search(message, out)
+    if ok:
+        passed += 1
+        print(f"ok   {name}")
+    else:
+        failed += 1
+        print(f"FAIL {name}: exit {rc}: {out.strip()}")
+
+
+def privileged_policy(fn):
+    return lambda root: edit_json(root / "privileged-policy.json", fn)
+
+
+def reviewed_plugin(pid, fn):
+    return privileged_policy(lambda d: fn(next(p for p in d["plugins"] if p["id"] == pid)))
+
+
+case("the gate is closed", lambda r: None, True, r"member")
+gate = subprocess.run([sys.executable, "-I", str(CHECK), "--gate"], capture_output=True, text=True)
+if gate.stdout.strip() == "closed" and gate.returncode == 0:
+    passed += 1
+    print("ok   --gate prints closed")
+else:
+    failed += 1
+    print(f"FAIL --gate: {gate.stdout!r} {gate.returncode}")
+case("the committed policy records no review",
+     lambda r: None if json.loads((r / "privileged-policy.json").read_text())["review"] is None else 1 / 0, True, "member")
+case("an invalid policy: threshold 1", privileged_policy(lambda d: d.update(minThreshold=1)), False, "minThreshold")
+case("an invalid policy: another plugin", reviewed_plugin("deckpilot.workflows", lambda p: p.update(id="deckpilot.github")),
+     False, "not one of DeckPilot's privileged plugins")
+case("an invalid policy: process execution for workflows",
+     reviewed_plugin("deckpilot.workflows", lambda p: p["permissions"].append({"kind": "tools", "tools": [{"executable": "git"}]})),
+     False, "may not run")
+case("an invalid policy: docker for git",
+     reviewed_plugin("deckpilot.git", lambda p: p["permissions"][0]["tools"][0].update(executable="docker")), False, "may not run")
+case("an invalid policy: a pending review without a reviewer",
+     privileged_policy(lambda d: d.update(review={**REVIEW, "reviewer": " ", "outcome": "pending"})), False, "reviewer")
+case("an invalid policy: a construct without its value",
+     reviewed_plugin("deckpilot.projects", lambda p: next(c for c in p["constructs"] if "value" in c).pop("value")),
+     False, "value is missing")
+
+
+def deckpilot_with_policy(edit=None):
+    def make(root, dp):
+        target = dp / "crates/deckpilot-plugin-registry/publisher/privileged-policy.json"
+        target.parent.mkdir(parents=True)
+        shutil.copy(root / "privileged-policy.json", target)
+        if edit:
+            edit(target)
+        for name in [FIXTURE]:
+            shutil.copytree(ROOT / "official" / name, dp / "plugins/first-party" / name)
+    return make
+
+
+def other_bytes(path):
+    path.write_text(path.read_text() + "\n")
+
+
+# The accepted case: all five released with the gate open, exactly as reviewed.
+case_open("open: the five reviewed plugins pass, exactly as reviewed", lambda r: None, True, r"member\(s\) checked")
+case_open("open: held plugins stay valid", lambda r: None, True, r"held: deckpilot.git", release=["workflows"])
+case_open("open: --release accepts a reviewed, no longer held plugin", lambda r: None, True, r"member",
+          extra=["--release", "deckpilot.git"])
+case_open("open: the copy equals DeckPilot's", lambda r: None, True, "member", deckpilot=deckpilot_with_policy())
+case_open("open: a copy that differs from DeckPilot's", lambda r: None, False, "not byte-identical",
+          deckpilot=deckpilot_with_policy(other_bytes))
+case_open("open: a pinned DeckPilot without the policy", lambda r: None, False, "the gate cannot be open",
+          deckpilot=lambda root, dp: shutil.copytree(ROOT / "official" / FIXTURE, dp / "plugins/first-party" / FIXTURE))
+# Every refusal.
+case_open("open: no review recorded", privileged_policy(lambda d: d.update(review=None)), False, "no approved security review")
+case_open("open: a pending review", privileged_policy(lambda d: d["review"].update(outcome="pending")), False,
+          "no approved security review")
+case_open("open: a new construct", manifest(lambda m: m["contributes"].update(statusItems=["activeProject"]), "workflows"),
+          False, r"contributes.statusItems \(`statusItems`\) is not reviewed")
+case_open("open: a broader process permission",
+          manifest(lambda m: m["permissions"][0]["tools"][0]["subcommands"].append({"name": "fetch"}), "git"),
+          False, "permissions differ")
+case_open("open: an extra executable",
+          manifest(lambda m: m["permissions"][0]["tools"].append({"executable": "docker", "subcommands": [{"name": "ps"}]}), "git"),
+          False, r"process execution|permissions differ")
+case_open("open: a broader resources permission", manifest(lambda m: m["permissions"][1].update(open=True), "projects"),
+          False, "permissions differ")
+case_open("open: a broader resource parameter",
+          manifest(lambda m: m["contributes"]["actions"][0]["parameters"][0]["kind"].update(kinds=["directory", "file"]), "git"),
+          False, "differs from the reviewed value")
+case_open("open: another version",
+          lambda r: (manifest(lambda m: m.update(version="0.1.2"), "workspace")(r),
+                     replace("workspace/Cargo.toml", 'version = "0.1.1"', 'version = "0.1.2"')(r)),
+          False, "covers deckpilot.workspace 0.1.1 only")
+case_open("open: a plugin the review does not cover",
+          privileged_policy(lambda d: d.update(plugins=[p for p in d["plugins"] if p["id"] != "deckpilot.docker"])),
+          False, "does not cover deckpilot.docker")
+case_open("open: a reviewed construct no longer declared",
+          reviewed_plugin("deckpilot.workflows", lambda p: p["constructs"].append(
+              {"path": "contributes.statusItems", "what": "`statusItems`", "value": []})),
+          False, "reviewed but not declared")
 
 # Every privileged usage of DeckPilot's privileged.rs `usages`, one by one,
 # through the whole check (the gate is closed).
@@ -180,7 +318,7 @@ for name, change, path in [
     ("statusItems, even empty", contributes("statusItems", []), r"contributes\.statusItems"),
     ("dashboardCards, even empty", contributes("dashboardCards", []), r"contributes\.dashboardCards"),
 ]:
-    case(f"privileged: {name}", change, False, path + r".*gate is closed")
+    case(f"privileged: {name}", change, False, path + r".*(gate is closed|does not admit it)")
 # A parameter kind that is not a resource is not one.
 case("a text parameter is not privileged", first_action(lambda a: a["parameters"].append({"key": "x", "label": "X", "kind": {"type": "text"}})), True, r"member\(s\) checked")
 
