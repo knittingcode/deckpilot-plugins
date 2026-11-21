@@ -1,0 +1,36 @@
+# deckpilot.github: the official GitHub plugin, the replacement of DeckPilot's
+# former built-in `github` module (DeckPilot docs/marketplace/module-migration.md
+# §6, P8). DeckPilot bundles it with class `migration`. Moved here from
+# DeckPilot's plugins/first-party/github (official/README.md); its id, action
+# ids, settings and credential slot are unchanged (src/contract.rs).
+#
+# A member of the official/ workspace (shared Cargo.lock and the `guest`
+# profile), built for wasm32-unknown-unknown; the rlib crate type lets its
+# native unit tests run with plain `cargo test`.
+[package]
+name = "deckpilot-github"
+description = "DeckPilot's first-party GitHub plugin: read-only pull requests, reviews and checks"
+version = "0.2.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+deckpilot-plugin-sdk.workspace = true
+# URLs without a URL parser (the `url` crate's IDNA tables would more than
+# double the module), the time limit and text helpers, shared by DeckPilot's
+# plugins for a server the user enters.
+deckpilot-first-party-support.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+# `guest::features`, to check what `dp_features` reports.
+deckpilot-plugin-abi.workspace = true
+jsonschema.workspace = true
+
+[lints]
+workspace = true
