@@ -393,11 +393,12 @@ for name, change, path in [
 case("a text parameter is not privileged", first_action(lambda a: a["parameters"].append({"key": "x", "label": "X", "kind": {"type": "text"}})), True, r"member\(s\) checked")
 
 # The mirror against the Rust validator itself, on DeckPilot's nine bundled
-# manifests at the pin: the pinned deckpilot-registry's `package
-# --first-party` (Manifest::validate_first_party) reports every privileged
-# usage as `- <path>: ... is only for DeckPilot's own plugins shipped inside
-# the app`; privileged_usages must report exactly the same paths. In CI
-# (CI=true) the pinned checkout and CLI are required.
+# manifests at the pin: the pinned deckpilot-registry's `package` with the
+# third-party rules (Manifest::validate, whatever the privileged-kinds gate:
+# with it open, `--first-party` admits the reviewed manifests instead)
+# reports every privileged usage as `- <path>: ... is only for DeckPilot's
+# own plugins shipped inside the app`; privileged_usages must report exactly
+# the same paths. In CI (CI=true) the pinned checkout and CLI are required.
 spec = __import__("importlib.util").util.spec_from_file_location("check_official", CHECK)
 RULES = __import__("importlib.util").util.module_from_spec(spec)
 spec.loader.exec_module(RULES)
@@ -416,8 +417,7 @@ if deckpilot.is_dir() and cli.is_file():
             # The manifest is checked before the module is read: any file
             # serves as the module, and the run fails either way.
             out = subprocess.run([str(cli), "package", "--plugin-dir", str(directory), "--module",
-                                  str(directory / "manifest.json"), "--out", str(Path(tmp) / "x.dpplugin"),
-                                  "--first-party"], capture_output=True, text=True)
+                                  str(directory / "manifest.json"), "--out", str(Path(tmp) / "x.dpplugin")], capture_output=True, text=True)
         rust = sorted(RUST_USAGE.findall(out.stdout + out.stderr))
         ours = sorted(path for path, _ in RULES.privileged_usages(json.loads((directory / "manifest.json").read_text())))
         if out.returncode != 0 and rust == ours and bool(rust) == expected_some:

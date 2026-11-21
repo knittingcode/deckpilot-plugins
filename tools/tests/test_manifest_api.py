@@ -118,9 +118,17 @@ class ManifestApi(unittest.TestCase):
                 self.assertRefused("assets/nav-counter.svg", "is not a safe SVG")
 
 
+    def assertRefusedEither(self, *alternatives):
+        status, out = self.package()
+        self.assertNotEqual(status, 0, out)
+        self.assertTrue(any(a in out for a in alternatives), out)
+
     def test_api_1_9_permissions_are_refused_in_a_registry_package(self):
         # Plugin API 1.9 (DeckPilot 0.10.0): only the plugins shipped inside
         # the app may declare these; a registry package, even deckpilot.*, may not.
+        # With the privileged-kinds gate open (the pinned DeckPilot), the
+        # first-party packager admits only exactly the reviewed privileged
+        # policy and refuses everything else, this template included.
         permissions = {
             "tools": {"kind": "tools", "tools": [{"executable": "git", "subcommands": [{"name": "status"}]}],
                       "justification": "Reads the status of the repositories you bind to keys."},
@@ -134,12 +142,16 @@ class ManifestApi(unittest.TestCase):
                 self.manifest = json.loads(json.dumps(original))
                 self.manifest["engines"]["pluginApi"] = "^1.9"
                 self.manifest["permissions"].append(permission)
-                self.assertRefused(f"the `{kind}` permission is only for DeckPilot's own plugins shipped inside the app")
+                self.assertRefusedEither(
+                    f"the `{kind}` permission is only for DeckPilot's own plugins shipped inside the app",
+                    "declares plugin API 1.9's privileged kinds that the reviewed privileged policy does not admit")
 
     def test_api_1_9_permission_below_api_1_9_is_refused(self):
         self.manifest["engines"]["pluginApi"] = "^1.8"
         self.manifest["permissions"].append({"kind": "hostViews", "justification": "Shows the projects view."})
-        self.assertRefused("needs plugin API 1.9")
+        self.assertRefusedEither(
+            "needs plugin API 1.9",
+            "declares plugin API 1.9's privileged kinds that the reviewed privileged policy does not admit")
 
 if __name__ == "__main__":
     args = sys.argv[1:]
