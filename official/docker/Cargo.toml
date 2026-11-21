@@ -1,0 +1,34 @@
+# deckpilot.docker: the first-party Docker plugin, the replacement of the
+# built-in `docker` module (docs/marketplace/module-migration.md §7 X3b, X3c, §11
+# D1, WP-B2). Bundled with class `migration` (plugins/first-party/bundled.json);
+# not routed until the cut-over adds its alias block (WP-C1).
+#
+# Moved from DeckPilot's plugins/first-party/docker at the pinned commit
+# (tools/deckpilot.env): a member of the official/ workspace (shared
+# Cargo.lock and the `guest` profile), built for wasm32-unknown-unknown
+# against the SDK as a git dependency; the rlib crate type lets its native
+# unit tests run with plain `cargo test`. A privileged plugin (process
+# execution, `tools`): never released while the privileged-kinds gate is
+# closed (official/README.md).
+[package]
+name = "deckpilot-docker"
+description = "DeckPilot's first-party Docker plugin: availability, containers, Compose projects and bounded logs"
+version = "0.1.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+deckpilot-plugin-sdk.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+jsonschema.workspace = true
+
+[lints]
+workspace = true
