@@ -72,10 +72,19 @@ case("a held plugin has no entry", lambda: E.check_id("deckpilot.workflows", {**
 case("a held plugin's manifest is still refused by the entry rules",
      lambda: E.check_manifest(manifest(pid="deckpilot.workflows", version="0.1.1", perms=[{"kind": "hostViews"}]),
                               "deckpilot.workflows", "0.1.1", WORKFLOWS_HELD, HOST), "privileged")
-case("the committed official/plugins.json: every held plugin is refused an entry",
-     lambda: [E.check_id(pid, E.official_policy(ROOT / "official"), False)
-              for pid, entry in E.official_policy(ROOT / "official").items() if entry.get("held") is not None]
-     and None, "is held")
+# The five privileged plugins are released (no longer held) with the gate
+# open; each still has no Marketplace entry: its committed manifest is
+# refused by the entry rules whatever the gate.
+OFFICIAL = E.official_policy(ROOT / "official")
+for pid in ("deckpilot.docker", "deckpilot.git", "deckpilot.projects", "deckpilot.workflows", "deckpilot.workspace"):
+    entry = OFFICIAL[pid]
+    committed = json.loads((ROOT / "official" / entry["path"] / "manifest.json").read_text())
+    case(f"the committed {pid} is a released plugin (not held)", lambda e=entry: None if e.get("held") is None
+         else (_ for _ in ()).throw(E.Refused("held")))
+    case(f"the committed {pid} {committed['version']} is refused a Marketplace entry",
+         lambda pid=pid, m=committed: E.check_manifest(m, pid, m["version"], E.check_id(pid, OFFICIAL, False),
+                                                                {**HOST, "version": "0.11.0"}),
+         "never as a Marketplace entry")
 
 # Releases.
 def bundle(**release):

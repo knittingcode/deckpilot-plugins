@@ -139,8 +139,9 @@ These stay enforced on top of the gate:
   job without any secret requires both signatures against the keys pinned
   in DeckPilot (threshold 2). There is no `release` without `verify`, and
   nothing is ever published unsigned.
-- The privileged policy record, the privileged-kinds gate (closed), the
-  held plugins and the process allow-lists are unchanged.
+- The privileged policy record, the privileged-kinds gate (open for
+  exactly that record) and the process allow-lists are unchanged by the
+  exception.
 
 ### Settings of the exception
 
