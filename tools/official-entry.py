@@ -38,7 +38,9 @@ refuses, before writing anything:
 * a manifest that is not the claimed id/version, an engines range the
   pinned DeckPilot (tools/deckpilot.env) does not satisfy, permission kinds
   other than the policy of plugins.json, any plugin API 1.9 privileged kind
-  while the gate is closed, process execution outside the allow-list;
+  (whatever the gate: a privileged plugin reaches users only bundled in
+  DeckPilot, never through the registry), process execution outside the
+  allow-list;
 * a dependency that is not a built-in module or an official plugin, or a
   required one that neither a candidate entry nor the plugin DeckPilot
   bundles at the pin satisfies;
@@ -310,6 +312,11 @@ def check_manifest(manifest, pid, version, entry, host):
     if not in_range(engines.get("deckpilot", ""), host["version"]):
         raise Refused(f"{pid} {version}: engines.deckpilot {engines.get('deckpilot')} does not accept "
                       f"DeckPilot {host['version']}: incompatible host")
+    usages = RULES.privileged_usages(manifest)
+    if usages:
+        raise Refused(f"{pid} {version}: {', '.join(what for _, what in usages)}: a plugin API 1.9 privileged "
+                      "kind; a privileged plugin reaches users only as a bundled copy in DeckPilot, never "
+                      "as a Marketplace entry, whatever the gate")
     before = len(RULES.problems)
     RULES.check_permissions(f"{pid} {version}", entry, manifest)
     found = RULES.problems[before:]
@@ -820,8 +827,8 @@ def matrix(deckpilot):
         if entry and entry.get("held") is not None:
             market = "no: held (source only; privileged-kinds gate closed)"
             held.append(f"* `{pid}` {manifest.get('version', '?')}: {entry['held']}")
-        elif privileged(manifest) and not RULES.PRIVILEGED_GATE_OPEN:
-            market = "no: privileged-kinds gate closed"
+        elif privileged(manifest):
+            market = "no: privileged (bundled in DeckPilot only)"
         elif not latest:
             market = "no: no signed release"
         elif not MARKETPLACE_SERVES_BUNDLED:

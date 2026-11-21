@@ -26,9 +26,22 @@ neither cargo nor the manifest schema does:
   as text): its source may then be on main, built, tested and compared,
   but it is never packaged, signed, released or given a Marketplace entry
   (official.sh, official-entry.py). `held` is refused on a fixture,
-  without a reason, on a plugin with no privileged usage, and once the
-  gate is open. Process execution (`tools`) is in any case only ever for
-  deckpilot.git (git) and deckpilot.docker (docker).
+  without a reason and on a plugin with no privileged usage; it stays
+  valid with the gate open (a plugin is released one at a time, by a
+  reviewed change that removes its `held`). Process execution (`tools`) is
+  in any case only ever for deckpilot.git (git) and deckpilot.docker
+  (docker).
+* The reviewed privileged policy: official/privileged-policy.json, a byte
+  copy of DeckPilot's crates/deckpilot-plugin-registry/publisher/
+  privileged-policy.json (compared with --deckpilot), must be valid
+  (version 1, minThreshold at least 2, only the five privileged plugins,
+  each once, process execution only as PROCESS_ALLOW_LIST allows). With
+  the gate open, a plugin with privileged usages that is not held must be
+  EXACTLY its entry: an approved review, the same id and version, the same
+  `permissions` (JSON equality), the same privileged usages with the same
+  values (reviewed_reasons; DeckPilot's privileged_policy::check is the
+  same rule). Anything else fails: a new construct, a broader permission,
+  an extra executable, another plugin, another version.
 * Compatibility: engines.pluginApi is satisfied by the pinned DeckPilot's
   plugin API (--plugin-api) and engines.deckpilot accepts its version
   (--app-version), so `release verify` will accept the host.
@@ -42,6 +55,8 @@ neither cargo nor the manifest schema does:
 `plugin`, `held` (a plugin marked held) or `fixture`. Without --list, each
 held plugin is printed with its reason.
 --release ID fails unless ID is a released plugin (not held, not a fixture).
+`check-official.py --gate` (alone) prints `open` or `closed`
+(PRIVILEGED_GATE_OPEN).
 """
 
 import argparse
@@ -69,6 +84,16 @@ HOST_VIEW_KINDS = frozenset({"workflows", "projects"})
 PRIVILEGED_GATE_OPEN = False
 # Process execution, ever: only these plugins, only these executables.
 PROCESS_ALLOW_LIST = {"deckpilot.git": ["git"], "deckpilot.docker": ["docker"]}
+# The reviewed privileged policy (DeckPilot privileged_policy.rs): its copy
+# here, DeckPilot's at the pinned commit, and its rules.
+PRIVILEGED_POLICY = "privileged-policy.json"
+DECKPILOT_PRIVILEGED_POLICY = "crates/deckpilot-plugin-registry/publisher/privileged-policy.json"
+PRIVILEGED_PLUGIN_IDS = ("deckpilot.docker", "deckpilot.git", "deckpilot.projects", "deckpilot.workflows",
+                         "deckpilot.workspace")
+MIN_THRESHOLD = 2
+# The policy read by main() (None: not read; official-entry.py never admits
+# a privileged plugin whatever it holds).
+REVIEWED_POLICY = None
 
 problems = []
 
@@ -205,6 +230,127 @@ def privileged_usages(manifest):
     return found
 
 
+def permission_index(path):
+    m = re.fullmatch(r"permissions\[(\d+)\](\..*)?", path)
+    return int(m.group(1)) if m else None
+
+
+def value_at(doc, path):
+    """The JSON at a usage path (`a.b[0].c`), or KeyError."""
+    for segment in path.split("."):
+        m = re.fullmatch(r"([A-Za-z]+)((?:\[\d+\])*)", segment)
+        if not m or not isinstance(doc, dict) or m.group(1) not in doc:
+            raise KeyError(path)
+        doc = doc[m.group(1)]
+        for i in re.findall(r"\[(\d+)\]", m.group(2)):
+            if not isinstance(doc, list) or int(i) >= len(doc):
+                raise KeyError(path)
+            doc = doc[int(i)]
+    return doc
+
+
+def policy_problems(policy):
+    """The reviewed privileged policy's rules (PrivilegedPolicy::validate)."""
+    out = []
+    if not isinstance(policy, dict):
+        return ["not a JSON object"]
+    allowed = {"$comment", "privilegedPolicyVersion", "review", "minThreshold", "plugins"}
+    if set(policy) - allowed or not {"privilegedPolicyVersion", "review", "minThreshold", "plugins"} <= set(policy):
+        out.append(f"fields {sorted(policy)}; exactly {sorted(allowed - {'$comment'})} (and $comment)")
+    if policy.get("privilegedPolicyVersion") != 1:
+        out.append("privilegedPolicyVersion must be 1")
+    threshold = policy.get("minThreshold")
+    if not isinstance(threshold, int) or isinstance(threshold, bool) or threshold < MIN_THRESHOLD:
+        out.append(f"minThreshold must be at least {MIN_THRESHOLD}")
+    review = policy.get("review")
+    if review is not None:
+        if not isinstance(review, dict) or set(review) != {"reviewer", "date", "outcome", "record"}:
+            out.append("review: exactly reviewer, date, outcome and record")
+        else:
+            if not str(review["reviewer"]).strip() or not str(review["record"]).strip():
+                out.append("review: reviewer and record must be given")
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(review["date"])):
+                out.append("review: date is not YYYY-MM-DD")
+            if review["outcome"] not in ("pending", "approved"):
+                out.append("review: outcome is pending or approved")
+    seen = set()
+    for plugin in policy.get("plugins") or []:
+        pid = plugin.get("id") if isinstance(plugin, dict) else None
+        if pid not in PRIVILEGED_PLUGIN_IDS:
+            out.append(f"{pid} is not one of DeckPilot's privileged plugins")
+            continue
+        if set(plugin) != {"id", "version", "permissions", "constructs"}:
+            out.append(f"{pid}: exactly id, version, permissions and constructs")
+            continue
+        if pid in seen:
+            out.append(f"{pid} is listed twice")
+        seen.add(pid)
+        if not version_key(str(plugin["version"])):
+            out.append(f"{pid}: version {plugin['version']} is not MAJOR.MINOR.PATCH")
+        permissions = plugin["permissions"] if isinstance(plugin["permissions"], list) else []
+        constructs = plugin["constructs"] if isinstance(plugin["constructs"], list) else []
+        if not constructs:
+            out.append(f"{pid}: no privileged construct is listed")
+        paths = set()
+        for c in constructs:
+            if not isinstance(c, dict) or not {"path", "what"} <= set(c) or set(c) - {"path", "what", "value"}:
+                out.append(f"{pid}: a construct is path, what and value")
+                continue
+            if c["path"] in paths:
+                out.append(f"{pid}: {c['path']} is listed twice")
+            paths.add(c["path"])
+            index = permission_index(c["path"])
+            if index is not None and ("value" in c or index >= len(permissions)):
+                out.append(f"{pid}: {c['path']}: a permission's construct names a listed permission, no value")
+            if index is None and "value" not in c:
+                out.append(f"{pid}: {c['path']}: value is missing")
+        for p in permissions:
+            if isinstance(p, dict) and p.get("kind") == "tools":
+                names = [t.get("executable") for t in p.get("tools", []) if isinstance(t, dict)]
+                if names != PROCESS_ALLOW_LIST.get(pid):
+                    out.append(f"{pid} may not run {names}: process execution is only for "
+                               f"{', '.join(f'{k} ({v[0]})' for k, v in PROCESS_ALLOW_LIST.items())}")
+    return out
+
+
+def reviewed_reasons(policy, manifest):
+    """Why the open gate refuses this privileged manifest (empty: it is
+    exactly the policy's entry for its id and version)."""
+    if policy is None:
+        return ["no reviewed privileged policy was read"]
+    found = policy_problems(policy)
+    if found:
+        return [f"the policy is invalid: {'; '.join(found)}"]
+    if (policy.get("review") or {}).get("outcome") != "approved":
+        return ["the policy records no approved security review"]
+    pid, version = manifest.get("id"), manifest.get("version")
+    entry = next((p for p in policy["plugins"] if p["id"] == pid), None)
+    if entry is None:
+        return [f"the review does not cover {pid}"]
+    if entry["version"] != version:
+        return [f"the review covers {pid} {entry['version']} only, not {version}"]
+    reasons = []
+    if (manifest.get("permissions") or []) != entry["permissions"]:
+        reasons.append("the permissions differ from the reviewed ones")
+    reviewed = {c["path"]: c for c in entry["constructs"]}
+    usages = privileged_usages(manifest)
+    for path, what in usages:
+        c = reviewed.get(path)
+        if c is None:
+            reasons.append(f"{path} ({what}) is not reviewed")
+        elif c["what"] != what:
+            reasons.append(f"{path} is {what}, the review has {c['what']}")
+        elif "value" in c:
+            try:
+                if value_at(manifest, path) != c["value"]:
+                    reasons.append(f"{path} ({what}) differs from the reviewed value")
+            except KeyError:
+                reasons.append(f"{path} ({what}) differs from the reviewed value")
+    for path in sorted(set(reviewed) - {p for p, _ in usages}):
+        reasons.append(f"{path} is reviewed but not declared")
+    return reasons
+
+
 def check_permissions(where, entry, manifest, held=False):
     """The permission policy. `held` (only check-official.py's own source
     check passes it, for a plugin plugins.json marks held) allows the
@@ -232,6 +378,11 @@ def check_permissions(where, entry, manifest, held=False):
                     "artifact cannot carry it while the gate is closed (DeckPilot "
                     "docs/marketplace/publisher-review-request.md); its source may be on main only "
                     "as a `held` plugin (plugins.json)")
+    elif not held and privileged_usages(manifest):
+        # The gate is open: exactly the reviewed policy, nothing more.
+        for reason in reviewed_reasons(REVIEWED_POLICY, manifest):
+            problem(f"{where}: the reviewed privileged policy (official/{PRIVILEGED_POLICY}) does not "
+                    f"admit it: {reason}")
 
 
 def main():
@@ -243,12 +394,27 @@ def main():
     ap.add_argument("--deckpilot", type=Path)
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--release")
+    if sys.argv[1:] == ["--gate"]:
+        print("open" if PRIVILEGED_GATE_OPEN else "closed")
+        return 0
     args = ap.parse_args()
     root = args.root
     if not re.fullmatch(r"[0-9a-f]{40}", args.commit):
         problem(f"--commit {args.commit} is not a full commit")
         return 1
 
+    global REVIEWED_POLICY
+    REVIEWED_POLICY = load(root / PRIVILEGED_POLICY)
+    for found in policy_problems(REVIEWED_POLICY) if REVIEWED_POLICY is not None else []:
+        problem(f"official/{PRIVILEGED_POLICY}: {found}")
+    if args.deckpilot:
+        theirs = args.deckpilot / DECKPILOT_PRIVILEGED_POLICY
+        if theirs.is_file():
+            if not filecmp.cmp(root / PRIVILEGED_POLICY, theirs, shallow=False):
+                problem(f"official/{PRIVILEGED_POLICY} is not byte-identical to DeckPilot's "
+                        f"{DECKPILOT_PRIVILEGED_POLICY} at the pinned commit")
+        elif PRIVILEGED_GATE_OPEN:
+            problem(f"the pinned DeckPilot has no {DECKPILOT_PRIVILEGED_POLICY}: the gate cannot be open")
     policy = load(root / "plugins.json")
     cargo_text = (root / "Cargo.toml").read_text(encoding="utf-8")
     check_pins(root, args.commit)
@@ -309,9 +475,8 @@ def main():
         if held is not None:
             if kind != "plugin" or not isinstance(held, str) or not held.strip():
                 problem(f"{where}: `held` is a reason (text), for a plugin only")
-            elif PRIVILEGED_GATE_OPEN or not privileged_usages(manifest):
-                problem(f"{where}: held, but nothing holds it (no privileged usage, or the gate is open); "
-                        "remove `held`")
+            elif not privileged_usages(manifest):
+                problem(f"{where}: held, but nothing holds it (no privileged usage); remove `held`")
             else:
                 kind = "held"
                 held_reasons.append((mid, manifest.get("version", ""), held.strip()))

@@ -33,9 +33,14 @@
 # and compared like any other, but never packaged, signed or released:
 # package (and fresh-build, repro) builds its module and requires
 # `package --first-party` to REFUSE its manifest for its privileged usages
-# (and fails if the packager ever accepts it: removing `held` is a
-# reviewed change); sign-test skips it; resolve and release-build refuse
-# it; official-entry.py gives it no Marketplace entry.
+# while the gate is closed (and fails if the packager ever accepts it then:
+# opening the gate is a reviewed change in DeckPilot and in
+# tools/check-official.py together). Once both have opened it, the
+# packager accepts exactly the reviewed privileged policy; a held plugin's
+# package is then discarded, never signed (removing `held` is the reviewed
+# change that releases it); sign-test skips it; resolve and release-build
+# refuse it; official-entry.py gives no privileged plugin a Marketplace
+# entry, held or not (they reach users only bundled in DeckPilot).
 #
 # fresh-build SUMS one build of every member and its packages in a fresh
 #                  target directory, nothing run first; sha256 of each module
@@ -192,7 +197,11 @@ held_refused() {
   log=$(mktemp)
   if "$CLI" package --plugin-dir "$dir" --module "$module" --out "$pkg" --first-party >"$log" 2>&1; then
     rm -f "$pkg" "$log"
-    die "$id is held, but package --first-party accepted it: has the gate opened? (removing \`held\` is a reviewed change)"
+    if [ "$(python3 -I "$REPO_ROOT/tools/check-official.py" --gate)" = open ]; then
+      note "$id: held; the open gate's packager accepts exactly the reviewed policy, the package is discarded (held plugins are never signed or released)"
+      return 0
+    fi
+    die "$id is held, but package --first-party accepted it while tools/check-official.py's gate is closed: the pinned DeckPilot opened the gate? (opening it here is a reviewed change)"
   fi
   if ! grep -q "is only for DeckPilot's own plugins shipped inside the app" "$log"; then
     cat "$log" >&2

@@ -106,12 +106,12 @@ keeping such a plugin's source on main as **held**: its entry in
 
 | Step | A held plugin |
 | --- | --- |
-| `check` | allowed in source with its privileged usages; its permission policy, process allow-list and contract against DeckPilot's `plugins/first-party/<name>` apply as to any plugin; `held` is refused on a fixture, without a reason, with no privileged usage, or once the gate is open; prints each held plugin with its reason |
+| `check` | allowed in source with its privileged usages; its permission policy, process allow-list and contract against DeckPilot's `plugins/first-party/<name>` apply as to any plugin; `held` is refused on a fixture, without a reason, or with no privileged usage (it stays valid with the gate open); prints each held plugin with its reason |
 | `test`, `compare` | as any plugin |
-| `package`, `fresh-build`, `repro` | the module is built (and reproducible); `deckpilot-registry package --first-party` must **refuse** it for its privileged usages, and the step fails if it is accepted or refused for another reason |
+| `package`, `fresh-build`, `repro` | the module is built (and reproducible); while the gate is closed `deckpilot-registry package --first-party` must **refuse** it for its privileged usages, and the step fails if it is accepted or refused for another reason; once the gate is open in the pinned DeckPilot and here, an accepted package is discarded |
 | `sign-test` | skipped: there is no package |
 | `resolve`, `release-build` (official-release.yml) | refused: not a released plugin |
-| `official-entry.py` | refused: no Marketplace entry; the entry rules refuse privileged usages in any case |
+| `official-entry.py` | refused: no Marketplace entry; the entry rules refuse privileged usages in any case, whatever the gate (privileged plugins reach users only bundled in DeckPilot) |
 
 `tools/tests/test_check_official.py` holds the privileged-usage count of
 each held manifest to the pinned Rust validator's. Removing `held` is a
@@ -119,6 +119,26 @@ reviewed change after the security review of DeckPilot's
 `docs/marketplace/publisher-review-request.md` opens the gate here and in
 DeckPilot. Until a held plugin is released, DeckPilot keeps bundling its
 own build of the version it shipped.
+
+## The reviewed privileged policy
+
+`official/privileged-policy.json` is a byte copy of DeckPilot's
+`crates/deckpilot-plugin-registry/publisher/privileged-policy.json`
+(`check --deckpilot` compares them at the pinned commit): for each of the
+five privileged plugins, the **one** reviewed version, its exact
+`permissions` and every privileged usage with its JSON value, and the
+security review (`review`, `null` until it is recorded). `check` refuses
+an invalid policy (version 1, `minThreshold` at least 2, only those five,
+each once, process execution only git for `deckpilot.git` and docker for
+`deckpilot.docker`). With the gate open (`PRIVILEGED_GATE_OPEN = True`
+here, `PRIVILEGED_GATE_OPEN = true` in DeckPilot, both reviewed changes),
+a plugin that is no longer held must be **exactly** its entry, with an
+approved review: a new construct, a broader permission, an extra
+executable, another plugin or another version fails `check`, and the
+pinned DeckPilot's `package --first-party`, `release sign` and `release
+verify` refuse the same (DeckPilot `docs/marketplace/publisher-signature.md`,
+"Privileged plugins"). A privileged plugin is never given a Marketplace
+entry: it reaches users only bundled in DeckPilot.
 
 | Plugin | Held for |
 | --- | --- |
