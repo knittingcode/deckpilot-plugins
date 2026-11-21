@@ -296,6 +296,70 @@ case_open("open: a reviewed construct no longer declared",
               {"path": "contributes.statusItems", "what": "`statusItems`", "value": []})),
           False, "reviewed but not declared")
 
+# N1: the record is compared type-strictly (JSON true is not 1), and a JSON
+# object naming a key twice is refused.
+def projects_changes_context_value(value):
+    def fn(p):
+        c = next(c for c in p["constructs"] if c["path"].endswith("node.changesContext"))
+        c["value"] = value
+    return reviewed_plugin("deckpilot.projects", fn)
+
+
+case_open("open: a reviewed value of another JSON type (1 for true)", projects_changes_context_value(1), False,
+          "differs from the reviewed value")
+case_open("open: a reviewed value of another JSON type (1 for true in a reviewed permission)",
+          reviewed_plugin("deckpilot.git", lambda p: p["permissions"][0]["tools"][0].update(network=1)), False,
+          "permissions differ")
+case_open("open: a manifest permission of another JSON type",
+          manifest(lambda m: m["permissions"][1].update(paths=1), "git"), False, "permissions differ")
+
+
+def duplicate_key(rel, key):
+    def change(root):
+        p = root / rel
+        text = p.read_text()
+        assert text.count("{") > 0
+        p.write_text(text.replace("{", "{" + json.dumps(key) + ": 2, ", 1))
+    return change
+
+
+case("a duplicate key in the privileged policy", duplicate_key("privileged-policy.json", "privilegedPolicyVersion"),
+     False, "duplicate key")
+case("a duplicate key in plugins.json", duplicate_key("plugins.json", "officialVersion"), False, "duplicate key")
+case("a duplicate key in a manifest", duplicate_key(f"{FIXTURE}/manifest.json", "id"), False, "duplicate key")
+
+
+# N2: `official.sh check` with the gate open and no pinned DeckPilot
+# checkout fails; with it closed it notes the missing checkout and passes.
+def official_check(open_gate):
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = Path(tmp) / "repo"
+        shutil.copytree(ROOT / "tools", repo / "tools", ignore=shutil.ignore_patterns("__pycache__"))
+        shutil.copytree(ROOT / "official", repo / "official", ignore=shutil.ignore_patterns("target"))
+        if open_gate:
+            script = repo / "tools/check-official.py"
+            text = script.read_text()
+            script.write_text(text.replace("PRIVILEGED_GATE_OPEN = False\n", "PRIVILEGED_GATE_OPEN = True\n")
+                              .replace("PRIVILEGED_GATE_OPEN = True\n", "PRIVILEGED_GATE_OPEN = True\n"))
+        env = {**os.environ, "DECKPILOT_PLUGINS_WORK": str(Path(tmp) / "work")}
+        p = subprocess.run(["bash", str(repo / "tools/official.sh"), "check"], capture_output=True, text=True, env=env)
+        return p.returncode, p.stdout + p.stderr
+
+
+for open_gate, want_ok, message in [(True, False, "gate is open, but there is no pinned DeckPilot checkout"),
+                                    (False, True, "no pinned DeckPilot checkout")]:
+    rc, out = official_check(open_gate)
+    if (rc == 0) == want_ok and message in out:
+        passed += 1
+        print(f"ok   official.sh check without a DeckPilot checkout, gate {'open' if open_gate else 'closed'}")
+    elif not open_gate and "PRIVILEGED_GATE_OPEN = True" in CHECK.read_text():
+        passed += 1
+        print("ok   official.sh check, gate closed: not applicable (this tree's gate is open)")
+    else:
+        failed += 1
+        print(f"FAIL official.sh check without a DeckPilot checkout, gate {'open' if open_gate else 'closed'}: "
+              f"exit {rc}: {out.strip()}")
+
 # Every privileged usage of DeckPilot's privileged.rs `usages`, one by one,
 # through the whole check (the gate is closed).
 def contributes(key, value):
