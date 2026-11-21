@@ -63,11 +63,13 @@ when, before any download:
 
 The online index key alone therefore cannot open the namespace: it takes
 the offline root ceremony. Every other reserved publisher stays refused.
-The plugins the application bundles (`deckpilot.github`,
-`deckpilot.gitlab`, `deckpilot.jira`, `deckpilot.notifications`) keep
-their pinned-digest trust as their only source: the agent refuses them
-from any registry, and *Submission rules* refuses records for them. Only
-the owner's pull requests may change `deckpilot.*` records.
+The plugins the application bundles (`deckpilot.docker`,
+`deckpilot.git`, `deckpilot.github`, `deckpilot.gitlab`,
+`deckpilot.jira`, `deckpilot.notifications`, `deckpilot.projects`,
+`deckpilot.workflows`, `deckpilot.workspace`) keep their pinned-digest
+trust as their only source: the agent refuses them from any registry,
+and *Submission rules* refuses records for them. Only the owner's pull
+requests may change `deckpilot.*` records.
 
 Withdrawing the authorization is `keyset rotate --no-first-party`, signed
 by a root, published together with a `revoke` (or `yank`) of every offered

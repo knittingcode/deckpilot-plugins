@@ -36,6 +36,11 @@ def load_script(path=SCRIPT, name="check_submission"):
     return module
 
 
+# The plugins DeckPilot bundles at the pinned commit (v0.10.0).
+BUNDLED = ("deckpilot.docker", "deckpilot.git", "deckpilot.github", "deckpilot.gitlab", "deckpilot.jira",
+           "deckpilot.notifications", "deckpilot.projects", "deckpilot.workflows", "deckpilot.workspace")
+
+
 def deckpilot_list(source_rs, name):
     text = Path(source_rs).read_text(encoding="utf-8")
     block = re.search(rf"pub const {name}: &\[&str\] = &\[(.*?)\];", text, re.S)
@@ -195,12 +200,12 @@ class Maintainer(unittest.TestCase):
 
     def test_bundled_ids_are_refused_even_for_the_owner(self):
         self.add_first_party()
-        for pid in ("deckpilot.github", "deckpilot.gitlab", "deckpilot.jira", "deckpilot.notifications"):
+        for pid in BUNDLED:
             self.repo.write(f"registry/plugins/{pid}/plugin.json", {"id": pid})
             self.repo.write(f"plugins/{pid}/build.json", {"id": pid})
         status, err = self.repo.check(author=OWNER, author_id=OWNER_ID)
         self.assertEqual(status, 1)
-        for pid in ("deckpilot.github", "deckpilot.gitlab", "deckpilot.jira", "deckpilot.notifications"):
+        for pid in BUNDLED:
             self.assertIn(f"registry/plugins/{pid}/plugin.json: {pid} is bundled with DeckPilot", err)
             self.assertIn(f"plugins/{pid}/build.json: {pid} is bundled with DeckPilot", err)
 
