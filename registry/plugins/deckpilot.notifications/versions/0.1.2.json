@@ -1,0 +1,33 @@
+{
+  "version": "0.1.2",
+  "published_at": "2026-11-21T22:11:03Z",
+  "engines": {
+    "deckpilot": ">=0.11.0 <1.0.0",
+    "pluginApi": "^1.0",
+    "sdk": "0.1.0"
+  },
+  "permissions": [
+    {
+      "justification": "Shows the notifications and run summaries your workflows ask for, where you choose in this plugin's settings.",
+      "kind": "notifications",
+      "routing": {
+        "desktop": "desktop",
+        "minimumSeverity": "minimumSeverity",
+        "statusBar": "statusBar"
+      }
+    }
+  ],
+  "manifest_sha256": "e39017529ec1c8fc9a30c3e6ebfcef74044a32142d713f205082c713da8b52a5",
+  "source": {
+    "repository": "knittingcode/deckpilot-plugins",
+    "tag": "deckpilot.notifications--v0.1.2",
+    "commit": "f86ea92667120f4be25a7998ced9fb34e89c628d",
+    "path": "official/notifications"
+  },
+  "package": {
+    "url": "https://github.com/knittingcode/deckpilot-plugins/releases/download/deckpilot.notifications--v0.1.2/deckpilot.notifications-0.1.2.dpplugin",
+    "sha256": "d11a8fb60862bd2d5163055a1174bc590e3e8af6f763f10a7292b925c88c74e5",
+    "size": 94143
+  },
+  "builder": "1.0.0"
+}

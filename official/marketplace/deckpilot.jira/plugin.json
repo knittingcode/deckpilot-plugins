@@ -1,0 +1,12 @@
+{
+  "id": "deckpilot.jira",
+  "name": "Jira",
+  "summary": "Issues assigned to you, saved filters and single issues from Jira Cloud or Data Center. Read-only.",
+  "description": "Issues assigned to you, saved filters and single issues from Jira Cloud or Data Center. Read-only.",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/knittingcode/deckpilot-plugins/tree/main/official/jira",
+  "source_repository": "knittingcode/deckpilot-plugins",
+  "categories": [
+    "developer-tools"
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "tag": "deckpilot.notifications--v0.1.2",
+  "release": "https://github.com/knittingcode/deckpilot-plugins/releases/tag/deckpilot.notifications--v0.1.2",
+  "commit": "f86ea92667120f4be25a7998ced9fb34e89c628d",
+  "publishedAt": "2026-11-21T22:11:03Z",
+  "package": {
+    "name": "deckpilot.notifications-0.1.2.dpplugin",
+    "sha256": "d11a8fb60862bd2d5163055a1174bc590e3e8af6f763f10a7292b925c88c74e5",
+    "size": 94143
+  },
+  "signatures": [
+    {
+      "name": "deckpilot.notifications-0.1.2.dpplugin.8C3C4E42700FA702.minisig",
+      "keyId": "8C3C4E42700FA702",
+      "sha256": "1b83c602efc9ca684de141d4fef7934f871ced508d67c3199e2ec3d4eccc3c99"
+    },
+    {
+      "name": "deckpilot.notifications-0.1.2.dpplugin.BDCDC80985EB60B5.minisig",
+      "keyId": "BDCDC80985EB60B5",
+      "sha256": "6b5c2dc937a69e933788e3bfdacc168a9220d9d0e02c7c5eed833822cde05189"
+    }
+  ],
+  "verification": {
+    "keys": "pinned",
+    "signers": [
+      "8f3f9b211a1f2bad",
+      "98a1f76b2dddce87"
+    ],
+    "signerKeyIds": [
+      "8C3C4E42700FA702",
+      "BDCDC80985EB60B5"
+    ],
+    "deckpilot": "0.11.0",
+    "pluginApi": "1.9",
+    "deckpilotCommit": "8dc27d5a52d0fd9407644fc9562840f458063373",
+    "platforms": [
+      "macos",
+      "windows",
+      "linux"
+    ]
+  },
+  "names": {
+    "en": "Notifications",
+    "pl": "Notifications"
+  },
+  "descriptions": {
+    "en": "Notifications from workflows on the desktop and in the status bar, and a summary of how a workflow went.",
+    "pl": "Notifications from workflows on the desktop and in the status bar, and a summary of how a workflow went."
+  },
+  "dependencies": []
+}

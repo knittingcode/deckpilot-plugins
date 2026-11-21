@@ -1,0 +1,12 @@
+{
+  "id": "deckpilot.gitlab",
+  "name": "GitLab",
+  "summary": "Merge requests, review requests, pipelines and projects from GitLab.com or a self-managed GitLab. Read-only.",
+  "description": "Merge requests, review requests, pipelines and projects from GitLab.com or a self-managed GitLab. Read-only.",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/knittingcode/deckpilot-plugins/tree/main/official/gitlab",
+  "source_repository": "knittingcode/deckpilot-plugins",
+  "categories": [
+    "developer-tools"
+  ]
+}

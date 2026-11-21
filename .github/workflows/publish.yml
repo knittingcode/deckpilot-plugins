@@ -13,7 +13,10 @@
 #                     passed for the tagged commit
 #   build             UNPRIVILEGED (no environment, no secret, contents: read):
 #                     rebuilds every recorded package from its pinned source
-#                     at the tagged commit; plugin build scripts run here only
+#                     at the tagged commit; plugin build scripts run here only.
+#                     An official plugin (official/marketplace/) is not
+#                     rebuilt: its release asset is downloaded and verified
+#                     with the pinned publisher keys (tools/validate.sh)
 #   cli               UNPRIVILEGED: builds the pinned deckpilot-registry
 #                     (DeckPilot code only), an artifact with its sha256
 #   sign              environment registry-release, index and timestamp keys:

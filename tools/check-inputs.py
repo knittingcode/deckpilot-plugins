@@ -10,6 +10,11 @@
   match their content, every plugin's namespace has a publisher, every
   plugin has a build recipe and vice versa, namespaces are unique, the
   version history is a plain list of <semver>.json files.
+* An official plugin (one DeckPilot bundles, released from official/,
+  docs/official-marketplace.md) has no build recipe: it is indexed from its
+  verified release, so each recorded version needs its committed candidate
+  entry DIR/official/marketplace/<id>/versions/<v>.json instead, and a
+  recipe for it is refused (tools/official-entry.py gate checks the rest).
 * --list-versions prints "<id> <version> <path>" per recorded version,
   in ascending semver order per plugin (for tools/validate.sh).
 * --manifest-of PACKAGE prints manifest.json of a .dpplugin (tar.gz).
@@ -165,6 +170,15 @@ def check(args):
         recorded.sort()
         versions.extend(recorded)
 
+        candidates = root / "official" / "marketplace" / pid
+        if candidates.is_dir():
+            if (recipes / pid).exists():
+                finding(f"{pid}: an official plugin is indexed from its verified release; "
+                        f"{recipes / pid} must not exist")
+            for _, _, version, _ in recorded:
+                if not (candidates / "versions" / f"{version}.json").is_file():
+                    finding(f"{pid} {version}: no candidate entry {candidates}/versions/{version}.json")
+            continue
         recipe = recipes / pid / "build.json"
         if not recipe.is_file():
             finding(f"{pid}: {recipe} (the build recipe) is missing")

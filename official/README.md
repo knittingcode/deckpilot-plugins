@@ -64,7 +64,8 @@ official/
                    fixtures, and the permission kinds each may declare
   test-fixtures/   fixtures, never released
   marketplace/     candidate Marketplace entries, made only from verified releases
-                   (tools/official-entry.py); never in the signed index
+                   (tools/official-entry.py); the non-privileged ones are
+                   promoted into registry/ (DeckPilot >= 0.11.0)
   <name>/          one plugin, id deckpilot.<name> (from Wave B on)
 ```
 

@@ -8,6 +8,10 @@
                       [--app-version V] [--plugin-api M.N]
     official-entry.py check [--official DIR] [--marketplace DIR]
     official-entry.py matrix [--check] [--out FILE]
+    official-entry.py promote --id ID [--id ID ...]
+    official-entry.py gate [--registry DIR]
+    official-entry.py registry-record --id ID --version V
+    official-entry.py package --id ID --version V --out FILE
 
 `fetch` (network, read-only token is enough) writes a release bundle: the
 GitHub Release of TAG (`deckpilot.<name>--v<version>`) as `release.json`,
@@ -59,13 +63,30 @@ their release, both signatures and signer key ids, dependencies,
 append-only order) and that
 docs/official-compatibility-matrix.md is current. `matrix` writes it.
 
-No command signs, tags, uploads, publishes or touches registry/: the
-candidates are never copied into the signed index here
-(MARKETPLACE_SERVES_BUNDLED). DeckPilot's agent takes an official plugin,
-a bundled one included, from a registry only as a release signed by the
-first-party publisher keys compiled into it, verified before install, and
-refuses it outright while no publisher key is pinned (knittingcode/
-deckpilot#378, apps/agent/src/plugins/official.rs).
+`promote` copies the candidate entries of the given plugins into the
+signed index's sources, registry/plugins/<id>/ (the listing, and each
+version record as `registry_record` derives it: the candidate byte for
+byte except engines.deckpilot, whose lower bound becomes
+OFFICIAL_REGISTRY_MIN_HOST, the first DeckPilot that installs an official
+plugin from a registry). It refuses a plugin of BUNDLED_ONLY_IDS or with a
+privileged kind in its policy, a held one, a registry version that differs
+from what it would write (never overwritten) and one not above every
+recorded version (append-only).
+
+`gate` (no network, no DeckPilot checkout; tools/publish-site.sh runs it
+before any key is written, `check` too) checks every registry/plugins/<id>
+of a bundled id: an eligible plugin, each version exactly the
+`registry_record` of its committed candidate, the listing the candidate's.
+`registry-record` prints that record. `package` (tools/validate.sh, the
+unprivileged build job of publish.yml) downloads a promoted version's
+release asset and its two signatures, checks them against the committed
+release record and runs `release verify` with the pinned keys again; it
+writes the package only if all of that passes.
+
+No command signs, tags, uploads or publishes. DeckPilot's agent takes an
+official plugin, a bundled one included, from a registry only as a release
+signed by the first-party publisher keys compiled into it, verified before
+install (knittingcode/deckpilot#378, apps/agent/src/plugins/official.rs).
 """
 
 import argparse
@@ -91,14 +112,30 @@ MARKETPLACE = ROOT / "official/marketplace"
 MATRIX = ROOT / "docs/official-compatibility-matrix.md"
 PLATFORMS = ("macos", "windows", "linux")
 BUILDER = "1.0.0"
-# Whether this repository copies candidate entries of the bundled plugins
-# into registry/ (the signed index). It does not. DeckPilot's agent
-# (apps/agent/src/plugins/service.rs `fetch`/`pins`, official.rs) accepts an
-# official plugin from a registry only as a first-party release signed by
-# the publisher keys compiled into it, verified before install, and refuses
-# it before any download while no publisher key is pinned (none is). Serving
-# them is a reviewed change here once a key is pinned and released.
-MARKETPLACE_SERVES_BUNDLED = False
+# Whether the signed index serves official plugins. It does, since DeckPilot
+# 0.11.0: its agent (apps/agent/src/plugins/service.rs `fetch`/`pins`,
+# official.rs; knittingcode/deckpilot#378) takes an official plugin, a
+# bundled one included, from a registry only as a first-party release signed
+# by the two publisher keys compiled into it (threshold 2), verified before
+# install. `promote` copies a candidate entry into registry/; only plugins
+# without a privileged kind (BUNDLED_ONLY_IDS never) are served.
+MARKETPLACE_SERVES_BUNDLED = True
+# The first DeckPilot that installs an official plugin from a registry
+# (pinned publisher keys, #378's verified path, the narrowed X12 rule).
+# Every older one refuses it after offering it (0.10.0 refuses every bundled
+# id from a registry, before that no publisher signature is checked), so a
+# registry record never offers an official plugin to them: its
+# engines.deckpilot is the manifest's range with this lower bound
+# (registry_record). The package and its signed manifest are unchanged; the
+# installer compares the record's permissions and dependencies with the
+# manifest, never its engines, and still checks the manifest's own engines.
+OFFICIAL_REGISTRY_MIN_HOST = "0.11.0"
+# The plugins with plugin API 1.9 privileged kinds: bundled in DeckPilot
+# only, never a Marketplace entry, whatever official/plugins.json says.
+BUNDLED_ONLY_IDS = frozenset({
+    "deckpilot.docker", "deckpilot.git", "deckpilot.projects", "deckpilot.workflows", "deckpilot.workspace",
+})
+REGISTRY = ROOT / "registry"
 
 TAG = re.compile(r"(deckpilot\.[a-z0-9][a-z0-9-]{0,62})--v((?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
                  r"(?:-[0-9A-Za-z.-]+)?)")
@@ -728,6 +765,7 @@ def cmd_check(args):
     official = Path(args.official or ROOT / "official")
     problems = check_candidates(official, Path(args.marketplace or MARKETPLACE), Path(args.deckpilot or DECKPILOT_DIR), host)
     if not args.marketplace:
+        problems += registry_problems(official, MARKETPLACE, REGISTRY)
         try:
             want = matrix(Path(args.deckpilot or DECKPILOT_DIR))
             have = MATRIX.read_text(encoding="utf-8") if MATRIX.is_file() else ""
@@ -744,6 +782,220 @@ def cmd_check(args):
         return 1
     n = sum(len(v) for v in candidate_versions(args.marketplace or MARKETPLACE).values())
     print(f"official marketplace: {n} candidate version(s) checked; matrix current")
+    return 0
+
+
+# ---------------------------------------------------------------- registry
+
+def check_eligible(pid, policy):
+    """An official plugin the signed index may serve: released from
+    official/, not held, not BUNDLED_ONLY_IDS, no privileged kind in its
+    policy. Returns its policy entry."""
+    if pid in BUNDLED_ONLY_IDS:
+        raise Refused(f"{pid} declares plugin API 1.9 privileged kinds: it is bundled in DeckPilot only and "
+                      "never a Marketplace entry")
+    entry = check_id(pid, policy, test=False)
+    privileged_kinds = sorted(set(entry.get("permissions", [])) & RULES.PRIVILEGED_KINDS)
+    if privileged_kinds:
+        raise Refused(f"{pid}: official/plugins.json allows the privileged kind(s) {', '.join(privileged_kinds)}; "
+                      "a privileged plugin is bundled in DeckPilot only, never a Marketplace entry")
+    return entry
+
+
+def narrow_host(text):
+    """engines.deckpilot of a registry record: the manifest's range with
+    OFFICIAL_REGISTRY_MIN_HOST as its lower bound (`>=L` or `>=L <U`)."""
+    floor = OFFICIAL_REGISTRY_MIN_HOST
+    parts = (text or "").split(" ")
+    m = re.fullmatch(r">=(\S+)", parts[0])
+    if not m or semver(m.group(1)) is None or len(parts) > 2 or \
+            (len(parts) == 2 and not re.fullmatch(r"<\S+", parts[1])):
+        raise Refused(f"engines.deckpilot {text!r} is not `>=L` or `>=L <U`; its host floor cannot be set")
+    if semver(m.group(1)) >= semver(floor):
+        return text
+    if not in_range(text, floor):
+        raise Refused(f"engines.deckpilot {text!r} does not accept DeckPilot {floor}, the first host that "
+                      "installs an official plugin from a registry")
+    return " ".join([f">={floor}", *parts[1:]])
+
+
+def registry_record(candidate_text):
+    """The registry record of a candidate record (its text): byte for byte,
+    except engines.deckpilot (narrow_host)."""
+    try:
+        record = json.loads(candidate_text)
+    except ValueError as e:
+        raise Refused(f"the candidate record is not JSON: {e}") from None
+    if dump(record) != candidate_text:
+        raise Refused("the candidate record is not in add-version's format")
+    engines = record.get("engines")
+    if not isinstance(engines, dict):
+        raise Refused("the candidate record has no engines")
+    engines["deckpilot"] = narrow_host(engines.get("deckpilot"))
+    return dump(record)
+
+
+def candidate_record(marketplace, pid, version):
+    path = Path(marketplace) / pid / "versions" / f"{version}.json"
+    if not path.is_file() or not (path.parent / f"{version}.release.json").is_file():
+        raise Refused(f"{pid} {version} has no committed candidate entry (official/marketplace/{pid}/versions/"
+                      f"{version}.json and .release.json)")
+    return path.read_text(encoding="utf-8")
+
+
+def registry_versions(registry, pid):
+    vdir = Path(registry) / "plugins" / pid / "versions"
+    return sorted((p.stem for p in vdir.glob("*.json")), key=lambda v: semver(v) or (-1,)) if vdir.is_dir() else []
+
+
+def registry_problems(official, marketplace, registry):
+    """Every registry/plugins/<id> of a bundled id against its candidates."""
+    problems = []
+    policy = official_policy(official)
+    base = Path(registry) / "plugins"
+    for pdir in sorted(p for p in base.iterdir() if p.is_dir()) if base.is_dir() else []:
+        pid = pdir.name
+        if pid not in BUNDLED_PLUGIN_IDS:
+            continue  # community and first-party/ plugins: validate.sh rebuilds them
+        where = f"registry/plugins/{pid}"
+        try:
+            check_eligible(pid, policy)
+            listing_path = Path(marketplace) / pid / "plugin.json"
+            if not listing_path.is_file() or not (pdir / "plugin.json").is_file() or \
+                    (pdir / "plugin.json").read_bytes() != listing_path.read_bytes():
+                raise Refused("plugin.json is not the candidate's listing (official/marketplace/"
+                              f"{pid}/plugin.json)")
+            versions = registry_versions(registry, pid)
+            if not versions:
+                raise Refused("no version is recorded")
+            for version in versions:
+                want = registry_record(candidate_record(marketplace, pid, version))
+                have = (pdir / "versions" / f"{version}.json").read_text(encoding="utf-8")
+                if have != want:
+                    raise Refused(f"versions/{version}.json is not the registry record of its candidate "
+                                  "(tools/official-entry.py registry-record)")
+        except (Refused, OSError) as e:
+            problems.append(f"{where}: {e}")
+    return problems
+
+
+def cmd_promote(args):
+    policy = official_policy(ROOT / "official")
+    registry = Path(REGISTRY)
+    for pid in args.id:
+        check_eligible(pid, policy)
+        candidates = candidate_versions(MARKETPLACE).get(pid) or []
+        if not candidates:
+            raise Refused(f"{pid} has no candidate entry; run fetch and generate first")
+        recorded = registry_versions(registry, pid)
+        unknown = sorted(set(recorded) - set(candidates), key=semver)
+        if unknown:
+            raise Refused(f"registry/plugins/{pid} records {', '.join(unknown)} without a candidate entry")
+        target = registry / "plugins" / pid
+        writes = []
+        for version in candidates:
+            record = registry_record(candidate_record(MARKETPLACE, pid, version))
+            path = target / "versions" / f"{version}.json"
+            if path.is_file():
+                if path.read_text(encoding="utf-8") != record:
+                    raise Refused(f"registry/plugins/{pid}/versions/{version}.json differs from its candidate's "
+                                  "record; recorded versions are never overwritten")
+                print(f"{pid} {version}: unchanged")
+                continue
+            if recorded and semver(version) <= semver(recorded[-1]):
+                raise Refused(f"{pid} {version} is not above the recorded {recorded[-1]}; versions are append-only")
+            writes.append((path, record, version))
+        listing = (MARKETPLACE / pid / "plugin.json").read_bytes()
+        (target / "versions").mkdir(parents=True, exist_ok=True)
+        (target / "plugin.json").write_bytes(listing)
+        for path, record, version in writes:
+            path.write_text(record, encoding="utf-8")
+            print(f"{pid} {version}: promoted to registry/plugins/{pid} "
+                  f"(engines.deckpilot {json.loads(record)['engines']['deckpilot']})")
+    problems = registry_problems(ROOT / "official", MARKETPLACE, registry)
+    for p in problems:
+        print(f"error: {p}", file=sys.stderr)
+    return 1 if problems else 0
+
+
+def cmd_gate(args):
+    problems = registry_problems(ROOT / "official", MARKETPLACE, Path(args.registry or REGISTRY))
+    for p in problems:
+        print(f"error: {p}", file=sys.stderr)
+    if problems:
+        print("refused: the registry serves an official plugin other than as its verified candidate entry",
+              file=sys.stderr)
+        return 1
+    base = Path(args.registry or REGISTRY) / "plugins"
+    served = sorted(p.name for p in base.iterdir() if p.is_dir() and p.name in BUNDLED_PLUGIN_IDS) \
+        if base.is_dir() else []
+    print(f"official plugins in the registry: {', '.join(served) or 'none'}; each its verified candidate entry")
+    return 0
+
+
+def cmd_registry_record(args):
+    check_eligible(args.id, official_policy(ROOT / "official"))
+    sys.stdout.write(registry_record(candidate_record(MARKETPLACE, args.id, args.version)))
+    return 0
+
+
+def download(url, path, limit):
+    import urllib.request
+    if not url.startswith(f"{DOWNLOAD}/"):
+        raise Refused(f"{url} is not a release asset of {REPOSITORY}")
+    req = urllib.request.Request(url, headers={"User-Agent": "deckpilot-plugins-official-entry"})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            if not resp.geturl().startswith("https://"):
+                raise Refused(f"{url} redirected to {resp.geturl()}")
+            data = resp.read(limit + 1)
+    except OSError as e:
+        raise Refused(f"{url}: {e}") from None
+    if len(data) > limit:
+        raise Refused(f"{url} is larger than {limit} bytes")
+    Path(path).write_bytes(data)
+
+
+def cmd_package(args):
+    """The release asset of a promoted version, verified again."""
+    pid, version = args.id, args.version
+    policy = official_policy(ROOT / "official")
+    check_eligible(pid, policy)
+    record = json.loads(candidate_record(MARKETPLACE, pid, version))
+    release = load(MARKETPLACE / pid / "versions" / f"{version}.release.json")
+    check_signatures(release, pid, version)
+    tag = f"{pid}--v{version}"
+    if release.get("tag") != tag or record["package"]["url"] != f"{DOWNLOAD}/{tag}/{pid}-{version}.dpplugin":
+        raise Refused(f"{pid} {version}: the candidate is not of the release {tag}")
+    e = env()
+    host = {"version": e["DECKPILOT_VERSION"], "pluginApi": e["DECKPILOT_PLUGIN_API"], "commit": e["DECKPILOT_COMMIT"]}
+    head = subprocess.run(["git", "-C", str(DECKPILOT_DIR), "rev-parse", "HEAD"], capture_output=True, text=True)
+    if head.stdout.strip() != host["commit"]:
+        raise Refused(f"{DECKPILOT_DIR} is not DeckPilot at {host['commit']}; run tools/build-cli.sh")
+    with tempfile.TemporaryDirectory() as tmp:
+        scratch = Path(tmp)
+        package = scratch / f"{pid}-{version}.dpplugin"
+        download(record["package"]["url"], package, 5 * 1024 * 1024)
+        if (sha256(package), package.stat().st_size) != (record["package"]["sha256"], record["package"]["size"]):
+            raise Refused(f"{record['package']['url']} is not the package the candidate pins (sha256, size)")
+        signatures = []
+        for s in release["signatures"]:
+            path = scratch / s["name"]
+            download(f"{DOWNLOAD}/{tag}/{s['name']}", path, 4096)
+            if sha256(path) != s["sha256"]:
+                raise Refused(f"{s['name']} is not the signature the release record names")
+            if KEYID.key_id(path.read_bytes()) != s["keyId"]:
+                raise Refused(f"{s['name']} does not carry key id {s['keyId']}")
+            signatures.append(path)
+        work = scratch / "verify"
+        work.mkdir()
+        _, signers = verify(CLI, package, signatures, pid, version, host, PLATFORMS, None, DECKPILOT_DIR, work, False)
+        if signers != sorted(release["verification"]["signers"]):
+            raise Refused(f"signed by {signers}, the release record says {release['verification']['signers']}")
+        out = Path(args.out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(package, out)
+    print(f"{pid} {version}: release asset verified with the pinned publisher keys ({', '.join(signers)})")
     return 0
 
 
@@ -831,10 +1083,11 @@ def matrix(deckpilot):
             market = "no: privileged (bundled in DeckPilot only)"
         elif not latest:
             market = "no: no signed release"
-        elif not MARKETPLACE_SERVES_BUNDLED:
-            market = f"candidate {latest[0]}; not served yet (DeckPilot takes it only as a publisher-verified release)"
+        elif not MARKETPLACE_SERVES_BUNDLED or not registry_versions(REGISTRY, pid):
+            market = f"candidate {latest[0]}; not in registry/ yet (`promote`)"
         else:
-            market = f"yes, {latest[0]}"
+            served = registry_versions(REGISTRY, pid)[-1]
+            market = f"yes, {served} (DeckPilot >= {OFFICIAL_REGISTRY_MIN_HOST})"
         rows.append(f"| `{pid}` | {source} | {manifest.get('version', '?')} | {shipped.get(pid, '—')} | "
                     f"`{engines.get('deckpilot', '?')}` | `{engines.get('pluginApi', '?')}` | {fmt_permissions(manifest)} | "
                     f"{fmt_dependencies(manifest)} | {signature} | {market} |")
@@ -861,7 +1114,7 @@ def matrix(deckpilot):
         f"| SDK pin (`official/Cargo.toml` rev) | `{sdk_pin()}` |",
         f"| Publisher keys pinned in DeckPilot | {provisioned} |",
         f"| Privileged-kinds gate | {'open' if RULES.PRIVILEGED_GATE_OPEN else 'closed'} |",
-        f"| Registry serves bundled ids | {'yes' if MARKETPLACE_SERVES_BUNDLED else f'no (not copied into registry/; DeckPilot accepts them {accepted})'} |",
+        f"| Registry serves bundled ids | {f'the official plugins without a privileged kind, for DeckPilot >= {OFFICIAL_REGISTRY_MIN_HOST} (`engines.deckpilot` of the registry record), which accepts them {accepted}' if MARKETPLACE_SERVES_BUNDLED else f'no (not copied into registry/; DeckPilot accepts them {accepted})'} |",
         "",
         "| Plugin | Source | Version | Shipped in DeckPilot | `engines.deckpilot` | `engines.pluginApi` | Permissions | Dependencies | Signature | Marketplace |",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
@@ -918,9 +1171,22 @@ def main():
     m.add_argument("--check", action="store_true")
     m.add_argument("--out")
     m.add_argument("--deckpilot")
+    pr = sub.add_parser("promote")
+    pr.add_argument("--id", action="append", required=True)
+    ga = sub.add_parser("gate")
+    ga.add_argument("--registry")
+    rr = sub.add_parser("registry-record")
+    rr.add_argument("--id", required=True)
+    rr.add_argument("--version", required=True)
+    pk = sub.add_parser("package")
+    pk.add_argument("--id", required=True)
+    pk.add_argument("--version", required=True)
+    pk.add_argument("--out", required=True)
     args = ap.parse_args()
     try:
-        return {"fetch": cmd_fetch, "generate": cmd_generate, "check": cmd_check, "matrix": cmd_matrix}[args.command](args)
+        return {"fetch": cmd_fetch, "generate": cmd_generate, "check": cmd_check, "matrix": cmd_matrix,
+                "promote": cmd_promote, "gate": cmd_gate, "registry-record": cmd_registry_record,
+                "package": cmd_package}[args.command](args)
     except Refused as e:
         print(f"refused: {e}", file=sys.stderr)
         return 1

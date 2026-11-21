@@ -5,12 +5,18 @@ How a signed release of an official plugin (one DeckPilot bundles,
 to be true first, and how it is tested. Current state of every plugin:
 [official-compatibility-matrix.md](official-compatibility-matrix.md).
 
-> **Status: prepared, not live.** No official release exists (no publisher
-> key is pinned in DeckPilot), and DeckPilot's agent refuses every bundled id
-> from any registry (`is_bundled_id`, X12 in DeckPilot). Until DeckPilot
-> changes that in a reviewed release, an entry is only a **candidate** under
-> `official/marketplace/`: committed and checked, never copied into
-> `registry/` and never in the signed index.
+> **Status: live for DeckPilot 0.11.0 and later.** DeckPilot 0.11.0 pins
+> the two production publisher keys (threshold 2) and installs an official
+> plugin, a bundled one included, from a registry only as a release they
+> signed, verified before install (knittingcode/deckpilot#378, the narrowed
+> X12 rule). The official plugins without a privileged kind
+> (`deckpilot.github`, `deckpilot.gitlab`, `deckpilot.jira`,
+> `deckpilot.notifications`) are promoted from their candidate entries under
+> `official/marketplace/` into `registry/` and the signed index. The five
+> privileged ones (`deckpilot.workflows`, `deckpilot.git`,
+> `deckpilot.docker`, `deckpilot.projects`, `deckpilot.workspace`) are
+> bundled in DeckPilot only: `generate` and `promote` refuse them, and so do
+> the submission rules and the signing gate.
 
 ## What an official entry is
 
@@ -98,18 +104,55 @@ reason; there is no override. After a change of `tools/deckpilot.env` or
 when a plugin moves to `official/`, run `matrix` again (the check fails
 otherwise).
 
-**Promotion into the signed index is not possible yet** and needs, in this
-order: (1) a publisher key pinned in a DeckPilot release: the agent
-(knittingcode/deckpilot#378) takes a registry copy of an official plugin,
-a bundled one included, only as a release signed by the publisher keys
-compiled into it and verified before install, and refuses it before any
-download while no key is pinned; (2) `MARKETPLACE_SERVES_BUNDLED` and a promotion step
-here, plus `check-submission.py` and `check-first-party.py` allowing those
-ids and `publish.yml` publishing an index for an official tag without
-rebuilding or re-uploading the asset (its `build` job rebuilds from a
-`plugins/<id>/build.json` recipe, which official plugins do not have); (3)
-the production registry key set authorizing `deckpilot`. None of these is
-done here.
+### Promotion into the signed index
+
+What it rests on, all in place since DeckPilot 0.11.0: (1) the publisher
+keys pinned in a DeckPilot release, whose agent takes an official plugin
+only as a release signed by them; (2) the production registry key set
+(`keys/1.json`, root-signed in the 2026-11-17 ceremony with
+`--first-party`) authorizing `deckpilot` in `first_party.namespaces`, the
+verified `deckpilot` publisher record and the registry roots embedded in
+DeckPilot (`keys/roots.json` = DeckPilot's
+`vars.DECKPILOT_REGISTRY_ROOT_PUBKEYS`); (3) the steps here:
+
+```sh
+tools/official-entry.py promote --id deckpilot.<name>   # into registry/plugins/<id>/
+tools/official-entry.py matrix && tools/official-entry.py check
+git add registry/plugins/deckpilot.<name> official/marketplace docs/official-compatibility-matrix.md
+```
+
+then, after the pull request is merged, a `registry--v<date>.<n>` tag on
+the merged commit (publish.yml signs and deploys a new index; the release
+asset already exists, so nothing is uploaded).
+
+* **The registry record** is the candidate's record byte for byte, except
+  `engines.deckpilot`: its lower bound becomes `OFFICIAL_REGISTRY_MIN_HOST`
+  (0.11.0), e.g. `>=0.6.0 <1.0.0` becomes `>=0.11.0 <1.0.0`. An older
+  DeckPilot would refuse the install after offering it (0.10.0 refuses every
+  bundled id from a registry; before that, no publisher signature is
+  checked), so it must see the version as incompatible and offer nothing:
+  Marketplace offers and update candidates take only versions whose
+  `engines` the host satisfies. The package and its signed manifest are
+  unchanged; the installer compares the record's permissions, dependencies
+  and digests with the package, not its engines, and still checks the
+  manifest's own engines.
+* **Refusals of `promote`**: a plugin in `BUNDLED_ONLY_IDS` or whose policy
+  allows a privileged kind, a held or non-official id, no candidate, a
+  registry version that differs from what it would write (recorded
+  versions are never overwritten), a version not above every recorded one.
+* **`gate`** (in `check`, `validate.sh` and `publish-site.sh` before any
+  key is written): every `registry/plugins/<bundled id>` is an eligible
+  plugin whose listing is the candidate's and each version exactly its
+  candidate's registry record.
+* **No rebuild**: an official plugin has no `plugins/<id>/build.json`
+  recipe (the submission rules refuse one). `validate.sh` (and so the
+  unprivileged `build` job of `publish.yml`) instead downloads the release
+  asset and both signatures (`official-entry.py package`), checks them
+  against the committed release record, runs `release verify` with the
+  pinned keys for every platform again, re-derives the record with
+  `add-version` (it must equal the candidate byte for byte) and hands the
+  verified package to the signing job, which checks sha256 and size against
+  the record as for every package.
 
 ## Tests
 

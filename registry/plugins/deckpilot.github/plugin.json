@@ -1,0 +1,12 @@
+{
+  "id": "deckpilot.github",
+  "name": "GitHub",
+  "summary": "Pull requests, review requests, checks and repositories from GitHub or GitHub Enterprise Server. Read-only.",
+  "description": "Pull requests, review requests, checks and repositories from GitHub or GitHub Enterprise Server. Read-only.",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/knittingcode/deckpilot-plugins/tree/main/official/github",
+  "source_repository": "knittingcode/deckpilot-plugins",
+  "categories": [
+    "developer-tools"
+  ]
+}

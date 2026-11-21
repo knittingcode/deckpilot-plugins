@@ -1,0 +1,58 @@
+{
+  "version": "0.1.2",
+  "published_at": "2026-11-21T22:11:54Z",
+  "engines": {
+    "deckpilot": ">=0.6.0 <1.0.0",
+    "pluginApi": "^1.0",
+    "sdk": "0.1.0"
+  },
+  "permissions": [
+    {
+      "hosts": [
+        "gitlab.com"
+      ],
+      "justification": "Reads your user, projects, merge requests and pipelines from GitLab.com or the GitLab you enter. Only reads; never changes anything on GitLab.",
+      "kind": "network",
+      "methods": [
+        "GET"
+      ],
+      "userOrigins": [
+        {
+          "pathPrefix": true,
+          "privateNetwork": true,
+          "setting": "apiUrl"
+        }
+      ]
+    },
+    {
+      "justification": "Sends your GitLab token to gitlab.com or the GitLab you entered and allowed, and nowhere else, to read what the token may see.",
+      "kind": "credentials",
+      "refs": [
+        "token"
+      ]
+    },
+    {
+      "hosts": [
+        "gitlab.com"
+      ],
+      "justification": "Opens a project, a merge request or another GitLab page in your browser when you run Open on GitLab.",
+      "kind": "openUrl",
+      "userOrigins": [
+        "apiUrl"
+      ]
+    }
+  ],
+  "manifest_sha256": "a6e1b906170e3ecc298bb17246dce3ddc6767ef033e83a57b7c2ff1ed6ce00d2",
+  "source": {
+    "repository": "knittingcode/deckpilot-plugins",
+    "tag": "deckpilot.gitlab--v0.1.2",
+    "commit": "f86ea92667120f4be25a7998ced9fb34e89c628d",
+    "path": "official/gitlab"
+  },
+  "package": {
+    "url": "https://github.com/knittingcode/deckpilot-plugins/releases/download/deckpilot.gitlab--v0.1.2/deckpilot.gitlab-0.1.2.dpplugin",
+    "sha256": "01697488f8f545fc1cbfdc9cab0a3bd39674ed71dc41003babc20a71a68affc1",
+    "size": 126291
+  },
+  "builder": "1.0.0"
+}

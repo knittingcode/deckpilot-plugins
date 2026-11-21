@@ -256,7 +256,74 @@ case("committed: id DeckPilot does not bundle",
      committed(lambda r, rel, mp: (mp / "deckpilot.pomodoro/versions").mkdir(parents=True)), "not a plugin DeckPilot bundles")
 
 E.SIGNED_MANIFEST = E.git_manifest
-case("candidates are not copied into registry/ (MARKETPLACE_SERVES_BUNDLED)", lambda: (not E.MARKETPLACE_SERVES_BUNDLED) or (_ for _ in ()).throw(E.Refused("open")))
+
+
+def expect(value, want):
+    if value != want:
+        raise E.Refused(f"got {value!r}, want {want!r}")
+
+
+# Promotion into registry/ (MARKETPLACE_SERVES_BUNDLED since DeckPilot 0.11.0).
+case("the registry serves official candidates", lambda: expect(E.MARKETPLACE_SERVES_BUNDLED, True))
+case("host floor is DeckPilot 0.11.0", lambda: expect(E.OFFICIAL_REGISTRY_MIN_HOST, "0.11.0"))
+case("host floor: lower bound raised", lambda: expect(E.narrow_host(">=0.6.0 <1.0.0"), ">=0.11.0 <1.0.0"))
+case("host floor: open range", lambda: expect(E.narrow_host(">=0.6.0"), ">=0.11.0"))
+case("host floor: already above", lambda: expect(E.narrow_host(">=0.12.0 <1.0.0"), ">=0.12.0 <1.0.0"))
+case("host floor: a range without 0.11.0", lambda: E.narrow_host(">=0.6.0 <0.11.0"), "does not accept DeckPilot 0.11.0")
+case("host floor: exact version", lambda: E.narrow_host("=0.11.0"), "cannot be set")
+case("host floor: upper bound only", lambda: E.narrow_host("<1.0.0"), "cannot be set")
+case("host floor: older hosts are not offered it",
+     lambda: expect([E.in_range(E.narrow_host(">=0.6.0 <1.0.0"), v) for v in ("0.6.0", "0.10.0", "0.10.9", "0.11.0", "0.99.0")],
+                    [False, False, False, True, True]))
+REC = {"version": "0.2.1", "engines": {"deckpilot": ">=0.6.0 <1.0.0", "pluginApi": "^1.0"}, "permissions": [{"kind": "network"}]}
+case("registry record: only engines.deckpilot changes",
+     lambda: expect(json.loads(E.registry_record(E.dump(REC))),
+                    {**REC, "engines": {"deckpilot": ">=0.11.0 <1.0.0", "pluginApi": "^1.0"}}))
+case("registry record: not add-version's format", lambda: E.registry_record(json.dumps(REC)), "format")
+for pid in sorted(E.BUNDLED_ONLY_IDS):
+    case(f"never promoted: {pid}", lambda pid=pid: E.check_eligible(pid, OFFICIAL), "bundled in DeckPilot only")
+case("bundled-only ids are exactly the privileged policies",
+     lambda: expect({p for p, v in OFFICIAL.items() if v["kind"] == "plugin" and set(v["permissions"]) & E.RULES.PRIVILEGED_KINDS},
+                    set(E.BUNDLED_ONLY_IDS)))
+for pid in ("deckpilot.github", "deckpilot.gitlab", "deckpilot.jira", "deckpilot.notifications"):
+    case(f"eligible: {pid}", lambda pid=pid: E.check_eligible(pid, OFFICIAL))
+case("eligible: a privileged kind in the policy",
+     lambda: E.check_eligible("deckpilot.github", {"deckpilot.github": {**GITHUB, "permissions": ["network", "tools"]}}),
+     "privileged kind")
+case("eligible: a community plugin", lambda: E.check_eligible("deckpilot.pomodoro", OFFICIAL), "not a plugin DeckPilot bundles")
+
+
+def registry_case(mutate, pid="deckpilot.github"):
+    def run():
+        with tempfile.TemporaryDirectory() as tmp:
+            mp, reg = Path(tmp) / "mp", Path(tmp) / "registry"
+            (mp / pid / "versions").mkdir(parents=True)
+            (mp / pid / "plugin.json").write_text(E.dump({"id": pid}))
+            (mp / pid / "versions/0.2.1.json").write_text(E.dump(REC))
+            (mp / pid / "versions/0.2.1.release.json").write_text("{}\n")
+            (reg / "plugins" / pid / "versions").mkdir(parents=True)
+            (reg / "plugins" / pid / "plugin.json").write_text(E.dump({"id": pid}))
+            (reg / "plugins" / pid / "versions/0.2.1.json").write_text(E.registry_record(E.dump(REC)))
+            (reg / "plugins/deckpilot.pomodoro/versions").mkdir(parents=True)  # community: not checked here
+            mutate(mp, reg)
+            problems = E.registry_problems(ROOT / "official", mp, reg)
+            if problems:
+                raise E.Refused("; ".join(problems))
+    return run
+
+
+case("gate: the promoted record", registry_case(lambda mp, reg: None))
+case("gate: the candidate's record unchanged (no host floor)",
+     registry_case(lambda mp, reg: (reg / "plugins/deckpilot.github/versions/0.2.1.json").write_text(E.dump(REC))),
+     "not the registry record")
+case("gate: a version without a candidate",
+     registry_case(lambda mp, reg: (reg / "plugins/deckpilot.github/versions/0.3.0.json").write_text(E.dump(REC))),
+     "no committed candidate")
+case("gate: another listing",
+     registry_case(lambda mp, reg: (reg / "plugins/deckpilot.github/plugin.json").write_text(E.dump({"id": "x"}))),
+     "listing")
+case("gate: a privileged plugin in the registry",
+     registry_case(lambda mp, reg: (reg / "plugins/deckpilot.workflows").mkdir()), "bundled in DeckPilot only")
 
 print(f"official-entry: {passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

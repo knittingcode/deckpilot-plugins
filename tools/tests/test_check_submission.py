@@ -39,6 +39,9 @@ def load_script(path=SCRIPT, name="check_submission"):
 # The plugins DeckPilot bundles at the pinned commit (v0.10.0).
 BUNDLED = ("deckpilot.docker", "deckpilot.git", "deckpilot.github", "deckpilot.gitlab", "deckpilot.jira",
            "deckpilot.notifications", "deckpilot.projects", "deckpilot.workflows", "deckpilot.workspace")
+# The official plugins the registry may serve, and the privileged ones it never serves.
+OFFICIAL_MARKETPLACE = ("deckpilot.github", "deckpilot.gitlab", "deckpilot.jira", "deckpilot.notifications")
+BUNDLED_ONLY = ("deckpilot.docker", "deckpilot.git", "deckpilot.projects", "deckpilot.workflows", "deckpilot.workspace")
 
 
 def deckpilot_list(source_rs, name):
@@ -199,22 +202,49 @@ class Maintainer(unittest.TestCase):
                 (self.repo.root / path).unlink()
 
     def test_bundled_ids_are_refused_even_for_the_owner(self):
+        # Never a recipe; in the registry, the privileged (bundled-only)
+        # plugins never, and an official one only with its candidate entry.
         self.add_first_party()
         for pid in BUNDLED:
             self.repo.write(f"registry/plugins/{pid}/plugin.json", {"id": pid})
+            self.repo.write(f"registry/plugins/{pid}/versions/0.9.0.json", {"version": "0.9.0"})
             self.repo.write(f"plugins/{pid}/build.json", {"id": pid})
         status, err = self.repo.check(author=OWNER, author_id=OWNER_ID)
         self.assertEqual(status, 1)
         for pid in BUNDLED:
-            self.assertIn(f"registry/plugins/{pid}/plugin.json: {pid} is bundled with DeckPilot", err)
-            self.assertIn(f"plugins/{pid}/build.json: {pid} is bundled with DeckPilot", err)
+            self.assertIn(f"plugins/{pid}/build.json: {pid} is bundled with DeckPilot; it has no build recipe", err)
+        for pid in BUNDLED_ONLY:
+            self.assertIn(f"registry/plugins/{pid}/plugin.json: {pid} is bundled with DeckPilot only", err)
+        for pid in OFFICIAL_MARKETPLACE:
+            self.assertIn(f"registry/plugins/{pid}/versions/0.9.0.json: no candidate entry", err)
+
+    def test_owner_may_promote_an_official_candidate(self):
+        self.add_first_party()
+        for pid in OFFICIAL_MARKETPLACE:
+            self.repo.write(f"official/marketplace/{pid}/versions/0.9.0.json", {"version": "0.9.0"})
+            self.repo.write(f"registry/plugins/{pid}/plugin.json", {"id": pid})
+            self.repo.write(f"registry/plugins/{pid}/versions/0.9.0.json", {"version": "0.9.0"})
+        status, err = self.repo.check(author=OWNER, author_id=OWNER_ID)
+        self.assertEqual(status, 0, err)
+
+    def test_privileged_official_plugins_are_never_promoted(self):
+        self.add_first_party()
+        for pid in BUNDLED_ONLY:
+            self.repo.write(f"official/marketplace/{pid}/versions/0.9.0.json", {"version": "0.9.0"})
+            self.repo.write(f"registry/plugins/{pid}/versions/0.9.0.json", {"version": "0.9.0"})
+        status, err = self.repo.check(author=OWNER, author_id=OWNER_ID)
+        self.assertEqual(status, 1)
+        for pid in BUNDLED_ONLY:
+            self.assertIn(f"{pid} is bundled with DeckPilot only", err)
 
     def test_bundled_ids_are_refused_for_contributors(self):
         self.repo.write(f"registry/publishers/{AUTHOR}.json", publisher("octo-tools"))
         self.repo.write("registry/plugins/deckpilot.jira/plugin.json", {"id": "deckpilot.jira"})
+        self.repo.write("registry/plugins/deckpilot.git/plugin.json", {"id": "deckpilot.git"})
         status, err = self.repo.check()
         self.assertEqual(status, 1)
-        self.assertIn("deckpilot.jira is bundled with DeckPilot", err)
+        self.assertIn("deckpilot.jira is an official plugin; only a maintainer promotes it", err)
+        self.assertIn("deckpilot.git is bundled with DeckPilot only", err)
 
     def test_other_reserved_publishers_are_refused_for_the_owner(self):
         self.repo.write(f"registry/publishers/{OWNER}.json", publisher("github", login=OWNER, github_id=OWNER_ID))
@@ -256,6 +286,13 @@ class MirrorsDeckPilot(unittest.TestCase):
         self.assertEqual(set(load_script().BUNDLED_PLUGIN_IDS), bundled)
         first_party = load_script(FIRST_PARTY_SCRIPT, "check_first_party")
         self.assertEqual(set(first_party.BUNDLED_PLUGIN_IDS), bundled)
+
+    def test_bundled_only_ids_agree_with_official_entry(self):
+        entry = load_script(SCRIPT.parent / "official-entry.py", "official_entry")
+        module = load_script()
+        self.assertEqual(module.BUNDLED_ONLY_IDS, entry.BUNDLED_ONLY_IDS)
+        self.assertEqual(set(module.BUNDLED_ONLY_IDS), set(BUNDLED_ONLY))
+        self.assertEqual(set(module.OFFICIAL_MARKETPLACE_IDS), set(OFFICIAL_MARKETPLACE))
 
     def test_bundled_ids_agree_between_scripts(self):
         first_party = load_script(FIRST_PARTY_SCRIPT, "check_first_party")

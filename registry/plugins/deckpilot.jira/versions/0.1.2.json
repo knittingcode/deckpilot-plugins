@@ -1,0 +1,54 @@
+{
+  "version": "0.1.2",
+  "published_at": "2026-11-21T22:11:06Z",
+  "engines": {
+    "deckpilot": ">=0.11.0 <1.0.0",
+    "pluginApi": "^1.0",
+    "sdk": "0.1.0"
+  },
+  "permissions": [
+    {
+      "hosts": [],
+      "justification": "Reads your user, issues and saved filters from the Jira site you enter. Only reads; never changes anything in Jira.",
+      "kind": "network",
+      "methods": [
+        "GET"
+      ],
+      "userOrigins": [
+        {
+          "pathPrefix": true,
+          "privateNetwork": true,
+          "setting": "siteUrl"
+        }
+      ]
+    },
+    {
+      "justification": "Sends your Jira credential to the Jira site you entered and allowed, and nowhere else, to read what your account may see.",
+      "kind": "credentials",
+      "refs": [
+        "credential"
+      ]
+    },
+    {
+      "hosts": [],
+      "justification": "Opens an issue or another page of your Jira site in your browser when you run Open in Jira.",
+      "kind": "openUrl",
+      "userOrigins": [
+        "siteUrl"
+      ]
+    }
+  ],
+  "manifest_sha256": "49d95432b337252a99cabe00916f41f7208b9aef2d722826064f9418dfa39b76",
+  "source": {
+    "repository": "knittingcode/deckpilot-plugins",
+    "tag": "deckpilot.jira--v0.1.2",
+    "commit": "f86ea92667120f4be25a7998ced9fb34e89c628d",
+    "path": "official/jira"
+  },
+  "package": {
+    "url": "https://github.com/knittingcode/deckpilot-plugins/releases/download/deckpilot.jira--v0.1.2/deckpilot.jira-0.1.2.dpplugin",
+    "sha256": "4fd3c9e9177c1438a64db0aaf59a1c0ffb2b1c4c1b4fd8c2ffcfa7f4b6d91cc6",
+    "size": 117639
+  },
+  "builder": "1.0.0"
+}

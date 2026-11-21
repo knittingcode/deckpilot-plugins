@@ -25,8 +25,15 @@ Reads both trees with git; never runs anything from the pull request.
   authorizes the namespace. Only a maintainer changes `deckpilot.*` records,
   and the publisher record of `deckpilot` must be FIRST_PARTY_OWNER's,
   verified. Every other reserved publisher stays refused for everyone (no
-  client installs its plugins), and so do the plugin ids the application
-  bundles (BUNDLED_PLUGIN_IDS: the agent never takes them from a registry).
+  client installs its plugins).
+* Bundled plugins (BUNDLED_PLUGIN_IDS): never a recipe (plugins/<id>/), for
+  anyone. Since DeckPilot 0.11.0 the agent takes an official plugin from a
+  registry only as a release signed by the publisher keys compiled into it,
+  so a maintainer may add registry/plugins/<id>/ for an official plugin
+  without a privileged kind (OFFICIAL_MARKETPLACE_IDS), each new version
+  only with its committed candidate entry official/marketplace/<id>/
+  versions/<v>.json (tools/official-entry.py promote; `gate` and
+  validate.sh check the content). BUNDLED_ONLY_IDS (privileged) never.
 * Versions are append-only: a recorded registry/plugins/<id>/versions/<v>.json
   is never changed or deleted (a maintainer may only add "yanked"), and a new
   version must be greater than every recorded one.
@@ -70,6 +77,13 @@ BUNDLED_PLUGIN_IDS = frozenset({
     "deckpilot.docker", "deckpilot.git", "deckpilot.github", "deckpilot.gitlab", "deckpilot.jira",
     "deckpilot.notifications", "deckpilot.projects", "deckpilot.workflows", "deckpilot.workspace",
 })
+# The official plugins the signed index may serve (no plugin API 1.9
+# privileged kind), and the ones bundled in DeckPilot only. Together exactly
+# BUNDLED_PLUGIN_IDS; tools/official-entry.py has the same BUNDLED_ONLY_IDS.
+OFFICIAL_MARKETPLACE_IDS = frozenset({
+    "deckpilot.github", "deckpilot.gitlab", "deckpilot.jira", "deckpilot.notifications",
+})
+BUNDLED_ONLY_IDS = BUNDLED_PLUGIN_IDS - OFFICIAL_MARKETPLACE_IDS
 PLUGIN_PATH = re.compile(r"^(?:registry/plugins|plugins)/([^/]+)/")
 SEMVER_CORE = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$")
 VERSION_PATH = re.compile(r"^registry/plugins/([^/]+)/versions/([^/]+)\.json$")
@@ -224,12 +238,26 @@ def main():
                 elif ns in RESERVED_PUBLISHERS:
                     problem(f"{path}: {reserved_why(ns)}")
 
-    # Bundled plugins: never from the registry, whoever proposes them.
+    # Bundled plugins: never a recipe; in the registry only an official
+    # plugin without a privileged kind, from a maintainer, as its verified
+    # candidate entry.
     for status, path in changes:
         m = PLUGIN_PATH.match(path)
-        if status != "D" and m and m.group(1) in BUNDLED_PLUGIN_IDS:
-            problem(f"{path}: {m.group(1)} is bundled with DeckPilot; the agent never installs it "
-                    "from a registry")
+        if status == "D" or not m or m.group(1) not in BUNDLED_PLUGIN_IDS:
+            continue
+        pid = m.group(1)
+        if path.startswith("plugins/"):
+            problem(f"{path}: {pid} is bundled with DeckPilot; it has no build recipe here (official/)")
+        elif pid in BUNDLED_ONLY_IDS:
+            problem(f"{path}: {pid} is bundled with DeckPilot only (privileged kinds); the registry never "
+                    "serves it")
+        elif not maintainer:
+            problem(f"{path}: {pid} is an official plugin; only a maintainer promotes it")
+        else:
+            vm = VERSION_PATH.match(path)
+            if vm and show(head, f"official/marketplace/{pid}/versions/{vm.group(2)}.json") is None:
+                problem(f"{path}: no candidate entry official/marketplace/{pid}/versions/{vm.group(2)}.json "
+                        "(tools/official-entry.py generate, then promote)")
 
     # Version history: append-only.
     summary("### Permission changes", "")

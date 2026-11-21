@@ -12,7 +12,14 @@
 #      namespace, as the production one must); the result must
 #      be byte-identical to registry/plugins/<id>/versions/<v>.json (sha256,
 #      size, manifest digest, permissions, engines, platforms, URL).
-#   3. plugins/<id>/manifest.json must equal the newest package's manifest.
+#      An official plugin (official/marketplace/<id>/, docs/official-
+#      marketplace.md) has no recipe: its release asset and both signatures
+#      are downloaded and verified again with the pinned publisher keys
+#      (tools/official-entry.py package); the re-derived record must be its
+#      committed candidate byte for byte, and the registry record that
+#      candidate with the host floor (official-entry.py registry-record).
+#   3. plugins/<id>/manifest.json must equal the newest package's manifest
+#      (not for official plugins: their manifest is official/<name>/).
 #   4. If keys/ holds a key set chain, `build-index` walks it with the
 #      client's own rules (proves the committed chain verifies).
 #   5. Signs the whole registry with THROWAWAY keys made here (a key set
@@ -86,13 +93,23 @@ validate_registry() {
     count=$((count + 1))
     note "$id $version"
     local pkg=$VAL/packages/$id-$version.dpplugin
-    local src=(--recipe "$REPO_ROOT/plugins/$id/build.json"
-      --repository "$(jq -r .source.repository "$record")"
-      --commit "$(jq -r .source.commit "$record")"
-      --tag "$(jq -r .source.tag "$record")"
-      --path "$(jq -r '.source.path // "."' "$record")"
-      --out "$pkg")
-    "$REPO_ROOT/tools/build-plugin.sh" "${src[@]}"
+    local official=
+    [ -d "$REPO_ROOT/official/marketplace/$id" ] && official=$REPO_ROOT/official/marketplace/$id/versions/$version.json
+    if [ -n "$official" ]; then
+      python3 -I "$REPO_ROOT/tools/official-entry.py" package --id "$id" --version "$version" --out "$pkg" </dev/null
+      python3 -I "$REPO_ROOT/tools/official-entry.py" registry-record --id "$id" --version "$version" \
+        </dev/null >"$VAL/official-record.json"
+      diff -u "$VAL/official-record.json" "$record" >&2 ||
+        die "$record is not the registry record of its candidate entry (diff above: - expected, + recorded)"
+    else
+      local src=(--recipe "$REPO_ROOT/plugins/$id/build.json"
+        --repository "$(jq -r .source.repository "$record")"
+        --commit "$(jq -r .source.commit "$record")"
+        --tag "$(jq -r .source.tag "$record")"
+        --path "$(jq -r '.source.path // "."' "$record")"
+        --out "$pkg")
+      "$REPO_ROOT/tools/build-plugin.sh" "${src[@]}"
+    fi
 
     # Re-derive the record from the built package.
     local args=(--dir "$derive" --package "$pkg"
@@ -112,7 +129,12 @@ validate_registry() {
     case $id in deckpilot.*) args+=(--first-party) ;; esac
     "$CLI" add-version "${args[@]}"
     local derived=$derive/registry/plugins/$id/versions/$version.json
-    if ! diff -u <(jq -S 'del(.yanked)' "$derived") <(jq -S 'del(.yanked)' "$record") >&2; then
+    if [ -n "$official" ]; then
+      cmp -s "$derived" "$official" || {
+        diff -u "$derived" "$official" >&2
+        die "$official is not the record add-version derives from the verified release asset"
+      }
+    elif ! diff -u <(jq -S 'del(.yanked)' "$derived") <(jq -S 'del(.yanked)' "$record") >&2; then
       summary "| \`$id\` | $version | built \`$(jq -r .package.sha256 "$derived")\` | $(jq -r .package.size "$derived") | **does not match the record** |" "" \
         "The record derived from the package this run built (the reference build) is below. If your local build differs, commit this one as \`registry/plugins/$id/versions/$version.json\`:" "" \
         '```json' "$(cat "$derived")" '```'
@@ -126,7 +148,7 @@ validate_registry() {
     rel=${url#https://github.com/knittingcode/deckpilot-plugins/releases/download/}
     mkdir -p "$site/releases/$(dirname "$rel")"
     cp "$pkg" "$site/releases/$rel"
-    printf '%s\n' "$pkg" >"$VAL/newest/$id"   # ascending: the last one wins
+    [ -n "$official" ] || printf '%s\n' "$pkg" >"$VAL/newest/$id"   # ascending: the last one wins
   done <<<"$list"
   [ "$count" -gt 0 ] || summary "| — | no versions recorded yet | | | |"
 
@@ -157,6 +179,9 @@ validate_registry() {
       die "keys/$newest.json does not authorize the namespace deckpilot (keyset rotate --first-party), but registry/ records deckpilot.* versions"
     fi
   fi
+
+  note "official plugins in the registry"
+  python3 -I "$REPO_ROOT/tools/official-entry.py" gate --registry "$REPO_ROOT/registry"
 
   note "signing the registry with throwaway keys"
   throwaway_sign "$site"
