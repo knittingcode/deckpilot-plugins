@@ -16,6 +16,39 @@ the same.
 > never registry entries: the agent never takes a bundled id from a
 > registry.
 
+## Moved plugins and the privileged-kinds gate
+
+A moved plugin is DeckPilot's `plugins/first-party/<name>` at the pinned
+commit with its version (a new patch: the bytes differ) and `repository`
+changed. Its `src/contract.rs` compares it with the pinned DeckPilot
+checkout while DeckPilot still has the source: the manifest (ids, action
+ids, parameter schemas, settings, permissions, dependencies) but those two
+fields, a higher version, and for Projects and Workspace also the files a
+bundle takes besides the module (`LICENSE`, `assets/`, `locales/`) byte for
+byte.
+
+| Plugin | Version (DeckPilot's) | Permission kinds | Gate status |
+| --- | --- | --- | --- |
+| `deckpilot.projects` | 0.1.1 (0.1.0) | `hostViews`, `profile`, `projectContext`, `resources` | held: `projectContext`, `resources`, `hostViews` are privileged |
+| `deckpilot.workspace` | 0.1.1 (0.1.0) | `openUrl` (`fromParams`), `profile`, `resources` | held: `resources` and `openUrl.fromParams` are privileged |
+
+Workspace's optional dependency on `deckpilot.projects` (`>=0.1.0 <1.0.0`)
+is DeckPilot's, unchanged, and 0.1.1 satisfies it.
+
+**These plugins fail `check` by design.** While `PRIVILEGED_GATE_OPEN` is
+`False` (tools/check-official.py) a plugin declaring a plugin API 1.9
+privileged kind cannot be in the workspace with `check` passing (a shared
+convention for such plugins is proposed in #64, awaiting the owner), and the
+pinned `deckpilot-registry package --first-party` independently refuses
+those kinds and the host-only contributions (`node.changesContext`, `resource` parameters,
+`host:project.*` variables, the `projects` view, `statusItems`,
+`dashboardCards`) for any package. Their source therefore waits here on a
+pull request until the security review of DeckPilot's
+`docs/marketplace/publisher-review-request.md` opens both gates, in a
+reviewed change here and in DeckPilot. `cargo test`, fmt, clippy, the
+manifest schema and two clean guest builds (byte-identical modules) pass
+today; packaging, `repro` of packages and `sign-test` need the gates.
+
 ## Layout
 
 ```text
