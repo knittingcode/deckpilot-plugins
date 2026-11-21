@@ -20,6 +20,8 @@ expect_fail() {
 for id in docker git github gitlab jira notifications projects workflows workspace; do
   expect_fail "deckpilot.$id--v9.9.9" "is a plugin DeckPilot bundles"
 done
+expect_fail "deckpilot.publisher-test--v1" "is a publisher key test tag"
+expect_fail "deckpilot.publisher-test--v42" "is a publisher key test tag"
 expect_fail "v1.0.0" "is not a publication tag"
 expect_fail "../x--v1" "is not a publication tag"
 echo

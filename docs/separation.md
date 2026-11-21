@@ -48,8 +48,9 @@ needs an application release.
   two publisher keys (`DECKPILOT_PUBLISHER_KEY_A` with
   `DECKPILOT_PUBLISHER_KEY_A_PASSWORD`, `DECKPILOT_PUBLISHER_KEY_B` with
   `DECKPILOT_PUBLISHER_KEY_B_PASSWORD`) and their environment
-  `official-release` only in `official-release.yml`, which reads no
-  registry secret: key A only in job `sign-a`, key B only in `sign-b`, no
+  `official-release` only in `official-release.yml` and its key test
+  `official-test-sign.yml` (the same rules; it releases nothing), which
+  read no registry secret: key A only in job `sign-a`, key B only in `sign-b`, no
   job with both, each such job in `official-release`, on a
   `deckpilot.*--v*` tag of this repository, compiling nothing, and a
   keyless `verify` (threshold 2 of the pinned keys) before `release`;
@@ -77,4 +78,7 @@ The two first-party publisher keys are DeckPilot's (their public keys are
 pinned, threshold 2, in
 `crates/deckpilot-plugin-registry/publisher/first-party.json` of
 `knittingcode/deckpilot`), but they sign here and only here: DeckPilot only
-verifies. They are not created yet; see [official/README.md](../official/README.md).
+verifies. They were created and pinned on 2026-11-21 (key ids
+`BDCDC80985EB60B5` and `8C3C4E42700FA702`); `official-test-sign.yml` tests
+the stored secrets against them without releasing anything. See
+[official/README.md](../official/README.md).

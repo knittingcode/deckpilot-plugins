@@ -5,20 +5,32 @@ Complements actionlint and zizmor (tools/lint-workflows.sh) with the rules
 of docs/architecture.md and docs/separation.md:
 
 * secrets: only the registry role keys, and the two first-party publisher
-  keys in official-release.yml alone; never DeckPilot's application signing
+  keys in the two publisher workflows alone (official-release.yml and the
+  key test official-test-sign.yml); never DeckPilot's application signing
   secrets (secret names compare case-insensitively, as GitHub does);
-* the publisher keys (official-release.yml): DECKPILOT_PUBLISHER_KEY_A and
-  its password only in job sign-a, _B only in sign-b, no job with both, no
-  other DECKPILOT_PUBLISHER_KEY* secret (the retired single key included)
-  anywhere. A job holding a key names
-  environment official-release, runs only on a deckpilot.*--v* tag of this
-  repository (its exact `if:`, after the gate), gives the key to one `run`
-  step's env, and compiles nothing; the workflow has no trigger but
-  push of deckpilot.*--v* tags and an input-less workflow_dispatch; a
-  `verify` job without secrets needs both signing jobs and `release` needs
-  `verify` (one key missing: no release);
+* the publisher keys (both publisher workflows, the same rules):
+  DECKPILOT_PUBLISHER_KEY_A and its password only in job sign-a, _B only in
+  sign-b, no job with both, no other DECKPILOT_PUBLISHER_KEY* secret (the
+  retired single key included) anywhere. A job holding a key names
+  environment official-release, runs only on that workflow's tag of this
+  repository (its exact `if:`), needs `gate`, which runs
+  tools/check-environment.sh official-release, gives the key to one `run`
+  step's env, which runs that workflow's one signing command
+  (official.sh release-sign, or test-sign in the key test), and compiles
+  nothing; a `verify` job without secrets needs both signing jobs and runs
+  the workflow's verify command (release-verify, or test-verify);
+  workflow_dispatch takes no inputs, and no job reads inputs or the event
+  payload;
+* official-release.yml: no trigger but push of deckpilot.*--v* tags and
+  workflow_dispatch; `release` needs `verify` (one key missing: no
+  release);
+* official-test-sign.yml (the key test, never a release): workflow_dispatch
+  only, its key jobs only on a deckpilot.publisher-test--v* tag of this
+  repository; no `release` job, no write permission, no release command
+  (release-sign, release sign, release-upload, gh release), and every
+  artifact kept for one day;
 * environments: only registry-release, registry-timestamp, github-pages,
-  and official-release in official-release.yml alone; never
+  and official-release in the publisher workflows alone; never
   production-release;
 * no pull_request_target or workflow_run triggers, no actions/cache;
 * every remote action pinned to a full commit SHA with a version comment;
@@ -46,6 +58,11 @@ ALLOWED_ENVIRONMENTS = {"registry-release", "registry-timestamp", "github-pages"
 # nothing else, each key to its own signing job, and that workflow reads no
 # registry secret.
 PUBLISHER_WORKFLOW = "official-release.yml"
+# The key test of the same two keys (DeckPilot `release test-sign`, a fixed
+# message in another trusted-comment domain): the same rules as
+# official-release.yml, never weaker, and no way to release anything.
+TEST_WORKFLOW = "official-test-sign.yml"
+PUBLISHER_WORKFLOWS = (PUBLISHER_WORKFLOW, TEST_WORKFLOW)
 KEY_JOBS = {
     "sign-a": {"DECKPILOT_PUBLISHER_KEY_A", "DECKPILOT_PUBLISHER_KEY_A_PASSWORD"},
     "sign-b": {"DECKPILOT_PUBLISHER_KEY_B", "DECKPILOT_PUBLISHER_KEY_B_PASSWORD"},
@@ -58,8 +75,23 @@ PUBLISHER_ENVIRONMENT = "official-release"
 # repository (never a fork's run), a tag, an official release tag.
 KEY_JOB_IF = ("github.repository == 'knittingcode/deckpilot-plugins' && github.ref_type == 'tag' && "
               "startsWith(github.ref, 'refs/tags/deckpilot.') && contains(github.ref, '--v')")
-# The triggers official-release.yml may have, and its tag filter.
-PUBLISHER_TRIGGERS = {"push", "workflow_dispatch"}
+# The key test's key jobs: this repository, a manual run on a key test tag
+# (`deckpilot.publisher-test--v<n>`, which official-release's deployment
+# policy `deckpilot.*--v*` admits; no release workflow takes it).
+TEST_KEY_JOB_IF = ("github.repository == 'knittingcode/deckpilot-plugins' && "
+                   "github.event_name == 'workflow_dispatch' && github.ref_type == 'tag' && "
+                   "startsWith(github.ref, 'refs/tags/deckpilot.publisher-test--v')")
+# Per publisher workflow: triggers, the key jobs' `if:`, the one official.sh
+# command a key job's signing step runs, the verify job's command.
+PUBLISHER_RULES = {
+    PUBLISHER_WORKFLOW: {"triggers": {"push", "workflow_dispatch"}, "push": True, "if": KEY_JOB_IF,
+                         "sign": "release-sign", "verify": "release-verify", "tag": "a deckpilot.*--v* tag"},
+    TEST_WORKFLOW: {"triggers": {"workflow_dispatch"}, "push": False, "if": TEST_KEY_JOB_IF,
+                    "sign": "test-sign", "verify": "test-verify",
+                    "tag": "a deckpilot.publisher-test--v* tag (workflow_dispatch)"},
+}
+# What the key test must never contain: it releases nothing.
+TEST_FORBIDDEN = re.compile(r"release-sign\b|\brelease[ \t]+sign\b|release-upload\b|\bgh[ \t]+release\b|:[ \t]*write\b")
 RELEASE_TAG = re.compile(r"deckpilot\.[a-z0-9-]+--v\*")
 # The one form a publisher key takes in its step: an env variable of its name.
 KEY_ENV_LINE = re.compile(r"          ([A-Z0-9_]+):\s*\$\{\{\s*secrets\.([A-Za-z0-9_]+)\s*\}\}\s*")
@@ -85,7 +117,15 @@ EXPRESSION = re.compile(r"\$\{\{(.*?)\}\}", re.S)
 IF_CONDITION = re.compile(r"^(\s*)(?:-\s+)?if:\s*(.*(?:\n\1\s+.*)*)", re.M)
 # The environments whose jobs hold signing keys: nothing compiles there.
 SIGNING_ENVIRONMENTS = {"registry-release", "registry-timestamp", "official-release"}
-COMPILES = re.compile(r"\b(build-cli\.sh|build-plugin\.sh|cargo|rustup|rustc)\b|official\.sh\s+(?!release-sign\b)")
+
+
+def compiles(allowed):
+    """What compiles (or runs plugin code) where a key is: everything but the
+    workflow's one signing command of official.sh."""
+    tail = rf"official\.sh\s+(?!{re.escape(allowed)}\b)" if allowed else r"official\.sh\b"
+    return re.compile(r"\b(build-cli\.sh|build-plugin\.sh|cargo|rustup|rustc)\b|" + tail)
+
+
 JOB = re.compile(r"^  ([A-Za-z0-9_-]+):\s*$", re.M)
 ENV_INLINE = re.compile(r"^\s*environment:\s*([A-Za-z0-9_.-]+)\s*$")
 ENV_BLOCK = re.compile(r"^(\s*)environment:\s*$")
@@ -141,38 +181,46 @@ def triggers_of(body):
 
 
 def check_publisher_workflow(path, body, jobs):
-    """official-release.yml: two signing jobs, one key each (module docstring)."""
+    """A publisher workflow: two signing jobs, one key each (module docstring)."""
     problems = []
+    rules = PUBLISHER_RULES[path.name]
     inline, block = triggers_of(body)
     if inline:
-        problems.append(f"{path}: `on: {inline}`: official-release.yml lists its triggers as a block "
-                        "(push of deckpilot.*--v* tags, workflow_dispatch)")
+        problems.append(f"{path}: `on: {inline}`: {path.name} lists its triggers as a block "
+                        f"({', '.join(sorted(rules['triggers']))})")
     events = set(re.findall(r"^  ([A-Za-z_]+):", block, re.M))
-    for event in sorted(events - PUBLISHER_TRIGGERS):
-        problems.append(f"{path}: trigger `{event}`: the publisher keys run only on a push of a "
-                        "deckpilot.*--v* tag (or a workflow_dispatch on one); never on pull requests, "
-                        "forks or other workflows")
-    if "push" not in events:
-        problems.append(f"{path}: no `push` of release tags")
-    push = re.search(r"^  push:[ \t]*\n((?:    .*\n|[ \t]*\n)*)", block, re.M)
-    filters = set(re.findall(r"^    ([A-Za-z_-]+):", push.group(1), re.M)) if push else set()
-    if filters != {"tags"}:
-        problems.append(f"{path}: push filters {sorted(filters)}: official-release.yml runs on `tags` only")
-    tags = re.findall(r"^      - *['\"]?([^'\"\s]+)['\"]?\s*$", push.group(1), re.M) if push else []
-    for tag in tags:
-        if not RELEASE_TAG.fullmatch(tag):
-            problems.append(f"{path}: tag filter `{tag}` is not a deckpilot.<name>--v* release tag")
-    if not tags:
-        problems.append(f"{path}: no release tag filter")
+    for event in sorted(events - rules["triggers"]):
+        problems.append(f"{path}: trigger `{event}`: the publisher keys run only on {rules['tag']}; "
+                        "never on pull requests, forks or other workflows")
+    if rules["push"]:
+        if "push" not in events:
+            problems.append(f"{path}: no `push` of release tags")
+        push = re.search(r"^  push:[ \t]*\n((?:    .*\n|[ \t]*\n)*)", block, re.M)
+        filters = set(re.findall(r"^    ([A-Za-z_-]+):", push.group(1), re.M)) if push else set()
+        if filters != {"tags"}:
+            problems.append(f"{path}: push filters {sorted(filters)}: official-release.yml runs on `tags` only")
+        tags = re.findall(r"^      - *['\"]?([^'\"\s]+)['\"]?\s*$", push.group(1), re.M) if push else []
+        for tag in tags:
+            if not RELEASE_TAG.fullmatch(tag):
+                problems.append(f"{path}: tag filter `{tag}` is not a deckpilot.<name>--v* release tag")
+        if not tags:
+            problems.append(f"{path}: no release tag filter")
+    elif "workflow_dispatch" not in events:
+        problems.append(f"{path}: no workflow_dispatch: the key test runs only when the owner starts it")
     dispatch = re.search(r"^  workflow_dispatch:[ \t]*(.*)\n((?:    .*\n|[ \t]*\n)*)", block, re.M)
     if dispatch and (dispatch.group(1).strip() not in ("", "{}") or dispatch.group(2).strip()):
         problems.append(f"{path}: workflow_dispatch takes no inputs (nothing from outside reaches the keys)")
     if re.search(r"\b(?:inputs|github\.event)\.", "\n".join(c for _, c in jobs.items())):
         problems.append(f"{path}: `inputs.*` or `github.event.*` are used: nothing chosen at run time "
-                        "reaches a job of official-release.yml")
+                        f"reaches a job of {path.name}")
     for name in KEY_JOBS:
         if name not in jobs:
             problems.append(f"{path}: no job {name}: each publisher key signs in its own job")
+    gate = jobs.get("gate")
+    if gate is None or not re.search(r"\btools/check-environment\.sh\s+official-release\b", gate) \
+            or re.search(r"^    environment:", gate, re.M):
+        problems.append(f"{path}: no job `gate` running tools/check-environment.sh official-release "
+                        "without an environment (official-release protected as required, before any key job)")
     verify = jobs.get("verify")
     if verify is None:
         problems.append(f"{path}: no job `verify` (both signatures, the pinned keys, threshold 2, no secret)")
@@ -181,9 +229,23 @@ def check_publisher_workflow(path, body, jobs):
             problems.append(f"{path}: job verify does not need both sign-a and sign-b")
         if re.search(r"^    environment:", verify, re.M):
             problems.append(f"{path}: job verify names an environment; it runs without any key")
+        if not re.search(rf"\btools/official\.sh\s+{rules['verify']}\b", verify):
+            problems.append(f"{path}: job verify does not run tools/official.sh {rules['verify']} "
+                            "(both signatures against the keys pinned in DeckPilot)")
     release = jobs.get("release")
-    if release is None or "verify" not in needs_of(release):
-        problems.append(f"{path}: job release does not need verify: one signature must never be released")
+    if path.name == PUBLISHER_WORKFLOW:
+        if release is None or "verify" not in needs_of(release):
+            problems.append(f"{path}: job release does not need verify: one signature must never be released")
+    else:
+        if release is not None:
+            problems.append(f"{path}: a job `release`: the key test releases nothing")
+        hit = TEST_FORBIDDEN.search(body)
+        if hit:
+            problems.append(f"{path}: `{hit.group(0).strip()}`: the key test signs only the test message, "
+                            "writes nothing and releases nothing")
+        for m in re.finditer(r"uses:\s*actions/upload-artifact@\S+[^\n]*\n((?:        .*\n)*)", body + "\n"):
+            if not re.search(r"^          retention-days:\s*1\s*$", m.group(1), re.M):
+                problems.append(f"{path}: an artifact kept longer than one day (retention-days: 1)")
     for job, chunk in jobs.items():
         held = {(a or b).upper() for a, b in SECRET.findall(chunk)} & PUBLISHER_SECRETS
         env = re.search(r"^    environment:\s*([A-Za-z0-9_.-]+)\s*$", chunk, re.M) or \
@@ -203,9 +265,9 @@ def check_publisher_workflow(path, body, jobs):
         if not env or env.group(1) != PUBLISHER_ENVIRONMENT:
             problems.append(f"{where} holds a publisher key without naming environment {PUBLISHER_ENVIRONMENT} "
                             "(its tag policy and required reviewers)")
-        if job_if(chunk) != KEY_JOB_IF:
-            problems.append(f"{where} holds a publisher key without the job condition `if: {KEY_JOB_IF}` "
-                            "(this repository, a deckpilot.*--v* tag)")
+        if job_if(chunk) != rules["if"]:
+            problems.append(f"{where} holds a publisher key without the job condition `if: {rules['if']}` "
+                            f"(this repository, {rules['tag']})")
         if "gate" not in needs_of(chunk):
             problems.append(f"{where} holds a publisher key without needing `gate` (the environment policy check)")
         steps = [(start, text) for start, text in steps_of(chunk) if SECRET.search(text)]
@@ -219,13 +281,16 @@ def check_publisher_workflow(path, body, jobs):
         for _, text in steps:
             if re.search(r"^      -\s+uses:|^        uses:", text, re.M):
                 problems.append(f"{where}: a publisher key passed to an action; only a `run` step that signs may have it")
+            if not re.search(rf"^        run:\s*tools/official\.sh\s+{rules['sign']}\s", text, re.M):
+                problems.append(f"{where}: the step with the publisher key does not run "
+                                f"tools/official.sh {rules['sign']}, this workflow's one signing command")
             for line in (line for line in text.splitlines() if SECRET.search(line)):
                 m = KEY_ENV_LINE.fullmatch(line)
                 if not m or m.group(1) != m.group(2) or not re.search(r"^        env:\s*$", text, re.M):
                     problems.append(f"{where}: `{line.strip()}`: a publisher key is only the step's env "
                                     "variable of the same name (NAME: ${{ secrets.NAME }})")
         for run in re.findall(r"run:\s*(\|[^\n]*\n(?:\s{10,}.*\n?)*|.*)", chunk):
-            hit = COMPILES.search(run)
+            hit = compiles(rules["sign"]).search(run)
             if hit:
                 problems.append(f"{where} runs `{hit.group(0).strip()}`: nothing compiles where a publisher key is")
     return problems
@@ -244,7 +309,7 @@ def main():
                 problems.append(f"{path}: `{word}`: {why}")
         if not re.search(r"^permissions:\s*\{\}\s*$", text, re.M):
             problems.append(f"{path}: top-level `permissions: {{}}` is required")
-        publisher = path.name == PUBLISHER_WORKFLOW
+        publisher = path.name in PUBLISHER_WORKFLOWS
         # GitHub's secret names are case-insensitive: compare them upper-cased.
         names = [(a or b).upper() for a, b in SECRET.findall(body)]
         expressions = EXPRESSION.findall(body) + [m.group(2) for m in IF_CONDITION.finditer(body)]
@@ -262,7 +327,7 @@ def main():
                 re.search(r"^    environment:\s*\n\s+name:\s*([A-Za-z0-9_.-]+)", chunk, re.M)
             if env and env.group(1) in SIGNING_ENVIRONMENTS:
                 for run in re.findall(r"run:\s*(\|[^\n]*\n(?:\s{10,}.*\n?)*|.*)", chunk):
-                    hit = COMPILES.search(run)
+                    hit = compiles(PUBLISHER_RULES[path.name]["sign"] if publisher else None).search(run)
                     if hit:
                         problems.append(f"{path}: job {m.group(1)} (environment {env.group(1)}) runs "
                                         f"`{hit.group(0).strip()}`: nothing compiles where a signing key is; "
@@ -280,7 +345,7 @@ def main():
                 if name not in PUBLISHER_SECRETS:
                     problems.append(f"{path}: secret {name} is not a publisher key")
             elif name in PUBLISHER_SECRETS:
-                problems.append(f"{path}: the publisher key belongs to {PUBLISHER_WORKFLOW} only")
+                problems.append(f"{path}: the publisher key belongs to {PUBLISHER_WORKFLOW} and {TEST_WORKFLOW} only")
             elif name not in ALLOWED_SECRETS:
                 problems.append(f"{path}: secret {name} is not a registry role key")
         if re.search(r"^\s*secrets:\s*inherit\s*$", body, re.M):

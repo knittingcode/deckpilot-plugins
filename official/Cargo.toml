@@ -28,9 +28,9 @@ publish = false
 # Not published to crates.io: git dependencies on the pinned DeckPilot
 # commit (plugins/runtime/guest/plugin-sdk, plugins/runtime/crates/abi,
 # plugins/first-party/support).
-deckpilot-plugin-sdk = { git = "https://github.com/knittingcode/deckpilot", rev = "ae60e308ed00e2d30b8c3aa8f1a17492e2427792" }
-deckpilot-plugin-abi = { git = "https://github.com/knittingcode/deckpilot", rev = "ae60e308ed00e2d30b8c3aa8f1a17492e2427792" }
-deckpilot-first-party-support = { git = "https://github.com/knittingcode/deckpilot", rev = "ae60e308ed00e2d30b8c3aa8f1a17492e2427792" }
+deckpilot-plugin-sdk = { git = "https://github.com/knittingcode/deckpilot", rev = "ce81ab4766143ded12e6cde15628b053b511c5c3" }
+deckpilot-plugin-abi = { git = "https://github.com/knittingcode/deckpilot", rev = "ce81ab4766143ded12e6cde15628b053b511c5c3" }
+deckpilot-first-party-support = { git = "https://github.com/knittingcode/deckpilot", rev = "ce81ab4766143ded12e6cde15628b053b511c5c3" }
 # The versions of DeckPilot's plugins/runtime workspace.
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"

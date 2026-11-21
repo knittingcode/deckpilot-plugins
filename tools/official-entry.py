@@ -66,6 +66,7 @@ deckpilot#378, apps/agent/src/plugins/official.rs).
 """
 
 import argparse
+import base64
 import hashlib
 import importlib.util
 import json
@@ -737,6 +738,15 @@ def cmd_check(args):
 
 # ---------------------------------------------------------------- matrix
 
+def key_id(public_key_b64):
+    """The minisign key id (16 uppercase hex) of a base64-wrapped public key."""
+    try:
+        raw = base64.b64decode(base64.b64decode(public_key_b64).decode().splitlines()[1])
+    except (ValueError, IndexError, UnicodeDecodeError):
+        return "?"
+    return raw[2:10][::-1].hex().upper() if len(raw) == 42 else "?"
+
+
 def sdk_pin():
     cargo = (ROOT / "official/Cargo.toml").read_text(encoding="utf-8")
     for line in cargo.splitlines():
@@ -812,7 +822,11 @@ def matrix(deckpilot):
         rows.append(f"| `{pid}` | {source} | {manifest.get('version', '?')} | {shipped.get(pid, '—')} | "
                     f"`{engines.get('deckpilot', '?')}` | `{engines.get('pluginApi', '?')}` | {fmt_permissions(manifest)} | "
                     f"{fmt_dependencies(manifest)} | {signature} | {market} |")
-    provisioned = f"{len(keys.get('keys', []))} (threshold {keys.get('threshold')})" if keys.get("keys") else "none (not provisioned)"
+    ids = [key_id(k) for k in keys.get("keys", [])]
+    provisioned = (f"{len(ids)} (threshold {keys.get('threshold')}): {', '.join(f'`{i}`' for i in ids)}"
+                   if ids else "none (not provisioned)")
+    accepted = (f"only as releases signed by {keys.get('threshold')} distinct pinned publisher keys" if ids
+                else "only as publisher-verified releases, and none while no key is pinned")
     return "\n".join([
         "# Official plugins: compatibility matrix",
         "",
@@ -831,7 +845,7 @@ def matrix(deckpilot):
         f"| SDK pin (`official/Cargo.toml` rev) | `{sdk_pin()}` |",
         f"| Publisher keys pinned in DeckPilot | {provisioned} |",
         f"| Privileged-kinds gate | {'open' if RULES.PRIVILEGED_GATE_OPEN else 'closed'} |",
-        f"| Registry serves bundled ids | {'yes' if MARKETPLACE_SERVES_BUNDLED else 'no (not copied into registry/; DeckPilot accepts them only as publisher-verified releases, and none while no key is pinned)'} |",
+        f"| Registry serves bundled ids | {'yes' if MARKETPLACE_SERVES_BUNDLED else f'no (not copied into registry/; DeckPilot accepts them {accepted})'} |",
         "",
         "| Plugin | Source | Version | Shipped in DeckPilot | `engines.deckpilot` | `engines.pluginApi` | Permissions | Dependencies | Signature | Marketplace |",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",

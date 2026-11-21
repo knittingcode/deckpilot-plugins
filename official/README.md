@@ -124,9 +124,10 @@ the verifier that runs next to the key.
 No job that holds a signing key compiles anything: `publish.yml`'s and
 `_site.yml`'s registry signing jobs install the tools from a `cli` job the
 same way, and `tools/check-workflows.py` refuses `build-cli.sh`, `cargo`,
-`rustup`, `rustc`, `build-plugin.sh` and any `official.sh` step but
-`release-sign` in a job of `registry-release`, `registry-timestamp` or
-`official-release`, so no build script of a locked dependency can run in,
+`rustup`, `rustc`, `build-plugin.sh` and any `official.sh` step but the
+workflow's one signing command (`release-sign` in `official-release.yml`,
+`test-sign` in `official-test-sign.yml`, none elsewhere) in a job of
+`registry-release`, `registry-timestamp` or `official-release`, so no build script of a locked dependency can run in,
 or linger into, a step that gets a key.
 
 `tools/check-workflows.py` also holds `official-release.yml` to the
@@ -142,7 +143,25 @@ name), and compiles nothing; the workflow is triggered only by a push of
 schedule, inputs or event payloads); `verify` has no secret and needs both
 signing jobs, and `release` needs `verify`.
 
-`publish.yml` (the registry) excludes these tags.
+The key test `official-test-sign.yml` is held to the same rules (its key
+jobs' condition names its own tags,
+`github.repository == 'knittingcode/deckpilot-plugins' && github.event_name == 'workflow_dispatch' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/deckpilot.publisher-test--v')`),
+plus: `workflow_dispatch` only, no `release` job, no write permission, no
+release command (`release-sign`, `release sign`, `release-upload`,
+`gh release`), every artifact kept one day. Its `gate` and every key job
+need what `official-release.yml`'s do; see
+[Key test](#key-test-of-the-publisher-keys).
+
+`tools/check-publisher-pin.py` (Repository hygiene, a required check)
+fetches DeckPilot at `tools/deckpilot.env`'s commit (git only) and refuses
+a `first-party.json` there with fewer than two distinct keys or a
+threshold below 2, and any change that would make either `verify` job
+compare against another file: both fetch the pinned DeckPilot and run
+`release-verify` or `test-verify`, which read exactly that file and
+require every signer to be one of its keys, and nothing passes `--keys`.
+
+`publish.yml` (the registry) excludes these tags, and the key test's
+(`deckpilot.publisher-test--v*`; `tools/resolve-tag.sh` refuses them too).
 
 ## What the owner must do before the first release
 
@@ -168,7 +187,12 @@ Not done by anyone yet; creating or rotating these secrets is the owner's:
    `crates/deckpilot-plugin-registry/publisher/first-party.json` in a
    reviewed pull request, then move `tools/deckpilot.env` here to that
    commit (`verify` refuses a DeckPilot pinning fewer than two keys or a
-   lower threshold).
+   lower threshold). **Done 2026-11-21**: key A `BDCDC80985EB60B5`, key B
+   `8C3C4E42700FA702`, threshold 2 (DeckPilot
+   `docs/marketplace/publisher-signature.md`, "Provisioning"). Both keys
+   are currently held in one 1Password vault of one account; independent
+   custody needs a second person holding key B (pending).
+   Then run the [key test](#key-test-of-the-publisher-keys) once.
 5. Have the security review of DeckPilot's
    `docs/marketplace/publisher-review-request.md` done (it also decides
    whether the privileged-kinds gate may open for Wave C).
@@ -192,6 +216,69 @@ Decisions only the owner can make (nothing here changes live settings):
   the required checks of the *Protect main* ruleset only adds conditions
   (nothing is weakened), and makes `check-required-checks.sh` hold every
   release to them. Changing a ruleset is the owner's.
+
+## Key test of the publisher keys
+
+`official-test-sign.yml` proves that the secrets stored in
+`official-release` are the two keys DeckPilot pins and that their
+passwords unlock them, without signing anything that could ever be a
+release. It signs DeckPilot's fixed key test message of run `<n>`
+(`deckpilot-registry release test-sign --run <n>`: a text that is not a
+package, trusted comment `deckpilot-publisher-test v1 role:test run:<n>
+sha256:... size:...`, another domain than a release's
+`deckpilot-publisher v1 role:release ...`; the command takes no file to
+sign), with key A in `sign-a` and key B in `sign-b`, each exactly as
+`official-release.yml` signs (environment `official-release`, one key per
+job, the prebuilt CLI installed after its sha256 check, nothing compiled).
+`verify`, without any secret, checks that both key ids are in DeckPilot's
+`first-party.json` at the pin, that `release test-verify` with the keys
+compiled into the pinned build (threshold 2, never `--keys`) accepts both
+and refuses each alone, and that `release verify` **refuses** the two
+signatures as a release of every official plugin id and version
+(DeckPilot's `a_key_test_signature_is_never_a_release_signature` tests the
+same in the verifier). Only the two signatures (and the cli job's
+binaries) are uploaded, as artifacts kept one day; nothing is released,
+tagged or published, and no job has a write permission.
+
+The environment's deployment policy is unchanged: `official-release`
+deploys `deckpilot.*--v*` tags, which the key test's dedicated tag
+`deckpilot.publisher-test--v<n>` matches. `publish.yml`, `resolve-tag.sh`
+and `official-release.yml` never act on it.
+
+**Owner steps (each run):**
+
+1. Prerequisites, as for a release: the four secrets in `official-release`
+   (present), and the gate's reviewer rules met. With the current
+   variables (`OFFICIAL_RELEASE_REQUIRE_REVIEWERS=2`,
+   `OFFICIAL_RELEASE_REQUIRE_PREVENT_SELF_REVIEW=true`) the environment
+   must list at least two required reviewers, and the person who starts
+   the run cannot approve it: someone else on the list approves.
+2. Pick the next unused run number `<n>` (1 to 9999; `git ls-remote --tags
+   origin 'deckpilot.publisher-test--v*'`) and create the tag on the
+   current `main` (tags are admin-only):
+   ```sh
+   git fetch origin main
+   git tag deckpilot.publisher-test--v<n> origin/main
+   git push origin deckpilot.publisher-test--v<n>
+   ```
+   Pushing it starts nothing.
+3. Start the key test on that tag:
+   `gh workflow run official-test-sign.yml --ref deckpilot.publisher-test--v<n>`
+4. When `gate` passes, `sign-a` and `sign-b` wait for the
+   `official-release` deployment review: a second reviewer approves both.
+5. `verify` passes and its summary names both key ids, DeckPilot's
+   commit and the sha256 of `first-party.json`. A failure in `sign-a` or
+   `sign-b` means that secret or its password is wrong; a failure in
+   `verify` that a stored key is not a pinned key.
+6. Optional: delete the tag afterwards
+   (`git push origin :refs/tags/deckpilot.publisher-test--v<n>`); use a
+   new `<n>` for the next run.
+
+**What a pass proves:** each stored secret key decrypts with its stored
+password and is one of the two keys pinned in DeckPilot at
+`tools/deckpilot.env`'s commit, and the two are distinct (threshold 2).
+It proves nothing about custody (both keys are currently in one vault of
+one account) and releases nothing.
 
 Then the first plugin moves (Wave B): its source under `official/<name>`
 at a new patch version, listed in `plugins.json` with its permissions; a

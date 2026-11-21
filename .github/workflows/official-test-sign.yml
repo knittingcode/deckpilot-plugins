@@ -1,0 +1,269 @@
+# Key test of the two first-party publisher keys (official/README.md, "Key
+# test of the publisher keys").
+# Never a release: it signs DeckPilot's fixed key test message
+# (`deckpilot-registry release test-sign`, trusted comment
+# `deckpilot-publisher-test v1 role:test run:<n> ...`, another domain than a
+# release's), with each stored secret in its own job, and checks both
+# signatures against the keys DeckPilot pins (threshold 2). A pass proves
+# that the secrets in official-release are the pinned keys and that their
+# passwords unlock them.
+#
+# The owner authorizes each run twice: by creating the key test tag
+# deckpilot.publisher-test--v<n> on a commit of main (tags are admin-only by
+# ruleset; official-release deploys deckpilot.*--v* tags, which admits it),
+# and by approving the official-release deployment of sign-a and sign-b
+# (required reviewer). Start it, never on push:
+#   gh workflow run official-test-sign.yml --ref deckpilot.publisher-test--v<n>
+#
+# Jobs, in order:
+#   resolve   the run is on a key test tag at a commit on main; the run
+#             number n
+#   gate      UNPRIVILEGED: official-release is protected as required, and
+#             every required check of main passed for the tagged commit
+#   cli       UNPRIVILEGED: builds the pinned deckpilot-registry (DeckPilot
+#             code only) and hands it on as an artifact with its sha256
+#   sign-a,   environment official-release, ONE publisher key each (sign-a
+#   sign-b    only DECKPILOT_PUBLISHER_KEY_A, sign-b only _B), exactly as in
+#             official-release.yml: compile nothing (install the cli job's
+#             binaries, sha256 checked); one step signs the key test message
+#             of run n (official.sh test-sign; no file is given to sign) and
+#             the job uploads exactly one file,
+#             deckpilot-publisher-test-v<n>.txt.<KEYID>.minisig, kept one day
+#   verify    UNPRIVILEGED, no secret: both signature files, two distinct
+#             keys, both pinned in DeckPilot's first-party.json at the pin,
+#             release test-verify with the keys compiled into the pinned
+#             build (never --keys), threshold 2; each alone refused; and
+#             release verify refusing them as a release of every official
+#             plugin id and version
+# Nothing is released or published: no job has a write permission, and the
+# only artifacts are the cli job's binaries and the two signatures, each
+# kept for one day.
+#
+# publish.yml and resolve-tag.sh ignore the key test tags; official-release.yml
+# never runs on them (its tag filter, and its resolve job refuses them).
+name: Official key test
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+# bash -eo pipefail: a failing tool before `| tee` fails its step.
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: official-test-sign-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    name: Resolve the key test tag
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      run: ${{ steps.tag.outputs.run }}
+      commit: ${{ steps.tag.outputs.commit }}
+    steps:
+      - name: The run must be on a key test tag
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          [ "$REF_TYPE" = tag ] || { echo "::error::run official-test-sign.yml on a key test tag (gh workflow run official-test-sign.yml --ref deckpilot.publisher-test--v<n>)"; exit 1; }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - id: tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: tools/official.sh test-resolve "$TAG" | tee -a "$GITHUB_OUTPUT"
+
+  gate:
+    name: Key test gate
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      checks: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.resolve.outputs.commit }}
+          sparse-checkout: tools
+      - name: official-release deploys official release tags only, with a reviewer
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUIRE_REVIEWERS: ${{ vars.OFFICIAL_RELEASE_REQUIRE_REVIEWERS }}
+          REQUIRE_PREVENT_SELF_REVIEW: ${{ vars.OFFICIAL_RELEASE_REQUIRE_PREVENT_SELF_REVIEW }}
+        run: tools/check-environment.sh official-release
+      - name: Every required check of main passed for the tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT: ${{ needs.resolve.outputs.commit }}
+        run: tools/check-required-checks.sh "$COMMIT"
+
+  cli:
+    # The pinned tools, built here and nowhere near a key: the signing
+    # jobs install these binaries after checking their sha256 and compile
+    # nothing (tools/cli-artifact.sh).
+    name: Build the pinned deckpilot-registry
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      registry: ${{ steps.pack.outputs.registry }}
+      schema: ${{ steps.pack.outputs.schema }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.resolve.outputs.commit }}
+      - name: Build the pinned deckpilot-registry and schema-check (DeckPilot code only)
+        run: tools/build-cli.sh
+      - id: pack
+        name: The binaries and their sha256
+        run: tools/cli-artifact.sh pack "$RUNNER_TEMP/cli" | tee -a "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: deckpilot-cli
+          path: ${{ runner.temp }}/cli
+          retention-days: 1
+          if-no-files-found: error
+
+  # sign-a and sign-b are the same job with a different key: each holds
+  # exactly one of the two publisher keys, so no runner ever has both.
+  sign-a:
+    name: Key test with publisher key A
+    needs: [resolve, gate, cli]
+    if: github.repository == 'knittingcode/deckpilot-plugins' && github.event_name == 'workflow_dispatch' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/deckpilot.publisher-test--v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: official-release
+    permissions:
+      contents: read
+    outputs:
+      keyid: ${{ steps.sign.outputs.keyid }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.resolve.outputs.commit }}
+          sparse-checkout: tools
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: deckpilot-cli
+          path: ${{ runner.temp }}/cli
+      - name: Install the cli job's deckpilot-registry (sha256 checked; nothing compiles here)
+        env:
+          REGISTRY_SHA256: ${{ needs.cli.outputs.registry }}
+          SCHEMA_SHA256: ${{ needs.cli.outputs.schema }}
+        run: tools/cli-artifact.sh install "$RUNNER_TEMP/cli" "$REGISTRY_SHA256" "$SCHEMA_SHA256"
+      # The only step with publisher key A: it signs the key test message
+      # and does nothing else.
+      - id: sign
+        name: Sign the key test message with key A (release test-sign)
+        env:
+          DECKPILOT_PUBLISHER_KEY_A: ${{ secrets.DECKPILOT_PUBLISHER_KEY_A }}
+          DECKPILOT_PUBLISHER_KEY_A_PASSWORD: ${{ secrets.DECKPILOT_PUBLISHER_KEY_A_PASSWORD }}
+          RUN: ${{ needs.resolve.outputs.run }}
+        run: tools/official.sh test-sign A "$RUN" "$RUNNER_TEMP/signature" | tee -a "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: key-test-signature-a
+          path: ${{ runner.temp }}/signature
+          retention-days: 1
+          if-no-files-found: error
+
+  sign-b:
+    name: Key test with publisher key B
+    needs: [resolve, gate, cli]
+    if: github.repository == 'knittingcode/deckpilot-plugins' && github.event_name == 'workflow_dispatch' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/deckpilot.publisher-test--v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: official-release
+    permissions:
+      contents: read
+    outputs:
+      keyid: ${{ steps.sign.outputs.keyid }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.resolve.outputs.commit }}
+          sparse-checkout: tools
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: deckpilot-cli
+          path: ${{ runner.temp }}/cli
+      - name: Install the cli job's deckpilot-registry (sha256 checked; nothing compiles here)
+        env:
+          REGISTRY_SHA256: ${{ needs.cli.outputs.registry }}
+          SCHEMA_SHA256: ${{ needs.cli.outputs.schema }}
+        run: tools/cli-artifact.sh install "$RUNNER_TEMP/cli" "$REGISTRY_SHA256" "$SCHEMA_SHA256"
+      # The only step with publisher key B: it signs the key test message
+      # and does nothing else.
+      - id: sign
+        name: Sign the key test message with key B (release test-sign)
+        env:
+          DECKPILOT_PUBLISHER_KEY_B: ${{ secrets.DECKPILOT_PUBLISHER_KEY_B }}
+          DECKPILOT_PUBLISHER_KEY_B_PASSWORD: ${{ secrets.DECKPILOT_PUBLISHER_KEY_B_PASSWORD }}
+          RUN: ${{ needs.resolve.outputs.run }}
+        run: tools/official.sh test-sign B "$RUN" "$RUNNER_TEMP/signature" | tee -a "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: key-test-signature-b
+          path: ${{ runner.temp }}/signature
+          retention-days: 1
+          if-no-files-found: error
+
+  verify:
+    # No environment, no secret: both signatures against the keys pinned in
+    # the DeckPilot build, threshold 2, and never a release.
+    name: Verify both key test signatures with the pinned keys
+    needs: [resolve, cli, sign-a, sign-b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.resolve.outputs.commit }}
+          sparse-checkout: |
+            tools
+            official
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: deckpilot-cli
+          path: ${{ runner.temp }}/cli
+      - name: Install the cli job's deckpilot-registry (sha256 checked)
+        env:
+          REGISTRY_SHA256: ${{ needs.cli.outputs.registry }}
+          SCHEMA_SHA256: ${{ needs.cli.outputs.schema }}
+        run: tools/cli-artifact.sh install "$RUNNER_TEMP/cli" "$REGISTRY_SHA256" "$SCHEMA_SHA256"
+      - name: The pinned DeckPilot's publisher keys (git only)
+        run: tools/official.sh fetch-deckpilot
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: key-test-signature-a
+          path: ${{ runner.temp }}/key-test
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: key-test-signature-b
+          path: ${{ runner.temp }}/key-test
+      - name: Verify with the keys pinned in DeckPilot (threshold 2); release verify refuses them
+        env:
+          RUN: ${{ needs.resolve.outputs.run }}
+          KEYID_A: ${{ needs.sign-a.outputs.keyid }}
+          KEYID_B: ${{ needs.sign-b.outputs.keyid }}
+        run: tools/official.sh test-verify "$RUN" "$RUNNER_TEMP/key-test" "$KEYID_A" "$KEYID_B"
