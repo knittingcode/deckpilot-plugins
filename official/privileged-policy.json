@@ -2,10 +2,10 @@
   "$comment": "The reviewed privileged policy (docs/marketplace/publisher-signature.md, \"Privileged plugins\"): for each of DeckPilot's own plugins that uses plugin API 1.9's privileged kinds, the one version that may be released as a signed artifact and staged as a bundled plugin, its exact `permissions` and every privileged construct it declares (`path` and `what` as Manifest::privileged_usages names them, and the JSON `value` at that path for the constructs outside `permissions`). Compiled into deckpilot-plugin-registry (privileged_policy.rs) and copied byte for byte to knittingcode/deckpilot-plugins official/privileged-policy.json. It opens nothing on its own: the gate is the compiled constant PRIVILEGED_GATE_OPEN, and an open gate also needs `review` (the independent security review's sign-off, docs/marketplace/publisher-review-request.md) with outcome `approved`. Anything not listed here exactly is refused.",
   "privilegedPolicyVersion": 1,
   "review": {
-    "reviewer": "pending: the independent security reviewer (not the author)",
+    "reviewer": "Independent security-review agent (Claude Code, not the implementer), commissioned under the owner's authorization; owner approval recorded 2026-11-21",
     "date": "2026-11-21",
-    "outcome": "pending",
-    "record": "docs/marketplace/publisher-review-request.md#sign-off (final independent review: yes, with conditions, no high or medium findings; findings fixed in knittingcode/deckpilot#389 and knittingcode/deckpilot-plugins#74; outcome pending the owner's decision)"
+    "outcome": "approved",
+    "record": "docs/marketplace/reviews/2026-11-21-privileged-gate-review.md; docs/marketplace/publisher-review-request.md#sign-off"
   },
   "minThreshold": 2,
   "plugins": [

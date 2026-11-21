@@ -58,7 +58,8 @@ Before anything is written:
    pinned DeckPilot (`DECKPILOT_VERSION`, `DECKPILOT_PLUGIN_API`); the
    permission kinds of `plugins.json`; no plugin API 1.9 privileged kind
    (`tools`, `resources`, `projectContext`, `hostViews`,
-   `openUrl.fromParams`) while the gate is closed; process execution only
+   `openUrl.fromParams`), whatever the gate (privileged plugins are
+   bundled in DeckPilot only, never a Marketplace entry); process execution only
    git for `deckpilot.git`, docker for `deckpilot.docker`.
 6. **Dependencies**: a built-in module (matched against DeckPilot's
    version) or an official plugin, nothing else. A required one must be

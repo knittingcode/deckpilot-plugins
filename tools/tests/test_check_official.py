@@ -115,7 +115,7 @@ case("process execution", manifest(lambda m: m["permissions"].append({"kind": "t
 case("a privileged kind", manifest(lambda m: m["permissions"].append({"kind": "hostViews", "justification": "x"})), False,
      "gate is closed|does not admit it")
 case("a plugin API the pin does not provide", manifest(lambda m: m["engines"].update(pluginApi="^1.99")), False, "not satisfied")
-case("a DeckPilot range without the pin", manifest(lambda m: m["engines"].update(deckpilot=">=0.11.0 <1.0.0")), False, "does not accept")
+case("a DeckPilot range without the pin", manifest(lambda m: m["engines"].update(deckpilot=">=0.12.0 <1.0.0")), False, "does not accept")
 case("another publisher", manifest(lambda m: m["publisher"].update(id="acme")), False, "publisher.id")
 case("a fixture with a bundled id", manifest(lambda m: m.update(id="deckpilot.github")), False, r"plugins.json's|fixture")
 case("a released plugin that DeckPilot does not bundle",
@@ -133,9 +133,13 @@ if HELD:
     for x in HELD:
         case(f"--release refuses held {x['id']}", lambda r: None, False, "not a released official plugin",
              extra=["--release", x["id"]])
-        case(f"{x['id']} without held is refused (the review is pending)",
-             policy(lambda d, i=x["id"]: next(p for p in d["plugins"] if p["id"] == i).pop("held")), False,
-             "no approved security review")
+        case(f"{x['id']} without held passes: exactly the approved record",
+             policy(lambda d, i=x["id"]: next(p for p in d["plugins"] if p["id"] == i).pop("held")), True,
+             r"member\(s\) checked")
+        case(f"{x['id']} without held, its review pending, is refused",
+             lambda r, i=x["id"]: (policy(lambda d: next(p for p in d["plugins"] if p["id"] == i).pop("held"))(r),
+                                   edit_json(r / "privileged-policy.json", lambda d: d["review"].update(outcome="pending"))),
+             False, "no approved security review")
     case("held for nothing", lambda r: (held_entry(lambda e: e.update(permissions=[]))(r),
                                         manifest(lambda m: (m.update(permissions=[]), m.pop("contributes", None)), H)(r)),
          False, "nothing holds it")
@@ -225,8 +229,8 @@ if gate.stdout.strip() == "open" and gate.returncode == 0:
 else:
     failed += 1
     print(f"FAIL --gate: {gate.stdout!r} {gate.returncode}")
-case("the committed policy records the review as pending",
-     lambda r: None if json.loads((r / "privileged-policy.json").read_text())["review"]["outcome"] == "pending" else 1 / 0,
+case("the committed policy records the approved review",
+     lambda r: None if json.loads((r / "privileged-policy.json").read_text())["review"]["outcome"] == "approved" else 1 / 0,
      True, "member")
 case("an invalid policy: threshold 1", privileged_policy(lambda d: d.update(minThreshold=1)), False, "minThreshold")
 case("an invalid policy: another plugin", reviewed_plugin("deckpilot.workflows", lambda p: p.update(id="deckpilot.github")),

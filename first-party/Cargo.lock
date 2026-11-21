@@ -47,7 +47,7 @@ dependencies = [
 [[package]]
 name = "deckpilot-plugin-abi"
 version = "0.1.0"
-source = "git+https://github.com/knittingcode/deckpilot?rev=ce81ab4766143ded12e6cde15628b053b511c5c3#ce81ab4766143ded12e6cde15628b053b511c5c3"
+source = "git+https://github.com/knittingcode/deckpilot?rev=8dc27d5a52d0fd9407644fc9562840f458063373#8dc27d5a52d0fd9407644fc9562840f458063373"
 dependencies = [
  "base64",
  "serde",
@@ -57,7 +57,7 @@ dependencies = [
 [[package]]
 name = "deckpilot-plugin-guest"
 version = "0.1.0"
-source = "git+https://github.com/knittingcode/deckpilot?rev=ce81ab4766143ded12e6cde15628b053b511c5c3#ce81ab4766143ded12e6cde15628b053b511c5c3"
+source = "git+https://github.com/knittingcode/deckpilot?rev=8dc27d5a52d0fd9407644fc9562840f458063373#8dc27d5a52d0fd9407644fc9562840f458063373"
 dependencies = [
  "deckpilot-plugin-abi",
  "serde_json",
@@ -66,7 +66,7 @@ dependencies = [
 [[package]]
 name = "deckpilot-plugin-sdk"
 version = "0.1.0"
-source = "git+https://github.com/knittingcode/deckpilot?rev=ce81ab4766143ded12e6cde15628b053b511c5c3#ce81ab4766143ded12e6cde15628b053b511c5c3"
+source = "git+https://github.com/knittingcode/deckpilot?rev=8dc27d5a52d0fd9407644fc9562840f458063373#8dc27d5a52d0fd9407644fc9562840f458063373"
 dependencies = [
  "deckpilot-plugin-abi",
  "deckpilot-plugin-guest",
