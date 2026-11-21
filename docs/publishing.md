@@ -82,7 +82,9 @@ Runs on the pull request with no secrets and a read-only token:
   `login` equal to the pull request author's), no publisher id DeckPilot
   reserves for a contributor (`deckpilot` included), `deckpilot.*` records
   only from the owner (login and numeric id) with the owner's verified
-  `deckpilot` record, never a plugin the application bundles, append-only
+  `deckpilot` record, never a recipe for a plugin the application bundles
+  and in `registry/` only an official one without a privileged kind, as its
+  committed candidate entry ([official-marketplace.md](official-marketplace.md)), append-only
   versions, and
   the permission diff against the previous version plus a source compare
   link in the job summary.
@@ -92,7 +94,9 @@ Runs on the pull request with no secrets and a read-only token:
 - *Validate registry*: schema and layout checks of all inputs; every
   recorded version rebuilt from its source (the tag must resolve to the
   commit in the named repository); each record re-derived with `add-version`
-  and required to be byte-identical; `plugins/<id>/manifest.json` equal to
+  and required to be byte-identical (an official plugin: its release asset
+  downloaded and verified with the pinned publisher keys instead of a
+  rebuild, the record its candidate's with the host floor); `plugins/<id>/manifest.json` equal to
   the newest package's manifest; the committed key set chain walked; the
   whole registry signed with throwaway keys made in the job and accepted by
   `verify-site --require-packages --min-remaining 6d`.

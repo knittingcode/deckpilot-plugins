@@ -1,0 +1,51 @@
+{
+  "tag": "deckpilot.github--v0.2.1",
+  "release": "https://github.com/knittingcode/deckpilot-plugins/releases/tag/deckpilot.github--v0.2.1",
+  "commit": "f86ea92667120f4be25a7998ced9fb34e89c628d",
+  "publishedAt": "2026-11-21T22:11:15Z",
+  "package": {
+    "name": "deckpilot.github-0.2.1.dpplugin",
+    "sha256": "d9a4c2a177cab9419b6dd5fad1a4a81208e2a35edc41c93dba4d1d653bb379aa",
+    "size": 121276
+  },
+  "signatures": [
+    {
+      "name": "deckpilot.github-0.2.1.dpplugin.8C3C4E42700FA702.minisig",
+      "keyId": "8C3C4E42700FA702",
+      "sha256": "72c8a101293d9cd6ff1a4e8152b8dd326d1bbe5a9285ea8fbd65dcc469535a3e"
+    },
+    {
+      "name": "deckpilot.github-0.2.1.dpplugin.BDCDC80985EB60B5.minisig",
+      "keyId": "BDCDC80985EB60B5",
+      "sha256": "95569c6225bae50ee126a8b3367df0aed01baceafcde0e7b02ffe77ab278869a"
+    }
+  ],
+  "verification": {
+    "keys": "pinned",
+    "signers": [
+      "8f3f9b211a1f2bad",
+      "98a1f76b2dddce87"
+    ],
+    "signerKeyIds": [
+      "8C3C4E42700FA702",
+      "BDCDC80985EB60B5"
+    ],
+    "deckpilot": "0.11.0",
+    "pluginApi": "1.9",
+    "deckpilotCommit": "8dc27d5a52d0fd9407644fc9562840f458063373",
+    "platforms": [
+      "macos",
+      "windows",
+      "linux"
+    ]
+  },
+  "names": {
+    "en": "GitHub",
+    "pl": "GitHub"
+  },
+  "descriptions": {
+    "en": "Pull requests, review requests, checks and repositories from GitHub or GitHub Enterprise Server. Read-only.",
+    "pl": "Pull requests, review requests, checks and repositories from GitHub or GitHub Enterprise Server. Read-only."
+  },
+  "dependencies": []
+}

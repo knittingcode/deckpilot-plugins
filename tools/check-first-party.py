@@ -32,8 +32,10 @@ from pathlib import Path
 REPOSITORY = "https://github.com/knittingcode/deckpilot-plugins"
 PUBLISHER = "deckpilot"
 # DeckPilot's BUNDLED_PLUGIN_IDS (crates/deckpilot-plugin-bundled/src/lib.rs
-# at the pinned commit; tools/check-schemas.sh compares): the agent never
-# takes these from a registry, so they have no source here.
+# at the pinned commit; tools/check-schemas.sh compares): their source is
+# official/ (tools/check-official.py), never first-party/; the registry
+# serves the ones without a privileged kind only as verified official
+# releases (tools/official-entry.py promote).
 BUNDLED_PLUGIN_IDS = frozenset({
     "deckpilot.docker", "deckpilot.git", "deckpilot.github", "deckpilot.gitlab", "deckpilot.jira",
     "deckpilot.notifications", "deckpilot.projects", "deckpilot.workflows", "deckpilot.workspace",
@@ -136,7 +138,7 @@ def check_plugin(root, pdir, members):
     if pid != f"{PUBLISHER}.{name}":
         problem(f"{pdir}/manifest.json: id {pid!r} is not {PUBLISHER}.{name}")
     if pid in BUNDLED_PLUGIN_IDS:
-        problem(f"{pdir}: {pid} is bundled with the application; DeckPilot never installs it from a registry")
+        problem(f"{pdir}: {pid} is bundled with the application; its source is official/, not first-party/")
     if manifest.get("publisher", {}).get("id") != PUBLISHER:
         problem(f"{pdir}/manifest.json: publisher.id is not {PUBLISHER!r}")
     repository = manifest.get("repository", {})

@@ -4,7 +4,9 @@
 # The signing half of publish.yml (`index`) and refresh-timestamp.yml
 # (`timestamp`). It never builds or runs plugin code: packages come in as
 # files, and every one must match the sha256 and size pinned in the reviewed
-# registry/plugins/*/versions/*.json before anything is signed.
+# registry/plugins/*/versions/*.json before anything is signed. An official
+# plugin's package is its verified release asset (tools/validate.sh in the
+# build job: downloaded and checked with the pinned publisher keys).
 #
 #   1. Assemble a workspace: keys/roots.json and keys/<n>.json(.minisig)
 #      from this checkout, registry/ from this checkout, release assets from
@@ -91,6 +93,9 @@ fi
 
 if [ "$mode" = index ]; then
   "$REPO_ROOT/tools/check-first-party-only.sh" "$REPO_ROOT"
+  # Official plugins only as their verified candidate entries, never a
+  # privileged (bundled-only) one (docs/official-marketplace.md).
+  python3 -I "$REPO_ROOT/tools/official-entry.py" gate --registry "$ws/registry"
   note "release assets (must match the reviewed pins)"
   for record in "$ws"/registry/plugins/*/versions/*.json; do
     [ -f "$record" ] || continue

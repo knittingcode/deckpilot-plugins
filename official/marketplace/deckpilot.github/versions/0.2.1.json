@@ -1,0 +1,58 @@
+{
+  "version": "0.2.1",
+  "published_at": "2026-11-21T22:11:15Z",
+  "engines": {
+    "deckpilot": ">=0.6.0 <1.0.0",
+    "pluginApi": "^1.0",
+    "sdk": "0.1.0"
+  },
+  "permissions": [
+    {
+      "hosts": [
+        "api.github.com"
+      ],
+      "justification": "Reads your user, repositories, pull requests, review requests and checks from the GitHub API, or the GitHub Enterprise API you enter. Only reads; never changes anything on GitHub.",
+      "kind": "network",
+      "methods": [
+        "GET"
+      ],
+      "userOrigins": [
+        {
+          "pathPrefix": true,
+          "privateNetwork": true,
+          "setting": "apiUrl"
+        }
+      ]
+    },
+    {
+      "justification": "Sends your GitHub token to api.github.com or the GitHub Enterprise API you entered and allowed, and nowhere else, to read what the token may see.",
+      "kind": "credentials",
+      "refs": [
+        "token"
+      ]
+    },
+    {
+      "hosts": [
+        "github.com"
+      ],
+      "justification": "Opens a repository, a pull request or another GitHub page in your browser when you run Open on GitHub.",
+      "kind": "openUrl",
+      "userOrigins": [
+        "apiUrl"
+      ]
+    }
+  ],
+  "manifest_sha256": "03e2bbe27ffc159884f1f1369d35c262c171a0a19006bb1ca2286463b15041e4",
+  "source": {
+    "repository": "knittingcode/deckpilot-plugins",
+    "tag": "deckpilot.github--v0.2.1",
+    "commit": "f86ea92667120f4be25a7998ced9fb34e89c628d",
+    "path": "official/github"
+  },
+  "package": {
+    "url": "https://github.com/knittingcode/deckpilot-plugins/releases/download/deckpilot.github--v0.2.1/deckpilot.github-0.2.1.dpplugin",
+    "sha256": "d9a4c2a177cab9419b6dd5fad1a4a81208e2a35edc41c93dba4d1d653bb379aa",
+    "size": 121276
+  },
+  "builder": "1.0.0"
+}

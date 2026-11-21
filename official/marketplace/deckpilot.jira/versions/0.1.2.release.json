@@ -1,0 +1,51 @@
+{
+  "tag": "deckpilot.jira--v0.1.2",
+  "release": "https://github.com/knittingcode/deckpilot-plugins/releases/tag/deckpilot.jira--v0.1.2",
+  "commit": "f86ea92667120f4be25a7998ced9fb34e89c628d",
+  "publishedAt": "2026-11-21T22:11:06Z",
+  "package": {
+    "name": "deckpilot.jira-0.1.2.dpplugin",
+    "sha256": "4fd3c9e9177c1438a64db0aaf59a1c0ffb2b1c4c1b4fd8c2ffcfa7f4b6d91cc6",
+    "size": 117639
+  },
+  "signatures": [
+    {
+      "name": "deckpilot.jira-0.1.2.dpplugin.8C3C4E42700FA702.minisig",
+      "keyId": "8C3C4E42700FA702",
+      "sha256": "1898f7e1e767de3c682e5f620f2b0f81b7160a043444f1b4fc9cf21b14047a25"
+    },
+    {
+      "name": "deckpilot.jira-0.1.2.dpplugin.BDCDC80985EB60B5.minisig",
+      "keyId": "BDCDC80985EB60B5",
+      "sha256": "eff01e8a38a27415bb9272aaf11bce93de9cb4ce0e79bb44d413b7fd4e0ac7f0"
+    }
+  ],
+  "verification": {
+    "keys": "pinned",
+    "signers": [
+      "8f3f9b211a1f2bad",
+      "98a1f76b2dddce87"
+    ],
+    "signerKeyIds": [
+      "8C3C4E42700FA702",
+      "BDCDC80985EB60B5"
+    ],
+    "deckpilot": "0.11.0",
+    "pluginApi": "1.9",
+    "deckpilotCommit": "8dc27d5a52d0fd9407644fc9562840f458063373",
+    "platforms": [
+      "macos",
+      "windows",
+      "linux"
+    ]
+  },
+  "names": {
+    "en": "Jira",
+    "pl": "Jira"
+  },
+  "descriptions": {
+    "en": "Issues assigned to you, saved filters and single issues from Jira Cloud or Data Center. Read-only.",
+    "pl": "Issues assigned to you, saved filters and single issues from Jira Cloud or Data Center. Read-only."
+  },
+  "dependencies": []
+}
