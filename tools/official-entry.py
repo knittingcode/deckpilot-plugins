@@ -764,9 +764,10 @@ def fmt_permissions(manifest):
     kinds = []
     for p in manifest.get("permissions", []):
         kind = p.get("kind", "?")
+        privileged_kind = kind in RULES.PRIVILEGED_KINDS
         if kind == "tools":
             kind += "(" + ",".join(t.get("executable", "?") for t in p.get("tools", [])) + ")"
-        if kind in RULES.PRIVILEGED_KINDS:
+        if privileged_kind:
             kind += "*"
         kinds.append(f"`{kind}`")
     return ", ".join(kinds) or "none"

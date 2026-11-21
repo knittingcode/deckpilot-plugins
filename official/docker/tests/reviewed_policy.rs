@@ -1,0 +1,339 @@
+//! The reviewed process-execution policy of `deckpilot.docker`, frozen.
+//!
+//! `deckpilot.docker` is a privileged plugin: it asks the agent to run the
+//! user's own `docker` (`tools`, plugin API 1.9). The agent, not the plugin,
+//! enforces the execution model (DeckPilot's process permission review):
+//! the executable `docker` only, arguments as an array (never a shell
+//! string), the working directory only a bound project resource folder,
+//! time and output limits, consent on first use and the audit log. What
+//! the plugin controls is what its manifest declares, so this test freezes
+//! that declaration byte for byte as it was reviewed (DeckPilot's
+//! `plugins/first-party/docker/manifest.json` at the pinned commit), refuses
+//! any other executable or a shell anywhere in the manifest, refuses a
+//! process the plugin would start itself, and, where the pinned DeckPilot
+//! checkout exists (`tools/build-cli.sh`; always in CI), compares the whole
+//! plugin with DeckPilot's: only `version` and `repository` may differ.
+//!
+//! Changing anything here is a change of a reviewed security policy: it
+//! needs the security review, here and in DeckPilot, never a test update.
+
+use std::path::{Path, PathBuf};
+
+use serde_json::Value;
+
+const MANIFEST: &str = include_str!("../manifest.json");
+const EN: &[u8] = include_bytes!("../locales/en.json");
+const PL: &[u8] = include_bytes!("../locales/pl.json");
+const ICON: &[u8] = include_bytes!("../assets/icon-128.png");
+const SOURCES: &[(&str, &str)] = &[
+    ("cli.rs", include_str!("../src/cli.rs")),
+    ("lib.rs", include_str!("../src/lib.rs")),
+    ("state.rs", include_str!("../src/state.rs")),
+    ("tests.rs", include_str!("../src/tests.rs")),
+];
+
+/// The `permissions` of the manifest, byte for byte as reviewed.
+const REVIEWED_PERMISSIONS: &str = r#"  "permissions": [
+    {
+      "kind": "tools",
+      "tools": [
+        {
+          "executable": "docker",
+          "subcommands": [
+            {
+              "name": "context show"
+            },
+            {
+              "name": "version",
+              "options": ["--format"]
+            },
+            {
+              "name": "compose version",
+              "options": ["--short"]
+            },
+            {
+              "name": "ps",
+              "options": ["--no-trunc", "--format", "--all", "--filter"]
+            },
+            {
+              "name": "compose ps",
+              "options": ["--format", "--all"]
+            },
+            {
+              "name": "compose logs",
+              "options": ["--tail", "--since", "--no-color"]
+            },
+            {
+              "name": "logs",
+              "options": ["--tail", "--since"]
+            },
+            {
+              "name": "compose up",
+              "options": ["--detach"]
+            },
+            {
+              "name": "compose down",
+              "options": ["--remove-orphans"]
+            },
+            {
+              "name": "compose restart"
+            }
+          ],
+          "modify": true
+        }
+      ],
+      "justification": "t:permissions.tools"
+    },
+    {
+      "kind": "resources",
+      "justification": "t:permissions.resources"
+    },
+    {
+      "kind": "profile",
+      "read": ["project"],
+      "justification": "t:permissions.profile"
+    },
+    {
+      "kind": "device",
+      "state": true,
+      "justification": "t:permissions.device"
+    }
+  ],"#;
+
+/// Executables and interpreters that must never appear in the manifest.
+const FORBIDDEN: &[&str] = &[
+    "sh",
+    "bash",
+    "zsh",
+    "fish",
+    "dash",
+    "ksh",
+    "csh",
+    "tcsh",
+    "cmd",
+    "cmd.exe",
+    "powershell",
+    "powershell.exe",
+    "pwsh",
+    "env",
+    "sudo",
+    "su",
+    "osascript",
+    "python",
+    "python3",
+    "node",
+    "perl",
+    "ruby",
+    "git",
+    "/bin/sh",
+    "/bin/bash",
+    "/usr/bin/env",
+];
+
+fn manifest() -> Value {
+    serde_json::from_str(MANIFEST).expect("manifest.json is JSON")
+}
+
+#[test]
+fn the_permissions_are_byte_for_byte_the_reviewed_ones() {
+    let start = MANIFEST
+        .find("  \"permissions\": [\n")
+        .expect("manifest.json declares permissions");
+    let end = MANIFEST[start..]
+        .find("\n  ],\n")
+        .map(|i| start + i + "\n  ],".len())
+        .expect("the permissions end");
+    assert_eq!(
+        &MANIFEST[start..end],
+        REVIEWED_PERMISSIONS,
+        "the permissions of deckpilot.docker differ from the reviewed ones"
+    );
+    assert_eq!(
+        MANIFEST.matches("\"permissions\"").count(),
+        1,
+        "one permissions list"
+    );
+    let reviewed: Value = serde_json::from_str(&format!(
+        "{{{}}}",
+        REVIEWED_PERMISSIONS.strip_suffix(',').unwrap()
+    ))
+    .expect("reviewed JSON");
+    assert_eq!(manifest()["permissions"], reviewed["permissions"]);
+}
+
+#[test]
+fn only_docker_runs_and_never_a_shell() {
+    let manifest = manifest();
+    assert_eq!(manifest["id"], "deckpilot.docker");
+    let permissions = manifest["permissions"].as_array().unwrap();
+    let tools: Vec<&Value> = permissions
+        .iter()
+        .filter(|p| p["kind"] == "tools")
+        .collect();
+    assert_eq!(tools.len(), 1, "one tools permission");
+    let tools = tools[0]["tools"].as_array().unwrap();
+    assert_eq!(tools.len(), 1, "one executable");
+    assert_eq!(tools[0]["executable"], "docker");
+    // Every `executable` anywhere in the manifest, and every string, is
+    // checked: no shell, interpreter or other tool can hide elsewhere.
+    fn walk(value: &Value, executables: &mut Vec<String>, strings: &mut Vec<String>) {
+        match value {
+            Value::Object(map) => {
+                for (k, v) in map {
+                    if k == "executable" {
+                        executables.push(v.as_str().unwrap_or("?").to_owned());
+                    }
+                    assert!(
+                        !matches!(
+                            k.as_str(),
+                            "shell" | "command" | "commandLine" | "script" | "env"
+                        ),
+                        "the manifest has a `{k}` key"
+                    );
+                    walk(v, executables, strings);
+                }
+            }
+            Value::Array(items) => items.iter().for_each(|v| walk(v, executables, strings)),
+            Value::String(s) => strings.push(s.clone()),
+            _ => {}
+        }
+    }
+    let (mut executables, mut strings) = (Vec::new(), Vec::new());
+    let mut rest = manifest.clone();
+    // `repository.type` is the version control system of the source ("git").
+    assert_eq!(rest["repository"]["type"], "git");
+    rest.as_object_mut().unwrap().remove("repository");
+    walk(&rest, &mut executables, &mut strings);
+    assert_eq!(executables, ["docker"]);
+    for s in &strings {
+        assert!(!FORBIDDEN.contains(&s.as_str()), "the manifest names `{s}`");
+    }
+    for sub in tools[0]["subcommands"].as_array().unwrap() {
+        let name = sub["name"].as_str().unwrap();
+        assert!(
+            name.chars()
+                .all(|c| c.is_ascii_lowercase() || c == '-' || c == ' '),
+            "subcommand `{name}` is a name, not a command line"
+        );
+        for option in sub["options"].as_array().into_iter().flatten() {
+            let option = option.as_str().unwrap();
+            assert!(
+                option.starts_with('-')
+                    && option
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '=')),
+                "option `{option}` of `docker {name}`"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_plugin_starts_no_process_itself() {
+    for (name, text) in SOURCES {
+        for forbidden in [
+            "std::process",
+            "Command::new",
+            "Tool::Git",
+            "extern \"C\"",
+            "#[link",
+        ] {
+            assert!(
+                !text.contains(forbidden),
+                "src/{name} contains `{forbidden}`"
+            );
+        }
+        // Every tool run names the reviewed tool.
+        for (at, _) in text.match_indices("run_tool") {
+            let call = text[at..]
+                .split_once('(')
+                .map(|(_, rest)| rest.trim_start());
+            assert!(
+                call.is_some_and(|rest| rest.starts_with("Tool::Docker")),
+                "src/{name}: a run_tool call that is not Tool::Docker"
+            );
+        }
+    }
+}
+
+/// The pinned DeckPilot checkout of `tools/build-cli.sh`, if it exists.
+fn pinned_deckpilot() -> Option<PathBuf> {
+    let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let repo = crate_dir.join("../..");
+    let work = std::env::var_os("DECKPILOT_PLUGINS_WORK")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| repo.join(".work"));
+    let checkout = work.join("deckpilot");
+    let env = std::fs::read_to_string(repo.join("tools/deckpilot.env")).unwrap();
+    let commit = env
+        .lines()
+        .find_map(|l| l.strip_prefix("DECKPILOT_COMMIT="))
+        .expect("DECKPILOT_COMMIT")
+        .trim()
+        .to_owned();
+    let head = std::fs::read_to_string(checkout.join(".git/HEAD")).ok();
+    match head {
+        Some(head) => {
+            assert_eq!(
+                head.trim(),
+                commit,
+                "{} is not DeckPilot at {commit}",
+                checkout.display()
+            );
+            Some(checkout)
+        }
+        None if std::env::var_os("CI").is_some() => {
+            panic!(
+                "no pinned DeckPilot checkout at {} (tools/build-cli.sh)",
+                checkout.display()
+            )
+        }
+        None => {
+            eprintln!(
+                "no pinned DeckPilot checkout: not compared with DeckPilot's deckpilot.docker"
+            );
+            None
+        }
+    }
+}
+
+#[test]
+fn ids_actions_settings_and_permissions_are_deckpilots() {
+    let Some(checkout) = pinned_deckpilot() else {
+        return;
+    };
+    let theirs = checkout.join("plugins/first-party/docker");
+    let read = |rel: &str| std::fs::read(theirs.join(rel)).unwrap();
+    let mut ours = manifest();
+    let mut deckpilot: Value = serde_json::from_slice(&read("manifest.json")).unwrap();
+    assert_eq!(deckpilot["id"], "deckpilot.docker");
+    // A new patch version, from this repository: nothing else differs.
+    for m in [&mut ours, &mut deckpilot] {
+        let m = m.as_object_mut().unwrap();
+        m.remove("version");
+        m.remove("repository");
+    }
+    assert_eq!(
+        ours, deckpilot,
+        "manifest.json differs from DeckPilot's beyond version and repository"
+    );
+    let text = String::from_utf8(read("manifest.json")).unwrap();
+    assert!(
+        text.contains(REVIEWED_PERMISSIONS),
+        "the reviewed permissions are not DeckPilot's at the pinned commit"
+    );
+    assert_eq!(EN, read("locales/en.json").as_slice(), "locales/en.json");
+    assert_eq!(PL, read("locales/pl.json").as_slice(), "locales/pl.json");
+    assert_eq!(
+        ICON,
+        read("assets/icon-128.png").as_slice(),
+        "assets/icon-128.png"
+    );
+    for (name, text) in SOURCES {
+        assert_eq!(
+            text.as_bytes(),
+            read(&format!("src/{name}")).as_slice(),
+            "src/{name}"
+        );
+    }
+}

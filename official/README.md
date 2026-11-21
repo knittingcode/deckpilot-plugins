@@ -96,6 +96,8 @@ own build of the version it shipped.
 
 | Plugin | Held for |
 | --- | --- |
+| `deckpilot.docker` 0.1.1 | the `tools` permission (docker only), the `resources` permission, `resource` action parameters |
+| `deckpilot.git` 0.1.1 | the `tools` permission (git only), the `resources` permission, `resource` action parameters |
 | `deckpilot.workflows` 0.1.1 | the `hostViews` permission and the `workflows` host view |
 
 ## Releases

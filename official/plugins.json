@@ -3,6 +3,18 @@
   "officialVersion": 1,
   "plugins": [
     {
+      "path": "docker",
+      "id": "deckpilot.docker",
+      "permissions": ["device", "profile", "resources", "tools"],
+      "held": "the tools permission (process execution, the docker executable only), the resources permission and resource action parameters are plugin API 1.9 privileged kinds: no package, signature, release or Marketplace entry until the security review of DeckPilot docs/marketplace/publisher-review-request.md opens the gate"
+    },
+    {
+      "path": "git",
+      "id": "deckpilot.git",
+      "permissions": ["device", "profile", "resources", "tools"],
+      "held": "the tools permission (process execution, the git executable only), the resources permission and resource action parameters are plugin API 1.9 privileged kinds: no package, signature, release or Marketplace entry until the security review of DeckPilot docs/marketplace/publisher-review-request.md opens the gate"
+    },
+    {
       "path": "github",
       "id": "deckpilot.github",
       "permissions": ["credentials", "network", "openUrl"]
