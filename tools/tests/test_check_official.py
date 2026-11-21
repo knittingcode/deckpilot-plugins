@@ -40,6 +40,10 @@ def deckpilot_of(tmp):
     held plugin as DeckPilot has it (version 0.1.0, its own repository)."""
     dp = Path(tmp) / "deckpilot"
     shutil.copytree(ROOT / "official" / FIXTURE, dp / "plugins/first-party" / FIXTURE)
+    # The reviewed privileged policy, as the pinned DeckPilot carries it.
+    record = dp / "crates/deckpilot-plugin-registry/publisher/privileged-policy.json"
+    record.parent.mkdir(parents=True)
+    shutil.copy(ROOT / "official/privileged-policy.json", record)
     for e in HELD:
         shutil.copytree(ROOT / "official" / e["path"], dp / "plugins/first-party" / e["path"],
                         ignore=shutil.ignore_patterns("target"))
@@ -156,7 +160,7 @@ RELEASED = next(e["path"] for e in POLICY["plugins"] if e.get("held") is None)
 case("a privileged kind on a plugin that is not held", lambda r: (
      policy(lambda d: next(e for e in d["plugins"] if e["path"] == RELEASED)["permissions"].append("hostViews"))(r),
      manifest(lambda m: m["permissions"].append({"kind": "hostViews", "justification": "x"}), RELEASED)(r)),
-     False, "gate is closed")
+     False, "gate is closed|does not admit it")
 case("versions differ", replace(f"{FIXTURE}/Cargo.toml", 'version = "0.1.0"', 'version = "0.1.1"'), False, "differs from manifest.json")
 
 # The reviewed privileged policy (official/privileged-policy.json, a copy of
