@@ -3,10 +3,12 @@
 # ruleset), `<id>--v<version>` of a plugin DeckPilot bundles, and only once
 # the owner has set it up: the repository variable OFFICIAL_RELEASE_ENABLED
 # is `true`, the environment official-release exists (tag deckpilot.*--v*
-# only, a required reviewer, no administrator bypass) and holds the
-# publisher key the owner made (DECKPILOT_PUBLISHER_KEY and
-# DECKPILOT_PUBLISHER_KEY_PASSWORD), and DeckPilot pins its public key.
-# Until then every run stops in `resolve`. Retry on the same tag ref:
+# only, required reviewers, no administrator bypass) and holds the TWO
+# publisher keys the owner made (DECKPILOT_PUBLISHER_KEY_A with
+# DECKPILOT_PUBLISHER_KEY_A_PASSWORD, DECKPILOT_PUBLISHER_KEY_B with
+# DECKPILOT_PUBLISHER_KEY_B_PASSWORD), and DeckPilot pins both public keys
+# with threshold 2. Until then every run stops in `resolve`. Retry on the
+# same tag ref:
 #   gh workflow run official-release.yml --ref <tag>
 #
 # Jobs, in order:
@@ -18,17 +20,27 @@
 #   build-a,  UNPRIVILEGED (no environment, no secret, contents: read): two
 #   build-b   independent builds of the tagged commit, each on its own fresh
 #             runner with nothing run before it; module and package sha256
+#   compare   UNPRIVILEGED: both builds agree on module and package; hands
+#             on build-a's sha256 and size
 #   cli       UNPRIVILEGED: builds the pinned deckpilot-registry (DeckPilot
 #             code only) and hands it on as an artifact with its sha256
-#   sign      environment official-release, the publisher key: compiles
-#             nothing (installs the cli job's binaries, sha256 checked); both builds must agree on module and package; re-checks
-#             build-a's package against its sha256 and size; one step signs
-#             (release sign with the tag's id and version, nothing else),
-#             the next, without the key, verifies with the keys pinned in
-#             the DeckPilot build (never --keys), the rollback floor and the
-#             revocations, and audits the result
-#   release   contents: write: uploads package and signature to the GitHub
-#             Release of the tag (never creates a tag)
+#   sign-a,   environment official-release, ONE publisher key each (sign-a
+#   sign-b    only DECKPILOT_PUBLISHER_KEY_A, sign-b only _B): compile
+#             nothing (install the cli job's binaries, sha256 checked);
+#             re-check build-a's package against compare's sha256 and
+#             size; one step signs (release sign with the tag's id and
+#             version, nothing else) and the job uploads exactly one file,
+#             <id>-<version>.dpplugin.<KEYID>.minisig
+#   verify    UNPRIVILEGED, no secret: both signature files, two distinct
+#             keys, release verify with the keys pinned in the DeckPilot
+#             build (never --keys), threshold 2 of distinct pinned keys,
+#             the rollback floor and the revocations, every platform; each
+#             signature alone is refused; audited
+#   release   contents: write: uploads the package and both signatures to
+#             the GitHub Release of the tag, as a draft first (never
+#             creates a tag)
+# A missing key, a failed or skipped signing job, or one signature: no
+# release (verify needs both signing jobs; release needs verify).
 #
 # The registry (publish.yml) never serves these plugins; its tag filter
 # excludes them.
@@ -49,6 +61,11 @@ on:
   workflow_dispatch:
 
 permissions: {}
+
+# bash -eo pipefail: a failing tool before `| tee` fails its step.
+defaults:
+  run:
+    shell: bash
 
 concurrency:
   group: official-release-${{ github.ref }}
@@ -244,19 +261,22 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-  sign:
-    name: Sign the package
-    needs: [resolve, gate, checks, build-a, build-b, cli]
+  compare:
+    name: The independent builds agree
+    needs: [resolve, build-a, build-b]
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    environment: official-release
+    timeout-minutes: 10
     permissions:
       contents: read
+    outputs:
+      sha256: ${{ needs.build-a.outputs.sha256 }}
+      size: ${{ needs.build-a.outputs.size }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ needs.resolve.outputs.commit }}
+          sparse-checkout: tools
       - name: The two independent builds agree on module and package
         env:
           A_MODULE: ${{ needs.build-a.outputs.module }}
@@ -266,6 +286,26 @@ jobs:
           B_SHA256: ${{ needs.build-b.outputs.sha256 }}
           B_SIZE: ${{ needs.build-b.outputs.size }}
         run: tools/official.sh release-compare "$A_MODULE" "$A_SHA256" "$A_SIZE" "$B_MODULE" "$B_SHA256" "$B_SIZE"
+
+  # sign-a and sign-b are the same job with a different key: each holds
+  # exactly one of the two publisher keys, so no runner ever has both.
+  sign-a:
+    name: Sign with publisher key A
+    needs: [resolve, gate, checks, compare, cli]
+    if: github.repository == 'knittingcode/deckpilot-plugins' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/deckpilot.') && contains(github.ref, '--v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: official-release
+    permissions:
+      contents: read
+    outputs:
+      keyid: ${{ steps.sign.outputs.keyid }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.resolve.outputs.commit }}
+          sparse-checkout: tools
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: deckpilot-cli
@@ -275,29 +315,123 @@ jobs:
           REGISTRY_SHA256: ${{ needs.cli.outputs.registry }}
           SCHEMA_SHA256: ${{ needs.cli.outputs.schema }}
         run: tools/cli-artifact.sh install "$RUNNER_TEMP/cli" "$REGISTRY_SHA256" "$SCHEMA_SHA256"
-      - name: The pinned DeckPilot's released-pins.json and artifacts.json (git only)
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: official-package-a
+          path: ${{ runner.temp }}/official
+      # The only step with publisher key A: it signs and does nothing else.
+      - id: sign
+        name: Sign with key A (release sign with the tag's id and version)
+        env:
+          DECKPILOT_PUBLISHER_KEY_A: ${{ secrets.DECKPILOT_PUBLISHER_KEY_A }}
+          DECKPILOT_PUBLISHER_KEY_A_PASSWORD: ${{ secrets.DECKPILOT_PUBLISHER_KEY_A_PASSWORD }}
+          ID: ${{ needs.resolve.outputs.id }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          SHA256: ${{ needs.compare.outputs.sha256 }}
+          SIZE: ${{ needs.compare.outputs.size }}
+        run: tools/official.sh release-sign A "$ID" "$RUNNER_TEMP/official" "$VERSION" "$SHA256" "$SIZE" "$RUNNER_TEMP/signature" | tee -a "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: official-signature-a
+          path: ${{ runner.temp }}/signature
+          retention-days: 7
+          if-no-files-found: error
+
+  sign-b:
+    name: Sign with publisher key B
+    needs: [resolve, gate, checks, compare, cli]
+    if: github.repository == 'knittingcode/deckpilot-plugins' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/deckpilot.') && contains(github.ref, '--v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: official-release
+    permissions:
+      contents: read
+    outputs:
+      keyid: ${{ steps.sign.outputs.keyid }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.resolve.outputs.commit }}
+          sparse-checkout: tools
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: deckpilot-cli
+          path: ${{ runner.temp }}/cli
+      - name: Install the cli job's deckpilot-registry (sha256 checked; nothing compiles here)
+        env:
+          REGISTRY_SHA256: ${{ needs.cli.outputs.registry }}
+          SCHEMA_SHA256: ${{ needs.cli.outputs.schema }}
+        run: tools/cli-artifact.sh install "$RUNNER_TEMP/cli" "$REGISTRY_SHA256" "$SCHEMA_SHA256"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: official-package-a
+          path: ${{ runner.temp }}/official
+      # The only step with publisher key B: it signs and does nothing else.
+      - id: sign
+        name: Sign with key B (release sign with the tag's id and version)
+        env:
+          DECKPILOT_PUBLISHER_KEY_B: ${{ secrets.DECKPILOT_PUBLISHER_KEY_B }}
+          DECKPILOT_PUBLISHER_KEY_B_PASSWORD: ${{ secrets.DECKPILOT_PUBLISHER_KEY_B_PASSWORD }}
+          ID: ${{ needs.resolve.outputs.id }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          SHA256: ${{ needs.compare.outputs.sha256 }}
+          SIZE: ${{ needs.compare.outputs.size }}
+        run: tools/official.sh release-sign B "$ID" "$RUNNER_TEMP/official" "$VERSION" "$SHA256" "$SIZE" "$RUNNER_TEMP/signature" | tee -a "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: official-signature-b
+          path: ${{ runner.temp }}/signature
+          retention-days: 7
+          if-no-files-found: error
+
+  verify:
+    # No environment, no secret: both signatures against the keys pinned in
+    # the DeckPilot build, threshold 2 of distinct keys.
+    name: Verify both signatures with the pinned keys
+    needs: [resolve, compare, cli, sign-a, sign-b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.resolve.outputs.commit }}
+          sparse-checkout: tools
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: deckpilot-cli
+          path: ${{ runner.temp }}/cli
+      - name: Install the cli job's deckpilot-registry (sha256 checked)
+        env:
+          REGISTRY_SHA256: ${{ needs.cli.outputs.registry }}
+          SCHEMA_SHA256: ${{ needs.cli.outputs.schema }}
+        run: tools/cli-artifact.sh install "$RUNNER_TEMP/cli" "$REGISTRY_SHA256" "$SCHEMA_SHA256"
+      - name: The pinned DeckPilot's publisher keys, released-pins.json and artifacts.json (git only)
         run: tools/official.sh fetch-deckpilot
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: official-package-a
           path: ${{ runner.temp }}/official
-      # The only step with the publisher key: it signs and does nothing else.
-      - name: Sign (release sign with the tag's id and version)
-        env:
-          DECKPILOT_PUBLISHER_KEY: ${{ secrets.DECKPILOT_PUBLISHER_KEY }}
-          DECKPILOT_PUBLISHER_KEY_PASSWORD: ${{ secrets.DECKPILOT_PUBLISHER_KEY_PASSWORD }}
-          ID: ${{ needs.resolve.outputs.id }}
-          VERSION: ${{ needs.resolve.outputs.version }}
-          SHA256: ${{ needs.build-a.outputs.sha256 }}
-          SIZE: ${{ needs.build-a.outputs.size }}
-        run: tools/official.sh release-sign "$ID" "$RUNNER_TEMP/official" "$VERSION" "$SHA256" "$SIZE"
-      - name: Verify with the keys pinned in DeckPilot, the rollback floor and the revocations
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: official-signature-a
+          path: ${{ runner.temp }}/official
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: official-signature-b
+          path: ${{ runner.temp }}/official
+      - name: Verify with the keys pinned in DeckPilot (threshold 2), the rollback floor and the revocations
         env:
           ID: ${{ needs.resolve.outputs.id }}
           VERSION: ${{ needs.resolve.outputs.version }}
-          SHA256: ${{ needs.build-a.outputs.sha256 }}
-          SIZE: ${{ needs.build-a.outputs.size }}
-        run: tools/official.sh release-verify "$ID" "$RUNNER_TEMP/official" "$VERSION" "$SHA256" "$SIZE"
+          SHA256: ${{ needs.compare.outputs.sha256 }}
+          SIZE: ${{ needs.compare.outputs.size }}
+          KEYID_A: ${{ needs.sign-a.outputs.keyid }}
+          KEYID_B: ${{ needs.sign-b.outputs.keyid }}
+        run: tools/official.sh release-verify "$ID" "$RUNNER_TEMP/official" "$VERSION" "$SHA256" "$SIZE" "$KEYID_A" "$KEYID_B"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: official-signed
@@ -307,7 +441,7 @@ jobs:
 
   release:
     name: Upload the release assets
-    needs: [resolve, build-a, sign]
+    needs: [resolve, compare, verify]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -322,12 +456,12 @@ jobs:
         with:
           name: official-signed
           path: ${{ runner.temp }}/official
-      - name: Upload to the release of the tag
+      - name: Upload the package and both signatures to the release of the tag
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.resolve.outputs.tag }}
           ID: ${{ needs.resolve.outputs.id }}
           VERSION: ${{ needs.resolve.outputs.version }}
-          SHA256: ${{ needs.build-a.outputs.sha256 }}
-          SIZE: ${{ needs.build-a.outputs.size }}
+          SHA256: ${{ needs.compare.outputs.sha256 }}
+          SIZE: ${{ needs.compare.outputs.size }}
         run: tools/official.sh release-upload "$TAG" "$ID" "$VERSION" "$RUNNER_TEMP/official" "$SHA256" "$SIZE"

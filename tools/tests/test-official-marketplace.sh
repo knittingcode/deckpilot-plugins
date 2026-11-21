@@ -26,13 +26,15 @@ passed=0 failed=0
 ok() { passed=$((passed + 1)); printf 'ok   %s\n' "$1"; }
 bad() { failed=$((failed + 1)); printf 'FAIL %s\n' "$1" >&2; }
 
-# Throwaway publisher keys: the one that signs, and a foreign one.
+# Throwaway publisher keys: the two that sign (threshold 2), and a foreign one.
 mkdir -p "$T/keys"
-for k in pub other; do
+for k in a b other; do
   "$CLI" keys generate --role publisher --out "$T/keys/$k.key" --no-password >/dev/null
-  jq -n --arg k "$(cat "$T/keys/$k.key.pub")" \
-    '{publisherKeysVersion: 1, publisher: "deckpilot", keys: [$k], threshold: 1, revokedKeys: []}' >"$T/keys/$k.json"
 done
+jq -n --arg a "$(cat "$T/keys/a.key.pub")" --arg b "$(cat "$T/keys/b.key.pub")" \
+  '{publisherKeysVersion: 1, publisher: "deckpilot", keys: [$a, $b], threshold: 2, revokedKeys: []}' >"$T/keys/pub.json"
+jq '.threshold = 1' "$T/keys/pub.json" >"$T/keys/threshold-1.json"
+keyid() { python3 -I "$REPO_ROOT/tools/lib/minisign_keyid.py" "$1"; }
 
 # An official/ whose fixtures are the plugins of this test.
 OFF=$T/official
@@ -53,22 +55,34 @@ package() {
   "$CLI" package --plugin-dir "$dir" --module "$WASM" --out "$T/pkg/$id-$version.dpplugin" --first-party >/dev/null
 }
 
-# bundle NAME ID VERSION [KEY]: a release bundle as `fetch` writes it, signed with KEY.
+# assets_json DIR: the release's asset list as GitHub reports it.
+assets_json() {
+  local f
+  for f in "$1"/*; do
+    jq -n --arg n "$(basename "$f")" --argjson s "$(wc -c <"$f" | tr -d ' ')" \
+      --arg d "sha256:$(shasum -a 256 "$f" | cut -d' ' -f1)" '{name: $n, size: $s, digest: $d, state: "uploaded"}'
+  done | jq -s .
+}
+
+# bundle NAME ID VERSION [KEY...]: a release bundle as `fetch` writes it,
+# signed with each KEY (default: a and b), each signature named by its key id.
 bundle() {
-  local name=$1 id=$2 version=$3 key=${4:-pub} b=$T/bundles/$1
+  local name=$1 id=$2 version=$3 b=$T/bundles/$1 key
+  shift 3
+  [ $# -gt 0 ] || set -- a b
   local pkg=$id-$version.dpplugin
   mkdir -p "$b/assets"
   cp "$T/pkg/$pkg" "$b/assets/"
-  "$CLI" release sign --package "$b/assets/$pkg" --id "$id" --version "$version" --key "$T/keys/$key.key" \
-    --out "$b/assets/$pkg.minisig" >/dev/null
-  jq -n --arg tag "$id--v$version" --arg pkg "$pkg" \
-    --argjson ps "$(wc -c <"$b/assets/$pkg" | tr -d ' ')" --arg pd "sha256:$(shasum -a 256 "$b/assets/$pkg" | cut -d' ' -f1)" \
-    --argjson ss "$(wc -c <"$b/assets/$pkg.minisig" | tr -d ' ')" --arg sd "sha256:$(shasum -a 256 "$b/assets/$pkg.minisig" | cut -d' ' -f1)" \
+  for key in "$@"; do
+    "$CLI" release sign --package "$b/assets/$pkg" --id "$id" --version "$version" --key "$T/keys/$key.key" \
+      --out-dir "$b/assets" >/dev/null
+    [ -f "$b/assets/$pkg.$(keyid "$T/keys/$key.key.pub").minisig" ] || die "no signature file named by key $key's id"
+  done
+  jq -n --arg tag "$id--v$version" --argjson assets "$(assets_json "$b/assets")" \
     '{repository: "knittingcode/deckpilot-plugins", commit: "1111111111111111111111111111111111111111", onMain: true,
       release: {tag_name: $tag, draft: false, prerelease: false, published_at: "2026-11-21T10:00:00Z",
         html_url: ("https://github.com/knittingcode/deckpilot-plugins/releases/tag/" + $tag),
-        assets: [{name: $pkg, size: $ps, digest: $pd, state: "uploaded"},
-                 {name: ($pkg + ".minisig"), size: $ss, digest: $sd, state: "uploaded"}]}}' >"$b/release.json"
+        assets: $assets}}' >"$b/release.json"
 }
 
 MP=$T/marketplace
@@ -95,7 +109,8 @@ bundle v011 deckpilot.example-default 0.1.1
 bundle v009 deckpilot.example-default 0.0.9
 bundle dep010 deckpilot.example-dependent 0.1.0
 bundle dep020 deckpilot.example-dependent 0.2.0
-bundle foreign deckpilot.example-default 0.1.0 other
+bundle foreign deckpilot.example-default 0.1.0 a other
+bundle onekey deckpilot.example-default 0.1.0 a
 
 # mutate NAME FROM JQ [SHELL]: a copy of bundle FROM with release.json changed.
 mutate() {
@@ -109,7 +124,13 @@ mutate unpublished v010 '.release.published_at = null'
 mutate offmain v010 '.onMain = false'
 mutate othertag v010 '.release.tag_name = "deckpilot.example-default--v0.1.1"'
 mutate prerelease v010 '.release.prerelease = true'
-mutate nosig v010 '.release.assets |= map(select(.name | endswith(".minisig") | not))' "rm $P.minisig"
+mutate nosig v010 '.release.assets |= map(select(.name | endswith(".minisig") | not))' "rm $P.*.minisig"
+KA=$(keyid "$T/keys/a.key.pub") KB=$(keyid "$T/keys/b.key.pub")
+# The same signature twice, the second under key b's name.
+mutate duplicate v010 '.' "cp $P.$KA.minisig $P.$KB.minisig"
+jq --argjson a "$(assets_json "$T/bundles/duplicate/assets")" '.release.assets = $a' "$T/bundles/v010/release.json" >"$T/bundles/duplicate/release.json"
+# The single-key name of before: <package>.minisig.
+mutate oldname v010 '.release.assets |= map(if .name == "'"$P.$KA.minisig"'" then .name = "'"$P.minisig"'" else . end)' "mv $P.$KA.minisig $P.minisig"
 mutate nopkg v010 '.release.assets |= map(select(.name | endswith(".dpplugin") | not))' "rm $P"
 mutate extra v010 '.release.assets += [{name: "notes.txt", size: 2, state: "uploaded"}]' "printf 'hi' > notes.txt"
 mutate badsize v010 '.release.assets[0].size += 1'
@@ -133,6 +154,11 @@ expect_refused "size mismatch" "bytes downloaded" generate badsize
 expect_refused "sha256 mismatch" "differs from the release" generate baddigest
 expect_refused "tampered package" "release verify .* refused" generate tampered
 expect_refused "signature by an unpinned key" "release verify .* refused" generate foreign
+expect_refused "one signature (one key missing)" "1 signature\(s\)" generate onekey
+expect_refused "a duplicated signature under the other key's name" "carries key id" generate duplicate
+expect_refused "the single-key signature name" "other than the package" generate oldname
+expect_refused "test keys with threshold 1" "threshold 1.*at least 2" \
+  "${ENTRY[@]}" generate --bundle "$T/bundles/v010" --test-keys "$T/keys/threshold-1.json" --official "$OFF" --out "$MP"
 expect_refused "incompatible host (DeckPilot 0.4.0)" "incompatible host|refused" generate v010 --app-version 0.4.0
 expect_refused "unmet required dependency" "required dependency deckpilot.example-default .* unmet" generate dep010
 expect_refused "test mode into official/marketplace" "never writes into official/marketplace" \
@@ -153,8 +179,10 @@ if jq -e '.package.url == "https://github.com/knittingcode/deckpilot-plugins/rel
     and .published_at == "2026-11-21T10:00:00Z"' "$R/0.1.0.json" >/dev/null; then
   ok "record: release asset URL, sha256, size, source"
 else bad "record: $(cat "$R/0.1.0.json")"; fi
-jq -e '.verification.keys == "test" and (.verification.signers | length) == 1 and .names.en == "Bundled Example"' \
-  "$R/0.1.0.release.json" >/dev/null && ok "release record: test keys, signer, name" || bad "release record"
+jq -e --arg a "$KA" --arg b "$KB" '.verification.keys == "test" and (.verification.signers | length) == 2
+    and .verification.signerKeyIds == ([$a, $b] | sort) and ([.signatures[].keyId] | sort) == ([$a, $b] | sort)
+    and .names.en == "Bundled Example"' \
+  "$R/0.1.0.release.json" >/dev/null && ok "release record: test keys, both signatures and signer key ids, name" || bad "release record: $(cat "$R/0.1.0.release.json")"
 expect_ok "the same release again is unchanged" generate v010
 expect_refused "committed check refuses fixture and test-key records" "not a plugin DeckPilot bundles|test keys" \
   "${ENTRY[@]}" check --official "$OFF" --marketplace "$MP" --deckpilot "$DECKPILOT_DIR"

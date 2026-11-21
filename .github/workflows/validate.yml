@@ -43,7 +43,7 @@ jobs:
         run: tools/tests/test-registry-freshness.sh
       - name: Tests of the first-party-only signing gate
         run: tools/tests/test-first-party-only.sh
-      - name: Tests of the workflow rules (secrets, environments)
+      - name: Tests of the workflow rules (secrets, environments, the two publisher keys)
         run: python3 -I tools/tests/test_check_workflows.py
       - name: Tests of the DeckPilot pin (a commit of DeckPilot's main only)
         run: tools/tests/test-deckpilot-pin.sh
@@ -51,6 +51,8 @@ jobs:
         run: tools/tests/test-resolve-tag.sh
       - name: Tests of the tools handed to signing jobs (sha256-checked, nothing compiled there)
         run: tools/tests/test-cli-artifact.sh
+      - name: Tests of the two-key official release steps (missing or extra keys, one signature, no release)
+        run: tools/tests/test-official-release.sh
 
   submission:
     name: Submission rules

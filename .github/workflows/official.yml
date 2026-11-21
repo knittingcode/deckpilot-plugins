@@ -3,9 +3,9 @@
 # read-only token, no caches. It builds, tests, checks and packages the
 # official plugins (official/, the ones DeckPilot bundles), proves the build
 # reproducible, compares it with DeckPilot's own build of the same source,
-# and signs with a THROWAWAY publisher key made in the job. Nothing it produces
-# is released or used by a release workflow: official-release.yml rebuilds
-# from the tagged commit.
+# and signs with two THROWAWAY publisher keys made in the job (threshold 2).
+# Nothing it produces is released or used by a release workflow:
+# official-release.yml rebuilds from the tagged commit.
 name: Official plugins
 
 on:
@@ -49,7 +49,7 @@ jobs:
         run: tools/official.sh package
       - name: Compare with DeckPilot's plugins/first-party/build.sh at the pin (informational)
         run: tools/official.sh compare
-      - name: Throwaway publisher signature, release verify, released-pins guard
+      - name: Two throwaway publisher signatures (threshold 2), refusals, release verify, released-pins guard
         run: tools/official.sh sign-test
       - name: Candidate Marketplace entries and the compatibility matrix
         run: python3 -I tools/official-entry.py check

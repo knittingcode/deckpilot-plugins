@@ -18,11 +18,14 @@
 #                  the SDK's git source is hashed into the build, so modules
 #                  usually differ; the released-pins guard of sign-test is
 #                  what forbids reusing a shipped version).
-# sign-test        a THROWAWAY publisher key: release sign, then release
-#                  verify against it (rollback floor: DeckPilot's
-#                  released-pins.json; audit log), the released-pins guard
-#                  on the verified files, and the pinned keys refusing it
-#                  while no production key is pinned. Keys are scratch.
+# sign-test        TWO THROWAWAY publisher keys, threshold 2: release sign
+#                  with each, then release verify against them (rollback
+#                  floor: DeckPilot's released-pins.json; audit log): the
+#                  two distinct keys pass; one signature, a duplicated
+#                  signature, a wrong key, a revoked key and modified bytes
+#                  are refused. Then the released-pins guard on the
+#                  verified files, and the pinned keys refusing it while no
+#                  production key is pinned. Keys are scratch.
 # all              check, test, package, repro, compare, sign-test.
 #
 # fresh-build SUMS one build of every member and its packages in a fresh
@@ -40,13 +43,26 @@
 #                  ONE build of ID in a fresh target directory and its
 #                  package; prints `module=`, `sha256=`, `size=`. Two jobs
 #                  on fresh runners run it; release-compare checks they agree.
-# release-sign ID DIR VERSION SHA256 SIZE
-#                  in the step that alone has DECKPILOT_PUBLISHER_KEY:
-#                  `release sign --id --version` (the tag's) only.
-# release-verify ID DIR VERSION SHA256 SIZE
-#                  the next step, without the key: release verify with the
-#                  keys pinned in the DeckPilot build (never --keys), the
-#                  rollback floor and the revocations, every platform.
+# release-compare A_MODULE A_SHA256 A_SIZE B_MODULE B_SHA256 B_SIZE
+#                  the unprivileged `compare` job: both builds agree.
+# release-sign A|B ID DIR VERSION SHA256 SIZE OUT
+#                  in the step of `sign-a` (or `sign-b`) that alone has
+#                  DECKPILOT_PUBLISHER_KEY_A (or _B) and its password:
+#                  `release sign --id --version` (the tag's) of the package
+#                  in DIR, re-checked against SHA256 and SIZE, into OUT as
+#                  the one file <id>-<version>.dpplugin.<KEYID>.minisig;
+#                  prints `keyid=`. Refuses without its key and password, and
+#                  with the other key in its environment.
+# release-verify ID DIR VERSION SHA256 SIZE KEYID_A KEYID_B
+#                  the `verify` job, without any key: exactly the two
+#                  signatures of KEYID_A and KEYID_B (distinct, each file
+#                  named by the key id it carries), DeckPilot pinning a
+#                  threshold of at least 2 distinct keys, release verify
+#                  with both and the keys pinned in the DeckPilot build
+#                  (never --keys), the rollback floor and the revocations,
+#                  every platform; each signature alone is refused.
+# release-upload TAG ID VERSION DIR SHA256 SIZE
+#                  the package and both signatures on the tag's release.
 #
 # Runs plugin build scripts: never run check..sign-test where a secret is.
 . "$(dirname "$0")/lib/common.sh"
@@ -214,47 +230,129 @@ pins_of() {
     '{pinsVersion: 1, plugins: [{id: $id, version: $v, class: "default", files: $f}]}'
 }
 
+# keyid FILE: the minisign key id (16 uppercase hex) of a signature or
+# public key file, as minisign prints it.
+keyid() { python3 -I "$REPO_ROOT/tools/lib/minisign_keyid.py" "$1"; }
+
+# signature_set DIR NAME: the signature files of package NAME in DIR, one
+# path per line: exactly two, each NAME.<KEYID>.minisig named by the key id
+# it carries, from two distinct keys. No other signature file is in DIR.
+signature_set() {
+  local dir=$1 name=$2 file base kid ids="" n=0 paths=""
+  for file in "$dir"/*.minisig; do
+    [ -e "$file" ] || continue
+    base=$(basename "$file")
+    kid=${base#"$name".}
+    kid=${kid%.minisig}
+    [ "$base" = "$name.$kid.minisig" ] && [[ $kid =~ ^[0-9A-F]{16}$ ]] \
+      || die "$base is not a signature file $name.<KEYID>.minisig"
+    [ "$(keyid "$file")" = "$kid" ] || die "$base carries key id $(keyid "$file" || true), not $kid"
+    case " $ids " in *" $kid "*) die "two signatures of key $kid: two distinct keys must sign" ;; esac
+    ids="$ids $kid" n=$((n + 1)) paths="$paths$file"$'\n'
+  done
+  [ "$n" = 2 ] || die "$dir has $n signature(s) of $name; an official release needs exactly two, by two distinct publisher keys"
+  printf '%s' "$paths"
+}
+
 sign_test() {
   require_cli
   [ -d "$PACKAGES" ] || package
   local released=$DECKPILOT_DIR/plugins/first-party/released-pins.json
   [ -f "$released" ] || die "no pinned DeckPilot checkout; run tools/build-cli.sh"
-  local keys
+  # Two throwaway keys of the release (a, b), a key nobody pinned (wrong)
+  # and a revoked one; the test key set is a, b, threshold 2.
+  local keys k
   keys=$(mktemp -d "$OUT/keys.XXXXXX")
-  "$CLI" keys generate --role publisher --out "$keys/publisher.key" --no-password >/dev/null
-  jq -n --arg k "$(cat "$keys/publisher.key.pub")" \
-    '{publisherKeysVersion: 1, publisher: "deckpilot", keys: [$k], threshold: 1, revokedKeys: []}' \
+  for k in a b wrong revoked; do
+    "$CLI" keys generate --role publisher --out "$keys/$k.key" --no-password >/dev/null
+  done
+  [ "$(keyid "$keys/a.key.pub")" != "$(keyid "$keys/b.key.pub")" ] || die "the two throwaway keys share a key id"
+  jq -n --arg a "$(cat "$keys/a.key.pub")" --arg b "$(cat "$keys/b.key.pub")" --arg r "$(cat "$keys/revoked.key.pub")" \
+    '{publisherKeysVersion: 1, publisher: "deckpilot", keys: [$a, $b], threshold: 2, revokedKeys: [$r]}' \
     >"$keys/publisher.json"
-  local audit=$OUT/publisher-audit.jsonl path id version crate kind pkg
+  local audit=$OUT/publisher-audit.jsonl path id version crate kind pkg sigs
   rm -f "$audit"
+  # refused WHAT PATTERN ARGS...: release verify with the test keys must
+  # refuse, saying PATTERN.
+  refused() {
+    local what=$1 pattern=$2; shift 2
+    if "$CLI" release verify "${claim[@]}" "${test_keys[@]}" "$@" >"$OUT/refused.out" 2>&1; then
+      die "$id: release verify accepted $what"
+    fi
+    grep -Eqi -- "$pattern" "$OUT/refused.out" || die "$id: $what refused for another reason: $(cat "$OUT/refused.out")"
+    note "$id: $what refused"
+  }
   while read -r path id version crate kind; do
     pkg=$PACKAGES/$id-$version.dpplugin
-    rm -f "$pkg.minisig"
-    "$CLI" release sign --package "$pkg" --id "$id" --version "$version" --key "$keys/publisher.key" \
-      --out "$pkg.minisig" >&2
-    local claim=(--package "$pkg" --signature "$pkg.minisig" --id "$id" --version "$version"
-      --sha256 "$(sha "$pkg")" --size "$(size "$pkg")"
+    local name=$id-$version.dpplugin
+    sigs=$OUT/signatures/$id
+    rm -rf "$sigs" "$PACKAGES/$name".*minisig
+    mkdir -p "$sigs/all"
+    for k in a b wrong revoked; do
+      "$CLI" release sign --package "$pkg" --id "$id" --version "$version" --key "$keys/$k.key" \
+        --out-dir "$sigs/all" >&2
+      [ -f "$sigs/all/$name.$(keyid "$keys/$k.key.pub").minisig" ] \
+        || die "release sign did not write $name.$(keyid "$keys/$k.key.pub").minisig for key $k"
+    done
+    local A B W R
+    A=$name.$(keyid "$keys/a.key.pub").minisig B=$name.$(keyid "$keys/b.key.pub").minisig
+    W=$name.$(keyid "$keys/wrong.key.pub").minisig R=$name.$(keyid "$keys/revoked.key.pub").minisig
+    # set DIR FILE...: a signatures directory holding these files of all/.
+    set_of() {
+      local d=$sigs/$1 f; shift
+      mkdir -p "$d"
+      for f in "$@"; do cp "$sigs/all/$f" "$d/"; done
+      echo "$d"
+    }
+    local claim=(--id "$id" --version "$version"
       --app-version "$DECKPILOT_VERSION" --plugin-api "$DECKPILOT_PLUGIN_API" --platform macos
-      --released-pins "$released" --revocations "$DECKPILOT_DIR/plugins/first-party/artifacts.json"
-      --audit "$audit")
+      --released-pins "$released" --revocations "$DECKPILOT_DIR/plugins/first-party/artifacts.json")
+    local test_keys=(--keys "$keys/publisher.json")
+    local digest=(--package "$pkg" --sha256 "$(sha "$pkg")" --size "$(size "$pkg")")
+    refused "one signature (threshold 2)" "threshold|required" "${digest[@]}" --signatures-dir "$(set_of one "$A")"
+    local dup=$sigs/duplicate
+    mkdir -p "$dup" && cp "$sigs/all/$A" "$dup/$A" && cp "$sigs/all/$A" "$dup/$B"
+    refused "the same key's signature twice (under the other key's name)" "threshold|required" "${digest[@]}" --signatures-dir "$dup"
+    refused "a signature by a key that is not pinned" "threshold|required" "${digest[@]}" \
+      --signatures-dir "$(set_of wrong "$A" "$W")"
+    refused "a signature by a revoked key" "revoked" "${digest[@]}" --signatures-dir "$(set_of revoked "$A" "$R")"
+    refused "a revoked key's signature next to both keys" "revoked" "${digest[@]}" \
+      --signatures-dir "$(set_of revoked-too "$A" "$B" "$R")"
+    local release
+    release=$(set_of release "$A" "$B")
+    cp "$pkg" "$sigs/modified.dpplugin"
+    printf 'x' >>"$sigs/modified.dpplugin"
+    refused "modified bytes (claimed with their own sha256 and size)" "does not verify|0 valid" \
+      --package "$sigs/modified.dpplugin" --sha256 "$(sha "$sigs/modified.dpplugin")" \
+      --size "$(size "$sigs/modified.dpplugin")" --signatures-dir "$release"
+    # The file naming of a release: a duplicate, a third key or a misnamed
+    # file is refused here before anything is verified.
+    (signature_set "$sigs/all" "$name" >/dev/null 2>&1) && die "$id: four signature files accepted"
+    (signature_set "$sigs/one" "$name" >/dev/null 2>&1) && die "$id: one signature file accepted"
+    (signature_set "$dup" "$name" >/dev/null 2>&1) && die "$id: a duplicated signature under another key's name accepted"
+    signature_set "$release" "$name" >/dev/null
+    note "$id: one, four, a duplicated or a misnamed signature file refused"
+    # Two distinct keys: verified.
     rm -rf "$OUT/verified/$id"
-    "$CLI" release verify "${claim[@]}" --keys "$keys/publisher.json" --unpack "$OUT/verified/$id" >&2
+    "$CLI" release verify "${claim[@]}" "${test_keys[@]}" "${digest[@]}" --signatures-dir "$release" \
+      --audit "$audit" --unpack "$OUT/verified/$id" >&2
+    [ "$(tail -1 "$audit" | jq '[.signers[]?] | unique | length')" = 2 ] || die "$id: the audit record does not name two signers"
     # The pins DeckPilot would record for these files must pass its guard.
     pins_of "$OUT/verified/$id" "$id" "$version" >"$OUT/verified/$id.pins.json"
     "$DECKPILOT_DIR/tools/release-pipeline/check-released-pins.sh" "$OUT/verified/$id.pins.json" \
       --platform macos >&2
     # No production key is pinned: the build's own keys refuse it.
-    if "$CLI" release verify "${claim[@]}" >"$OUT/pinned.out" 2>&1; then
+    if "$CLI" release verify "${claim[@]}" "${digest[@]}" --signatures-dir "$release" >"$OUT/pinned.out" 2>&1; then
       grep -q "not the pinned keys" "$OUT/pinned.out" && die "unexpected output"
-      note "$id: the pinned publisher keys accept it (a production key is pinned)"
+      note "$id: the pinned publisher keys accept it (production keys are pinned)"
     else
       grep -q "no first-party publisher key is pinned" "$OUT/pinned.out" \
         || die "$id: the pinned keys refused it for another reason: $(cat "$OUT/pinned.out")"
       note "$id: the pinned keys refuse it (no production key is pinned yet), as expected"
     fi
   done < <(list --list)
-  rm -rf "$keys"
-  summary "" "Signed with a throwaway publisher key and verified (claim, signature, rollback floor, released-pins guard); audit: $(wc -l <"$audit" | tr -d ' ') record(s). The keys pinned in DeckPilot refuse it until a production key is pinned. Nothing is released."
+  rm -rf "$keys" "$OUT/signatures"
+  summary "" "Signed with two throwaway publisher keys (threshold 2) and verified (claim, both signatures, rollback floor, released-pins guard); one signature, a duplicated signature, a wrong key, a revoked key and modified bytes refused; audit: $(wc -l <"$audit" | tr -d ' ') record(s). The keys pinned in DeckPilot refuse it until production keys are pinned. Nothing is released."
 }
 
 resolve() {
@@ -321,75 +419,158 @@ release_compare() {
   note "independent builds agree: module $1, package $2 ($3 bytes)"
 }
 
-# release_sign ID DIR VERSION SHA256 SIZE: the signature, nothing else. ID
-# and VERSION are the release tag's (resolve), passed to `release sign`,
-# which refuses a package that says otherwise and parses the package before
-# it loads the key. Its step alone has the secret; release_verify runs in
-# the next step, without it.
+# release_sign A|B ID DIR VERSION SHA256 SIZE OUT: one signature, nothing
+# else, in the step of sign-a (or sign-b) that alone has that key. ID and
+# VERSION are the release tag's (resolve), passed to `release sign`, which
+# refuses a package that says otherwise and parses the package before it
+# loads the key. OUT gets exactly one file, <id>-<version>.dpplugin.<KEYID>.minisig;
+# `keyid=` goes to stdout. The verify job, without any key, checks both.
 release_sign() {
-  local id=$1 dir=$2 version=$3 sha256=$4 bytes=$5
-  require_cli
-  local pkg=$dir/$id-$version.dpplugin
-  [ "$(sha "$pkg")" = "$sha256" ] && [ "$(size "$pkg")" = "$bytes" ] \
-    || die "$pkg is not the package the build jobs produced"
-  [ -n "${DECKPILOT_PUBLISHER_KEY:-}" ] || die "DECKPILOT_PUBLISHER_KEY is not set: the owner provisions it in official-release"
-  "$CLI" release sign --package "$pkg" --id "$id" --version "$version" --key-env DECKPILOT_PUBLISHER_KEY \
-    --password-env DECKPILOT_PUBLISHER_KEY_PASSWORD --out "$pkg.minisig"
-}
-
-# release_verify ID DIR VERSION SHA256 SIZE: with the keys pinned in the
-# DeckPilot build (never --keys), for every platform, against DeckPilot's
-# rollback floor (released-pins.json) and revocations (artifacts.json),
-# audited. Refuses to run where the publisher key is in the environment.
-release_verify() {
-  local id=$1 dir=$2 version=$3 sha256=$4 bytes=$5
-  [ -z "${DECKPILOT_PUBLISHER_KEY:-}${DECKPILOT_PUBLISHER_KEY_PASSWORD:-}" ] \
-    || die "release-verify runs without the publisher key in its environment"
-  require_cli
-  local pkg=$dir/$id-$version.dpplugin platform
-  for platform in macos linux windows; do
-    "$CLI" release verify --package "$pkg" --signature "$pkg.minisig" --id "$id" --version "$version" \
-      --sha256 "$sha256" --size "$bytes" --app-version "$DECKPILOT_VERSION" \
-      --plugin-api "$DECKPILOT_PLUGIN_API" --platform "$platform" \
-      --released-pins "$DECKPILOT_DIR/plugins/first-party/released-pins.json" \
-      --revocations "$DECKPILOT_DIR/plugins/first-party/artifacts.json" \
-      --audit "$dir/publisher-audit.jsonl"
+  local slot=$1 id=$2 dir=$3 version=$4 sha256=$5 bytes=$6 out=$7 other
+  case $slot in
+    A) other=B ;;
+    B) other=A ;;
+    *) die "release-sign: the publisher key is A or B, not '$slot'" ;;
+  esac
+  local key=DECKPILOT_PUBLISHER_KEY_$slot
+  local password=${key}_PASSWORD other_key=DECKPILOT_PUBLISHER_KEY_$other
+  local other_password=${other_key}_PASSWORD
+  # Fail closed, before anything else: the job's own key and password, and
+  # nothing of the other key or of the retired single key.
+  [ -n "${!key:-}" ] \
+    || die "$key is not set: the owner provisions it (and $password) in the environment official-release; refusing to sign, no release without both publisher keys"
+  [ -n "${!password:-}" ] \
+    || die "$password is not set: the owner provisions it with $key in the environment official-release; refusing to sign"
+  [ -z "${!other_key:-}${!other_password:-}" ] \
+    || die "the job signing with publisher key $slot also has $other_key: each key signs in its own job (sign-a, sign-b)"
+  local var
+  for var in $(compgen -e); do
+    case $var in
+      "$key" | "$password") ;;
+      DECKPILOT_PUBLISHER_KEY*) die "$var is in the environment of the job signing with key $slot: only $key and $password are" ;;
+    esac
   done
+  local name=$id-$version.dpplugin
+  local pkg=$dir/$name
+  [ -f "$pkg" ] && [ "$(sha "$pkg")" = "$sha256" ] && [ "$(size "$pkg")" = "$bytes" ] \
+    || die "$pkg is not the package the build jobs produced (sha256 $sha256, $bytes bytes)"
+  [ ! -e "$out" ] || [ -z "$(ls -A "$out")" ] || die "$out must be new or empty: it holds only this job's signature"
+  require_cli
+  mkdir -p "$out"
+  local scratch kid file
+  scratch=$(mktemp -d)
+  "$CLI" release sign --package "$pkg" --id "$id" --version "$version" --key-env "$key" \
+    --password-env "$password" --out-dir "$scratch" >&2
+  set -- "$scratch"/*
+  [ $# = 1 ] && [ -f "$1" ] || die "release sign wrote $# file(s); exactly one signature is expected"
+  file=$(basename "$1")
+  kid=$(keyid "$1") || die "the new signature carries no minisign key id"
+  [ "$file" = "$name.$kid.minisig" ] || die "release sign wrote $file, not $name.$kid.minisig"
+  mv "$1" "$out/$file"
+  rmdir "$scratch"
+  note "signed $name with publisher key $slot, key id $kid"
+  echo "keyid=$kid"
 }
 
-# release_upload TAG ID VERSION DIR SHA256 SIZE: the package and its
-# signature on the GitHub Release of TAG, which the owner created (never
-# creates a tag: --verify-tag). A missing release is made as a draft, both
-# assets uploaded, then published, so an immutable release is complete
-# before it is visible. Re-running is a no-op once the same assets are
-# there; another asset under the same name fails.
+# release_verify ID DIR VERSION SHA256 SIZE KEYID_A KEYID_B: with the keys
+# pinned in the DeckPilot build (never --keys), for every platform, against
+# DeckPilot's rollback floor (released-pins.json) and revocations
+# (artifacts.json), audited. Exactly the two signatures sign-a and sign-b
+# reported, from two distinct keys, and DeckPilot pins at least two keys
+# with a threshold of at least two: each signature alone is refused.
+# Refuses to run where a publisher key is in the environment.
+release_verify() {
+  local id=$1 dir=$2 version=$3 sha256=$4 bytes=$5 want_a=$6 want_b=$7
+  local var
+  for var in $(compgen -e); do
+    case $var in DECKPILOT_PUBLISHER_KEY*) die "release-verify runs without any publisher key in its environment ($var)" ;; esac
+  done
+  [[ $want_a =~ ^[0-9A-F]{16}$ ]] && [[ $want_b =~ ^[0-9A-F]{16}$ ]] \
+    || die "sign-a and sign-b reported no key id ('$want_a', '$want_b'): no release without both signatures"
+  [ "$want_a" != "$want_b" ] || die "sign-a and sign-b signed with the same key ($want_a): two distinct keys must sign"
+  local name=$id-$version.dpplugin
+  local pkg=$dir/$name
+  [ -f "$pkg" ] && [ "$(sha "$pkg")" = "$sha256" ] && [ "$(size "$pkg")" = "$bytes" ] \
+    || die "$pkg is not the package the build jobs produced"
+  local file got=() files=()
+  while IFS= read -r file; do
+    got+=("$(keyid "$file")")
+    files+=("$file")
+  done < <(signature_set "$dir" "$name")
+  [ ${#got[@]} = 2 ] || die "no signature set"
+  [ "$(printf '%s\n' "${got[@]}" | LC_ALL=C sort | tr '\n' ' ')" = "$(printf '%s\n' "$want_a" "$want_b" | LC_ALL=C sort | tr '\n' ' ')" ] \
+    || die "the signatures are by ${got[*]}, not the keys sign-a and sign-b used ($want_a, $want_b)"
+  require_cli
+  local pinned=$DECKPILOT_DIR/crates/deckpilot-plugin-registry/publisher/first-party.json
+  [ -f "$pinned" ] || die "no pinned DeckPilot checkout ($pinned); run tools/official.sh fetch-deckpilot"
+  jq -e '(.threshold | type == "number" and . >= 2) and ((.keys | unique | length) >= .threshold)' "$pinned" >/dev/null \
+    || die "DeckPilot $DECKPILOT_COMMIT pins $(jq '.keys | length' "$pinned") publisher key(s), threshold $(jq .threshold "$pinned"): an official release needs a threshold of at least 2 distinct pinned keys"
+  local claim=(--package "$pkg" --id "$id" --version "$version" --sha256 "$sha256" --size "$bytes"
+    --app-version "$DECKPILOT_VERSION" --plugin-api "$DECKPILOT_PLUGIN_API"
+    --released-pins "$DECKPILOT_DIR/plugins/first-party/released-pins.json"
+    --revocations "$DECKPILOT_DIR/plugins/first-party/artifacts.json")
+  local audit=$dir/publisher-audit.jsonl platform
+  for platform in macos linux windows; do
+    "$CLI" release verify "${claim[@]}" --signatures-dir "$dir" --platform "$platform" --audit "$audit"
+  done
+  jq -se 'length >= 3 and all(.outcome == "verified" and ([.signers[]?] | unique | length) >= 2)' "$audit" >/dev/null \
+    || die "the audit does not record a verification by two distinct signers: $(cat "$audit")"
+  # The threshold, seen from outside: one signature alone is refused.
+  local one
+  for file in "${files[@]}"; do
+    one=$(mktemp -d)
+    cp "$file" "$one/"
+    if "$CLI" release verify "${claim[@]}" --signatures-dir "$one" --platform macos >/dev/null 2>&1; then
+      rm -rf "$one"
+      die "the pinned keys accept $(basename "$file") alone: the threshold is not two"
+    fi
+    rm -rf "$one"
+  done
+  note "$name: two distinct pinned publisher keys ($want_a, $want_b), every platform; one signature alone refused"
+}
+
+# release_upload TAG ID VERSION DIR SHA256 SIZE: the package and its two
+# signatures on the GitHub Release of TAG, which the owner created (never
+# creates a tag: --verify-tag). A missing release is made as a draft, the
+# three assets uploaded, then published, so an immutable release is
+# complete before it is visible. Re-running is a no-op once the same assets
+# are there; another asset under the same name, or any other asset, fails
+# and leaves the draft unpublished.
 release_upload() {
   local tag=$1 id=$2 version=$3 dir=$4 sha256=$5 bytes=$6
   local name=$id-$version.dpplugin
   [ "$tag" = "$id--v$version" ] || die "$tag is not the release tag of $id $version"
   [ "$(sha "$dir/$name")" = "$sha256" ] && [ "$(size "$dir/$name")" = "$bytes" ] \
     || die "$name is not the package the build job produced"
-  [ -f "$dir/$name.minisig" ] || die "$name.minisig is missing"
+  local files=("$dir/$name") file
+  while IFS= read -r file; do files+=("$file"); done < <(signature_set "$dir" "$name")
+  [ ${#files[@]} = 3 ] || die "no signature set"
   local repo=${GITHUB_REPOSITORY:-knittingcode/deckpilot-plugins} pre=()
   [[ $version == *-* ]] && pre=(--prerelease)
+  local sig_a sig_b
+  sig_a=$(basename "${files[1]}") sig_b=$(basename "${files[2]}")
   if ! gh release view "$tag" -R "$repo" >/dev/null 2>&1; then
     gh release create "$tag" -R "$repo" --verify-tag --draft --latest=false "${pre[@]+"${pre[@]}"}" \
       --title "$id $version" \
-      --notes "Official DeckPilot plugin \`$id\` $version: \`$name\`, sha256 \`$sha256\`, $bytes bytes, signed by the first-party publisher key (\`$name.minisig\`). DeckPilot bundles it only after verifying the signature against the public key pinned in the application."
+      --notes "Official DeckPilot plugin \`$id\` $version: \`$name\`, sha256 \`$sha256\`, $bytes bytes, signed by two first-party publisher keys (\`$sig_a\`, \`$sig_b\`). DeckPilot bundles it only after verifying both signatures against the public keys pinned in the application (threshold 2)."
   fi
-  local file existing
-  for file in "$name" "$name.minisig"; do
-    existing=$(gh release view "$tag" -R "$repo" --json assets -q ".assets[] | select(.name == \"$file\") | .digest")
+  local existing
+  for file in "${files[@]}"; do
+    existing=$(gh release view "$tag" -R "$repo" --json assets -q ".assets[] | select(.name == \"$(basename "$file")\") | .digest")
     if [ -z "$existing" ]; then
-      gh release upload "$tag" -R "$repo" "$dir/$file"
-    elif [ "$existing" != "sha256:$(sha "$dir/$file")" ]; then
-      die "the release of $tag already has a different $file ($existing)"
+      gh release upload "$tag" -R "$repo" "$file"
+    elif [ "$existing" != "sha256:$(sha "$file")" ]; then
+      die "the release of $tag already has a different $(basename "$file") ($existing)"
     fi
   done
+  local want have
+  want=$(printf '%s\n' "$name" "$sig_a" "$sig_b" | LC_ALL=C sort | tr '\n' ' ')
+  have=$(gh release view "$tag" -R "$repo" --json assets -q '.assets[].name' | LC_ALL=C sort | tr '\n' ' ')
+  [ "$have" = "$want" ] || die "the release of $tag has the assets '$have', not exactly '$want'; not publishing it"
   if [ "$(gh release view "$tag" -R "$repo" --json isDraft -q .isDraft)" = true ]; then
     gh release edit "$tag" -R "$repo" --draft=false --latest=false
   fi
-  summary "Released \`$name\` and \`$name.minisig\`: sha256 \`$sha256\`, $bytes bytes"
+  summary "Released \`$name\`, \`$sig_a\` and \`$sig_b\`: sha256 \`$sha256\`, $bytes bytes"
 }
 
 mkdir -p "$OUT"
@@ -406,9 +587,9 @@ case $what in
   fresh-build) fresh_build "${2:?SUMS}" ;;
   release-build) release_build "${2:?ID}" "${3:?VERSION}" ;;
   release-compare) release_compare "${2:?}" "${3:?}" "${4:?}" "${5:?}" "${6:?}" "${7:?}" ;;
-  release-sign) release_sign "${2:?ID}" "${3:?DIR}" "${4:?VERSION}" "${5:?SHA256}" "${6:?SIZE}" ;;
-  release-verify) release_verify "${2:?ID}" "${3:?DIR}" "${4:?VERSION}" "${5:?SHA256}" "${6:?SIZE}" ;;
+  release-sign) release_sign "${2:?A|B}" "${3:?ID}" "${4:?DIR}" "${5:?VERSION}" "${6:?SHA256}" "${7:?SIZE}" "${8:?OUT}" ;;
+  release-verify) release_verify "${2:?ID}" "${3:?DIR}" "${4:?VERSION}" "${5:?SHA256}" "${6:?SIZE}" "${7:-}" "${8:-}" ;;
   release-upload) release_upload "${2:?TAG}" "${3:?ID}" "${4:?VERSION}" "${5:?DIR}" "${6:?SHA256}" "${7:?SIZE}" ;;
-  *) die "usage: official.sh [check|test|package|repro|compare|sign-test|all] | fresh-build SUMS | resolve TAG | release-build ID VERSION | release-compare A_MODULE A_SHA A_SIZE B_MODULE B_SHA B_SIZE | release-sign|release-verify ID DIR VERSION SHA256 SIZE | release-upload TAG ID VERSION DIR SHA256 SIZE" ;;
+  *) die "usage: official.sh [check|test|package|repro|compare|sign-test|all] | fresh-build SUMS | resolve TAG | release-build ID VERSION | release-compare A_MODULE A_SHA A_SIZE B_MODULE B_SHA B_SIZE | release-sign A|B ID DIR VERSION SHA256 SIZE OUT | release-verify ID DIR VERSION SHA256 SIZE KEYID_A KEYID_B | release-upload TAG ID VERSION DIR SHA256 SIZE" ;;
 esac
 note "official: $what passed"
