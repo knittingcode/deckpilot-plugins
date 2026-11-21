@@ -25,6 +25,12 @@
 #                  while no production key is pinned. Keys are scratch.
 # all              check, test, package, repro, compare, sign-test.
 #
+# A `held` plugin (plugins.json; a plugin API 1.9 privileged kind while the
+# gate is closed) has no package: `package --first-party` refuses its
+# manifest by design (privileged kinds only in a bundled plugin's unpacked
+# files), and package must see exactly that refusal; repro compares its
+# modules; sign-test skips it. Nothing of it can be released.
+#
 # Release (official-release.yml only):
 # resolve TAG      TAG is <id>--v<version> of a released plugin whose
 #                  manifest has that version, at a commit on main.
@@ -117,6 +123,17 @@ package_all() {
     "$SCHEMA_CHECK" --schemas "$REPO_ROOT/schemas" \
       "https://knittingcode.github.io/deckpilot-plugins/v1/schemas/plugin-manifest.schema.json" \
       "$dir/manifest.json" >&2 || die "$dir/manifest.json does not match the manifest schema"
+    if [ "$kind" = held ]; then
+      if "$CLI" package --plugin-dir "$dir" --module "$module" --out "$out/$id-$version.dpplugin" \
+        --first-party >"$out/$id.held.out" 2>&1; then
+        die "$id is held, but its package was accepted: has the gate opened? (remove \`held\` in a reviewed change)"
+      fi
+      grep -q "only for DeckPilot's own plugins shipped inside the app" "$out/$id.held.out" \
+        || die "$id: the package was refused for another reason than its privileged kinds: $(cat "$out/$id.held.out")"
+      rm -f "$out/$id-$version.dpplugin"
+      note "$id $version: held; module built, package refused for its privileged kinds, as expected"
+      continue
+    fi
     "$CLI" package --plugin-dir "$dir" --module "$module" --out "$out/$id-$version.dpplugin" --first-party >&2
   done < <(list --list)
 }
@@ -131,6 +148,10 @@ package() {
   local path id version crate kind
   while read -r path id version crate kind; do
     local pkg=$PACKAGES/$id-$version.dpplugin
+    if [ "$kind" = held ]; then
+      summary "| \`$id\` | $version | held | \`$(sha "$(module_of "$OUT/target-guest" "$crate")")\` | none (privileged kinds) | |"
+      continue
+    fi
     summary "| \`$id\` | $version | $kind | \`$(sha "$(module_of "$OUT/target-guest" "$crate")")\` | \`$(sha "$pkg")\` | $(size "$pkg") |"
   done < <(list --list)
 }
@@ -146,6 +167,10 @@ repro() {
     a=$(sha "$(module_of "$OUT/repro-a" "$crate")")
     b=$(sha "$(module_of "$OUT/repro-b" "$crate")")
     [ "$a" = "$b" ] || die "$id: two clean builds differ ($a, $b)"
+    if [ "$kind" = held ]; then
+      note "$id $version: module reproducible ($a); held, no package"
+      continue
+    fi
     a=$(sha "$OUT/repro-a-packages/$id-$version.dpplugin")
     b=$(sha "$OUT/repro-b-packages/$id-$version.dpplugin")
     [ "$a" = "$b" ] || die "$id: the packages of two clean builds differ ($a, $b)"
@@ -167,7 +192,7 @@ compare() {
     ours=$(sha "$(module_of "$OUT/target-guest" "$crate")")
     theirs=$OUT/deckpilot/bundled/$id/plugin.wasm
     if [ ! -f "$theirs" ]; then
-      [ "$kind" = plugin ] || die "$id: DeckPilot's build has no $id"
+      [ "$kind" != fixture ] || die "$id: DeckPilot's build has no $id"
       note "$id: DeckPilot no longer builds it (consumed as an artifact)"
       continue
     fi
@@ -214,6 +239,10 @@ sign_test() {
   local audit=$OUT/publisher-audit.jsonl path id version crate kind pkg
   rm -f "$audit"
   while read -r path id version crate kind; do
+    if [ "$kind" = held ]; then
+      note "$id: held (no package); nothing to sign"
+      continue
+    fi
     pkg=$PACKAGES/$id-$version.dpplugin
     rm -f "$pkg.minisig"
     "$CLI" release sign --package "$pkg" --key "$keys/publisher.key" --out "$pkg.minisig" >&2

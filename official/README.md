@@ -61,6 +61,30 @@ not at the next. So each plugin's first release from here is a **new patch
 version**, which DeckPilot's released-pins guard and the publisher
 verifier's rollback floor enforce.
 
+## Held plugins: privileged kinds wait for the security review
+
+A plugin whose manifest declares a plugin API 1.9 privileged kind
+(`tools`, `resources`, `projectContext`, `hostViews`, or
+`openUrl.fromParams`) cannot have a release artifact while the gate of
+DeckPilot's publisher signature is closed. At the pinned DeckPilot not
+even a package exists: `deckpilot-registry package --first-party` refuses
+such a manifest (privileged kinds are allowed only in a bundled plugin's
+unpacked files, `Manifest::validate_bundled`), and `release verify` would
+refuse it too (`PrivilegedGateClosed`). Its entry in `plugins.json` then
+carries `held`, the reason as text. A held plugin goes through `check`
+(including its contract against DeckPilot's `plugins/first-party/<name>`
+while DeckPilot still has it), `test` and `compare` like any other;
+`package` builds its module and requires the packager to refuse it for its
+privileged kinds (and fails once it accepts it, so `held` is removed in
+that reviewed change); `repro` compares its modules; `sign-test` skips it;
+`--release`, and so the release workflow, refuses it. `check` refuses
+`held` on a plugin that declares no privileged kind. Until a held plugin
+is released, DeckPilot keeps building it from its own source.
+
+| Plugin | Held for |
+| --- | --- |
+| `deckpilot.workflows` 0.1.1 | `hostViews` (and the `workflows` view kind) |
+
 ## Releases
 
 `official-release.yml`, for a tag `deckpilot.<name>--v<version>` that the
