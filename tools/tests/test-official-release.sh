@@ -210,15 +210,31 @@ pin 2 2
 expect fail "the pinned verifier accepts one signature alone" "accept .* alone: the threshold is not two" -- env STUB_ACCEPT_ONE=1 "$root/tools/official.sh" release-verify "$ID" "$two" "$VERSION" "$SHA" "$SIZE" "$KA" "$KB"
 
 echo "== held plugins (official/plugins.json \`held\`): no release"
-# Every held plugin of the committed plugins.json: its tag does not resolve
-# and release-build refuses it before anything is built, so no package
-# reaches sign-a, sign-b, verify or release.
-held=$(jq -r '.plugins[] | select(.held != null) | .id' "$root/official/plugins.json")
+# The committed plugins.json holds none: the five privileged plugins are
+# released plugins (--release accepts each, at its manifest version).
+. "$root/tools/deckpilot.env"
+privileged="deckpilot.docker deckpilot.git deckpilot.projects deckpilot.workflows deckpilot.workspace"
+for pid in $privileged; do
+  expect pass "$pid is a released official plugin" "member\\(s\\) checked" -- \
+    python3 -I "$root/tools/check-official.py" --root "$root/official" --commit "$DECKPILOT_COMMIT" \
+    --app-version "$DECKPILOT_VERSION" --plugin-api "$DECKPILOT_PLUGIN_API" --release "$pid"
+done
+# A copy of the repository whose plugins.json holds them again: a held
+# plugin's tag does not resolve and release-build refuses it before
+# anything is built, so no package reaches sign-a, sign-b, verify or release.
+copy=$work/held-copy
+mkdir -p "$copy"
+cp -R "$root/tools" "$copy/tools"
+rsync -a --exclude target "$root/official/" "$copy/official/"
+jq --arg ids "$privileged" '(.plugins[] | select(.id as $i | ($ids | split(" ")) | index($i))) += {held: "held by the test"}' \
+  "$root/official/plugins.json" > "$copy/official/plugins.json"
+held=$(jq -r '.plugins[] | select(.held != null) | .id' "$copy/official/plugins.json")
+[ "$(echo $held)" = "$privileged" ] && ok "the copy holds the five privileged plugins" || bad "the copy holds: $held"
 for hid in $held; do
-  hpath=$(jq -r --arg id "$hid" '.plugins[] | select(.id == $id) | .path' "$root/official/plugins.json")
-  hversion=$(jq -r .version "$root/official/$hpath/manifest.json")
-  expect fail "resolve refuses the tag of held $hid" "is not a released official plugin" -- official resolve "$hid--v$hversion"
-  expect fail "release-build refuses held $hid" "is not a released official plugin" -- official release-build "$hid" "$hversion"
+  hpath=$(jq -r --arg id "$hid" '.plugins[] | select(.id == $id) | .path' "$copy/official/plugins.json")
+  hversion=$(jq -r .version "$copy/official/$hpath/manifest.json")
+  expect fail "resolve refuses the tag of held $hid" "is not a released official plugin" -- "$copy/tools/official.sh" resolve "$hid--v$hversion"
+  expect fail "release-build refuses held $hid" "is not a released official plugin" -- "$copy/tools/official.sh" release-build "$hid" "$hversion"
 done
 
 echo "== the key test (official-test-sign.yml)"

@@ -29,20 +29,28 @@ fields, a higher version, and for Projects and Workspace also the files a
 bundle takes besides the module (`LICENSE`, `assets/`, `locales/`) byte for
 byte.
 
-| Plugin | Version (DeckPilot's) | Permission kinds | Gate status |
+| Plugin | Version (DeckPilot's) | Permission kinds | Status |
 | --- | --- | --- | --- |
-| `deckpilot.projects` | 0.1.1 (0.1.0) | `hostViews`, `profile`, `projectContext`, `resources` | held |
-| `deckpilot.workspace` | 0.1.1 (0.1.0) | `openUrl` (`fromParams`), `profile`, `resources` | held |
+| `deckpilot.docker` | 0.1.1 (0.1.0) | `device`, `profile`, `resources`, `tools` (docker) | released, exactly the reviewed policy |
+| `deckpilot.git` | 0.1.1 (0.1.0) | `device`, `profile`, `resources`, `tools` (git) | released, exactly the reviewed policy |
+| `deckpilot.projects` | 0.1.1 (0.1.0) | `hostViews`, `profile`, `projectContext`, `resources` | released, exactly the reviewed policy |
+| `deckpilot.workflows` | 0.1.1 (0.1.0) | `hostViews` | released, exactly the reviewed policy |
+| `deckpilot.workspace` | 0.1.1 (0.1.0) | `openUrl` (`fromParams`), `profile`, `resources` | released, exactly the reviewed policy |
 
-Workspace's optional dependency on `deckpilot.projects` (`>=0.1.0 <1.0.0`)
-is DeckPilot's, unchanged, and 0.1.1 satisfies it.
+The optional dependencies of Docker, Git and Workspace on
+`deckpilot.projects` (`>=0.1.0 <1.0.0`) are DeckPilot's, unchanged, and
+0.1.1 satisfies them.
 
-Both are `held` in `plugins.json` (see "Held plugins" below): their
-source is on main and goes through `check`, `test` and `compare`, while
-`package --first-party` must refuse them and they are never signed,
-released or given a Marketplace entry until the security review of
-DeckPilot's `docs/marketplace/publisher-review-request.md` opens the gate,
-in a reviewed change here and in DeckPilot.
+None of the five is `held` any more (2026-11-21, owner-authorized, after
+the security review of DeckPilot's
+`docs/marketplace/publisher-review-request.md` opened the gate here and in
+DeckPilot for exactly `privileged-policy.json`): each is a released
+plugin, so `package --first-party` packages it, `sign-test` signs it with
+throwaway keys and `official-release.yml` accepts its tag
+`deckpilot.<name>--v0.1.1`. Its manifest must stay exactly what the
+reviewed policy admits (see "The reviewed privileged policy" below), and
+it never gets a registry or Marketplace entry: privileged plugins reach
+users only bundled in DeckPilot.
 
 ## Layout
 
@@ -114,11 +122,14 @@ keeping such a plugin's source on main as **held**: its entry in
 | `official-entry.py` | refused: no Marketplace entry; the entry rules refuse privileged usages in any case, whatever the gate (privileged plugins reach users only bundled in DeckPilot) |
 
 `tools/tests/test_check_official.py` holds the privileged-usage count of
-each held manifest to the pinned Rust validator's. Removing `held` is a
-reviewed change after the security review of DeckPilot's
+each privileged manifest to the pinned Rust validator's, and holds a
+plugin again in a copy of `official/` to test every rule above. Removing
+`held` is a reviewed change after the security review of DeckPilot's
 `docs/marketplace/publisher-review-request.md` opens the gate here and in
-DeckPilot. Until a held plugin is released, DeckPilot keeps bundling its
-own build of the version it shipped.
+DeckPilot; for the five privileged plugins it was made on 2026-11-21, so
+no plugin on main is held. Until a plugin's release is in DeckPilot's
+`artifacts.json`, DeckPilot keeps bundling its own build of the version it
+shipped.
 
 ## The reviewed privileged policy
 
@@ -140,7 +151,7 @@ verify` refuse the same (DeckPilot `docs/marketplace/publisher-signature.md`,
 "Privileged plugins"). A privileged plugin is never given a Marketplace
 entry: it reaches users only bundled in DeckPilot.
 
-| Plugin | Held for |
+| Plugin | Reviewed privileged usages |
 | --- | --- |
 | `deckpilot.docker` 0.1.1 | the `tools` permission (docker only), the `resources` permission, `resource` action parameters |
 | `deckpilot.git` 0.1.1 | the `tools` permission (git only), the `resources` permission, `resource` action parameters |

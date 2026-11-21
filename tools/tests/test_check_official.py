@@ -20,10 +20,16 @@ ENV = dict(re.findall(r"^([A-Z_]+)=(\S+)$", (ROOT / "tools/deckpilot.env").read_
 COMMIT = ENV["DECKPILOT_COMMIT"]
 FIXTURE = "test-fixtures/example-default"
 POLICY = json.loads((ROOT / "official/plugins.json").read_text())
+# The five privileged plugins: released from the committed plugins.json
+# (no longer held) exactly as official/privileged-policy.json reviews them.
+PRIVILEGED = ["docker", "git", "projects", "workflows", "workspace"]
+REVIEWED = [e for e in POLICY["plugins"] if e["path"] in PRIVILEGED]
 # The held plugins of the committed plugins.json (source on main, never
-# packaged, signed, released or listed).
+# packaged, signed, released or listed): none since all five are released.
+# The held cases hold one in their copy of official/ (hold below).
 HELD = [e for e in POLICY["plugins"] if e.get("held") is not None]
-H = HELD[0]["path"] if HELD else None
+H = "docker"
+HELD_REASON = "held by tools/tests/test_check_official.py"
 
 passed = failed = 0
 
@@ -37,14 +43,14 @@ def run(root, *extra):
 
 def deckpilot_of(tmp):
     """A stand-in for the pinned DeckPilot checkout: its fixture, and every
-    held plugin as DeckPilot has it (version 0.1.0, its own repository)."""
+    privileged plugin as DeckPilot has it (version 0.1.0, its own repository)."""
     dp = Path(tmp) / "deckpilot"
     shutil.copytree(ROOT / "official" / FIXTURE, dp / "plugins/first-party" / FIXTURE)
     # The reviewed privileged policy, as the pinned DeckPilot carries it.
     record = dp / "crates/deckpilot-plugin-registry/publisher/privileged-policy.json"
     record.parent.mkdir(parents=True)
     shutil.copy(ROOT / "official/privileged-policy.json", record)
-    for e in HELD:
+    for e in REVIEWED:
         shutil.copytree(ROOT / "official" / e["path"], dp / "plugins/first-party" / e["path"],
                         ignore=shutil.ignore_patterns("target"))
         def back(m, name=e["path"]):
@@ -86,8 +92,13 @@ def manifest(fn, member=FIXTURE):
     return lambda root: edit_json(root / member / "manifest.json", fn)
 
 
+def hold(*paths):
+    """plugins.json of the copy marks these plugins held again."""
+    return policy(lambda d: [e.update(held=HELD_REASON) for e in d["plugins"] if e["path"] in paths])
+
+
 def held_entry(fn):
-    return policy(lambda d: fn(next(e for e in d["plugins"] if e["path"] == H)))
+    return lambda root: (hold(H)(root), policy(lambda d: fn(next(e for e in d["plugins"] if e["path"] == H)))(root))
 
 
 def policy(fn):
@@ -122,46 +133,54 @@ case("a released plugin that DeckPilot does not bundle",
      policy(lambda d: d.update(plugins=d["fixtures"], fixtures=[])), False, "not a plugin DeckPilot bundles")
 case("--release refuses a fixture", lambda r: None, False, "not a released official plugin", extra=["--release", "deckpilot.example-default"])
 # Held plugins: source only. Privileged usages are allowed in source for a
-# held plugin and nothing else; --list marks it, --release refuses it.
-if HELD:
-    e = HELD[0]
-    hm = json.loads((ROOT / "official" / H / "manifest.json").read_text())
-    case("--list marks a held plugin", lambda r: None, True,
-         rf"(?m)^{re.escape(H)} {re.escape(e['id'])} {re.escape(hm['version'])} \S+ held$", extra=["--list"])
-    case("check prints every held plugin with its reason", lambda r: None, True,
-         "(?s)" + "".join(rf"(?=.*held: {re.escape(x['id'])} \S+: {re.escape(x['held'])})" for x in HELD))
-    for x in HELD:
-        case(f"--release refuses held {x['id']}", lambda r: None, False, "not a released official plugin",
-             extra=["--release", x["id"]])
-        case(f"{x['id']} without held passes: exactly the approved record",
-             policy(lambda d, i=x["id"]: next(p for p in d["plugins"] if p["id"] == i).pop("held")), True,
-             r"member\(s\) checked")
-        case(f"{x['id']} without held, its review pending, is refused",
-             lambda r, i=x["id"]: (policy(lambda d: next(p for p in d["plugins"] if p["id"] == i).pop("held"))(r),
-                                   edit_json(r / "privileged-policy.json", lambda d: d["review"].update(outcome="pending"))),
-             False, "no approved security review")
-    case("held for nothing", lambda r: (held_entry(lambda e: e.update(permissions=[]))(r),
-                                        manifest(lambda m: (m.update(permissions=[]), m.pop("contributes", None)), H)(r)),
-         False, "nothing holds it")
-    case("held without a reason", held_entry(lambda e: e.update(held=True)), False, "is a reason")
-    case("held with an empty reason", held_entry(lambda e: e.update(held="  ")), False, "is a reason")
-    case("held does not widen the permission policy",
-         manifest(lambda m: m["permissions"].append({"kind": "storage", "justification": "x"}), H), False, "reviewed policy change")
-    case("held does not widen process execution",
-         lambda r: (held_entry(lambda e: e["permissions"].append("tools"))(r),
-                    manifest(lambda m: m["permissions"].append({"kind": "tools", "tools": [{"executable": "sh"}], "justification": "x"}), H)(r)),
-         False, "process execution")
-    case("the contract equals DeckPilot's but for version and repository", lambda r: None, True, r"member\(s\) checked",
-         deckpilot=lambda dp: None)
-    case("a manifest field that differs from DeckPilot's", manifest(lambda m: m.update(keywords=["x"]), H), False,
-         "`keywords` differs from DeckPilot's", deckpilot=lambda dp: None)
-    case("a locale that differs from DeckPilot's",
-         lambda r: (r / H / "locales/pl.json").write_text((r / H / "locales/pl.json").read_text() + " "), False,
-         "locales/pl.json differs", deckpilot=lambda dp: None)
-    case("a plugin DeckPilot no longer has is not compared", manifest(lambda m: m.update(keywords=["x"]), H), True,
-         r"member\(s\) checked", deckpilot=lambda dp: shutil.rmtree(dp / "plugins/first-party" / H))
+# held plugin and nothing else; --list marks it, --release refuses it. The
+# committed plugins.json holds none: the five privileged plugins are
+# released, exactly as reviewed; each case holds one again in its copy.
+if not HELD and len(REVIEWED) == len(PRIVILEGED):
+    passed += 1
+    print("ok   the committed plugins.json holds no plugin; the five privileged plugins are released")
+else:
+    failed += 1
+    print(f"FAIL the committed plugins.json still holds {[e['id'] for e in HELD]} or lacks a privileged plugin")
+hm = json.loads((ROOT / "official" / H / "manifest.json").read_text())
+case("--list marks a held plugin", hold(H), True,
+     rf"(?m)^{re.escape(H)} deckpilot\.{re.escape(H)} {re.escape(hm['version'])} \S+ held$", extra=["--list"])
+case("--list marks the five reviewed plugins released", lambda r: None, True,
+     "(?s)" + "".join(rf"(?=.*(?m:^{re.escape(x['path'])} {re.escape(x['id'])} \S+ \S+ plugin$))" for x in REVIEWED),
+     extra=["--list"])
+case("check prints every held plugin with its reason", hold(*PRIVILEGED), True,
+     "(?s)" + "".join(rf"(?=.*held: {re.escape(x['id'])} \S+: {re.escape(HELD_REASON)})" for x in REVIEWED))
+for x in REVIEWED:
+    case(f"--release accepts {x['id']}: exactly the approved record", lambda r: None, True, r"member\(s\) checked",
+         extra=["--release", x["id"]])
+    case(f"--release refuses {x['id']} held again", hold(x["path"]), False, "not a released official plugin",
+         extra=["--release", x["id"]])
+    case(f"{x['id']}, its review pending, is refused",
+         lambda r: edit_json(r / "privileged-policy.json", lambda d: d["review"].update(outcome="pending")),
+         False, "no approved security review", extra=["--release", x["id"]])
+case("held for nothing", lambda r: (held_entry(lambda e: e.update(permissions=[]))(r),
+                                    manifest(lambda m: (m.update(permissions=[]), m.pop("contributes", None)), H)(r)),
+     False, "nothing holds it")
+case("held without a reason", held_entry(lambda e: e.update(held=True)), False, "is a reason")
+case("held with an empty reason", held_entry(lambda e: e.update(held="  ")), False, "is a reason")
+case("held does not widen the permission policy",
+     lambda r: (hold(H)(r), manifest(lambda m: m["permissions"].append({"kind": "storage", "justification": "x"}), H)(r)),
+     False, "reviewed policy change")
+case("held does not widen process execution",
+     lambda r: (held_entry(lambda e: e["permissions"].append("tools"))(r),
+                manifest(lambda m: m["permissions"].append({"kind": "tools", "tools": [{"executable": "sh"}], "justification": "x"}), H)(r)),
+     False, "process execution")
+case("the contract equals DeckPilot's but for version and repository", lambda r: None, True, r"member\(s\) checked",
+     deckpilot=lambda dp: None)
+case("a manifest field that differs from DeckPilot's", manifest(lambda m: m.update(keywords=["x"]), H), False,
+     "`keywords` differs from DeckPilot's", deckpilot=lambda dp: None)
+case("a locale that differs from DeckPilot's",
+     lambda r: (r / H / "locales/pl.json").write_text((r / H / "locales/pl.json").read_text() + " "), False,
+     "locales/pl.json differs", deckpilot=lambda dp: None)
+case("a plugin DeckPilot no longer has is not compared", manifest(lambda m: m.update(keywords=["x"]), H), True,
+     r"member\(s\) checked", deckpilot=lambda dp: shutil.rmtree(dp / "plugins/first-party" / H))
 case("a held fixture", policy(lambda d: d["fixtures"][0].update(held="x")), False, "for a plugin only")
-RELEASED = next(e["path"] for e in POLICY["plugins"] if e.get("held") is None)
+RELEASED = next(e["path"] for e in POLICY["plugins"] if e["path"] not in PRIVILEGED)
 case("a privileged kind on a plugin that is not held", lambda r: (
      policy(lambda d: next(e for e in d["plugins"] if e["path"] == RELEASED)["permissions"].append("hostViews"))(r),
      manifest(lambda m: m["permissions"].append({"kind": "hostViews", "justification": "x"}), RELEASED)(r)),
@@ -169,13 +188,13 @@ case("a privileged kind on a plugin that is not held", lambda r: (
 case("versions differ", replace(f"{FIXTURE}/Cargo.toml", 'version = "0.1.0"', 'version = "0.1.1"'), False, "differs from manifest.json")
 
 # The reviewed privileged policy (official/privileged-policy.json, a copy of
-# DeckPilot's). The gate is closed in this repository; the cases with the
-# gate open run a copy of check-official.py with PRIVILEGED_GATE_OPEN = True
-# (the test's only), on a tree whose policy records an approved review.
+# DeckPilot's). The gate is open in this repository and the committed policy
+# records the approved review; the case_open cases run a copy of
+# check-official.py on a tree whose policy records the test's approved
+# review, with the privileged plugins not in `release` held again.
 GATE_LINE = "PRIVILEGED_GATE_OPEN = True\n"
 REVIEW = {"reviewer": "throwaway test reviewer", "date": "2026-11-21", "outcome": "approved",
           "record": "tools/tests/test_check_official.py"}
-PRIVILEGED = ["docker", "git", "projects", "workflows", "workspace"]
 
 
 def run_open(root, *extra):
@@ -190,14 +209,16 @@ def run_open(root, *extra):
 
 
 def case_open(name, change, want_ok, message="", extra=(), release=PRIVILEGED, deckpilot=None):
-    """With the gate open: `release` are the plugins no longer held."""
+    """With the gate open: `release` are the privileged plugins not held;
+    the others are held again."""
     global passed, failed
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp) / "official"
         shutil.copytree(ROOT / "official", root, ignore=shutil.ignore_patterns("target"))
         edit_json(root / "privileged-policy.json", lambda d: d.update(review=dict(REVIEW)))
         edit_json(root / "plugins.json",
-                  lambda d: [e.pop("held", None) for e in d["plugins"] if e["path"] in release])
+                  lambda d: [e.pop("held", None) if e["path"] in release else e.update(held=HELD_REASON)
+                             for e in d["plugins"] if e["path"] in PRIVILEGED])
         if deckpilot is not None:
             dp = Path(tmp) / "deckpilot"
             deckpilot(root, dp)
@@ -221,7 +242,7 @@ def reviewed_plugin(pid, fn):
     return privileged_policy(lambda d: fn(next(p for p in d["plugins"] if p["id"] == pid)))
 
 
-case("the gate is open, every privileged plugin still held", lambda r: None, True, r"member")
+case("the gate is open, the five reviewed plugins released", lambda r: None, True, r"member")
 gate = subprocess.run([sys.executable, "-I", str(CHECK), "--gate"], capture_output=True, text=True)
 if gate.stdout.strip() == "open" and gate.returncode == 0:
     passed += 1
@@ -407,11 +428,12 @@ cli = ROOT / ".work/bin/deckpilot-registry"
 RUST_USAGE = re.compile(r"^- (\S+): .* is only for DeckPilot's own plugins shipped inside the app", re.M)
 BUNDLED = ["docker", "git", "github", "gitlab", "jira", "notifications", "projects", "workflows", "workspace"]
 if deckpilot.is_dir() and cli.is_file():
-    # DeckPilot's nine manifests, then every held plugin's manifest here:
-    # what the package step must see refused, counted exactly as Rust does.
+    # DeckPilot's nine manifests, then every privileged plugin's manifest
+    # here: what the third-party rules refuse (and only the reviewed policy
+    # admits under --first-party), counted exactly as Rust does.
     targets = [(f"DeckPilot's {name}", deckpilot / name, name in {"docker", "git", "projects", "workflows", "workspace"})
                for name in BUNDLED]
-    targets += [(f"held official/{e['path']}", ROOT / "official" / e["path"], True) for e in HELD]
+    targets += [(f"official/{e['path']}", ROOT / "official" / e["path"], True) for e in REVIEWED]
     for label, directory, expected_some in targets:
         with tempfile.TemporaryDirectory() as tmp:
             # The manifest is checked before the module is read: any file

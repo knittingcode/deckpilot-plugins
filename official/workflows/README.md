@@ -49,19 +49,16 @@ byte-identical to DeckPilot's 0.1.0) and `repository` changed.
 and the icon with DeckPilot's at the pinned commit while DeckPilot still
 has them.
 
-## Release: held until the security review
+## Release: exactly as reviewed
 
-`hostViews` is a plugin API 1.9 privileged kind, which a signed release
-artifact cannot carry while the gate of DeckPilot's publisher signature
-is closed (`docs/marketplace/publisher-review-request.md` there). So the
-plugin is `held` in `../plugins.json`. At the pinned DeckPilot even its
-package is refused (`package --first-party`: `hostViews` and the
-`workflows` view are only for a plugin shipped inside the app), so on
-every pull request `check`, `test`, `repro` (the module) and `compare` run
-for it, `package` builds the module and requires exactly that refusal, and
-no release tag is accepted for it. Releasing it needs the security
-review to open the gate, then a reviewed change in DeckPilot (the
-packager's and the publisher verifier's first-party rules accepting
-`hostViews` in a signed artifact) and here (`held` removed, the pin
-moved), and the release prerequisites of `../README.md`. Until then DeckPilot keeps building it
-from its own `plugins/first-party/workflows`.
+`hostViews` and the `workflows` view are plugin API 1.9 privileged kinds.
+The security review (DeckPilot `docs/marketplace/publisher-review-request.md`)
+opened the privileged-kinds gate for exactly `../privileged-policy.json`,
+so 0.1.1 is a released plugin (no longer `held` in `../plugins.json`,
+2026-11-21): `package --first-party` packages it, its release tag is
+`deckpilot.workflows--v0.1.1`, and any manifest that is not exactly its
+reviewed entry (a new construct, another permission, another version) is
+refused by `tools/check-official.py` and the pinned DeckPilot's packager
+and publisher verifier. It never has a Marketplace entry (bundled in
+DeckPilot only). Until its release is in DeckPilot's `artifacts.json`,
+DeckPilot keeps building it from its own `plugins/first-party/workflows`.

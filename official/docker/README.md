@@ -109,13 +109,17 @@ patch version 0.1.1 (a rebuild here is not byte-identical to DeckPilot's
 0.1.0, and DeckPilot's released-pins guard forbids reusing a shipped
 version).
 
-**Privileged: not releasable yet.** It declares `tools` (process
-execution) and `resources`, plugin API 1.9 privileged kinds. While the
-privileged-kinds gate is closed (DeckPilot
-`docs/marketplace/publisher-review-request.md`, the independent security
-review) `tools/check-official.py` refuses it and no signed artifact can
-carry it; the execution model (only `docker`, arguments as an array, no
-shell, the working directory a bound project folder, time and output
-limits, consent on first use, the audit log) is the agent's and is never
-broadened by a change here. Until the review, DeckPilot keeps bundling its
-own build of 0.1.0.
+**Privileged: released exactly as reviewed.** It declares `tools`
+(process execution) and `resources`, plugin API 1.9 privileged kinds. The
+security review (DeckPilot `docs/marketplace/publisher-review-request.md`)
+opened the privileged-kinds gate for exactly `../privileged-policy.json`,
+so 0.1.1 is a released plugin (no longer `held`, 2026-11-21): its release
+tag is `deckpilot.docker--v0.1.1`, and `tools/check-official.py`, `package
+--first-party`, `release sign` and `release verify` refuse any manifest
+that is not exactly its reviewed entry (another executable, subcommand,
+construct or version). The execution model (only `docker`, arguments as an
+array, no shell, the working directory a bound project folder, time and
+output limits, consent on first use, the audit log) is the agent's and is
+never broadened by a change here. It never has a Marketplace entry (bundled
+in DeckPilot only); until its release is in DeckPilot's `artifacts.json`,
+DeckPilot keeps bundling its own build of 0.1.0.
