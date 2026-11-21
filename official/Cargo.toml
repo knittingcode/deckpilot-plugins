@@ -13,6 +13,7 @@ members = [
     "github",
     "gitlab",
     "jira",
+    "notifications",
     "test-fixtures/example-default",
 ]
 

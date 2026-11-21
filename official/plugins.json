@@ -16,6 +16,11 @@
       "path": "jira",
       "id": "deckpilot.jira",
       "permissions": ["credentials", "network", "openUrl"]
+    },
+    {
+      "path": "notifications",
+      "id": "deckpilot.notifications",
+      "permissions": ["notifications"]
     }
   ],
   "fixtures": [

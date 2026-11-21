@@ -1,0 +1,31 @@
+# deckpilot.notifications: the Notifications plugin DeckPilot bundles with
+# class `default` (seeded on every computer, fresh or upgraded, unless the
+# user removed it). Moved from DeckPilot's plugins/first-party/notifications
+# (0.1.1 at the pinned commit, tools/deckpilot.env) with its id, action ids,
+# settings and permission unchanged (src/tests.rs compares the manifest
+# with DeckPilot's 0.1.1).
+#
+# A member of the official/ workspace (official/Cargo.lock and the `guest`
+# profile), built for wasm32-unknown-unknown; the rlib crate type lets its
+# native unit tests run with plain `cargo test`.
+[package]
+name = "deckpilot-notifications"
+description = "DeckPilot's first-party Notifications plugin: notifications and run summaries from workflows"
+version = "0.1.2"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+deckpilot-plugin-sdk.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+jsonschema.workspace = true
+
+[lints]
+workspace = true
