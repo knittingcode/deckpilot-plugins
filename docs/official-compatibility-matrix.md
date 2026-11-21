@@ -26,7 +26,7 @@ The nine plugins DeckPilot bundles, as this repository builds, signs and
 | `deckpilot.jira` | `official/jira` | 0.1.2 | 0.1.1 | `>=0.6.0 <1.0.0` | `^1.0` | `network`, `credentials`, `openUrl` | none | no signed release | no: no signed release |
 | `deckpilot.notifications` | `official/notifications` | 0.1.2 | 0.1.1 | `>=0.6.0 <1.0.0` | `^1.0` | `notifications` | none | no signed release | no: no signed release |
 | `deckpilot.projects` | DeckPilot (not moved) | 0.1.0 | 0.1.0 | `>=0.10.0 <1.0.0` | `^1.9` | `projectContext*`, `resources*`, `profile`, `hostViews*` | none | no signed release | no: privileged-kinds gate closed |
-| `deckpilot.workflows` | DeckPilot (not moved) | 0.1.0 | 0.1.0 | `>=0.10.0 <1.0.0` | `^1.9` | `hostViews*` | none | no signed release | no: privileged-kinds gate closed |
+| `deckpilot.workflows` | `official/workflows` | 0.1.1 | 0.1.0 | `>=0.10.0 <1.0.0` | `^1.9` | `hostViews*` | none | no signed release | no: held (source only; privileged-kinds gate closed) |
 | `deckpilot.workspace` | DeckPilot (not moved) | 0.1.0 | 0.1.0 | `>=0.10.0 <1.0.0` | `^1.9` | `resources*`, `openUrl`, `profile` | `deckpilot.projects` `>=0.1.0 <1.0.0` (optional) | no signed release | no: privileged-kinds gate closed |
 
 `*` a plugin API 1.9 privileged kind: no signed artifact may carry it while the gate is
@@ -34,3 +34,8 @@ closed, so such a plugin has neither a release nor an entry. *Shipped in DeckPil
 highest version DeckPilot's `released-pins.json` records (the rollback floor of
 `release verify`). *Version*: the source (`official/<name>` once moved, else DeckPilot's
 at the pin).
+
+Held (`official/plugins.json` `held`): the source is on main, built, tested and compared;
+`package --first-party` must refuse it, and it is never signed, released or listed.
+
+* `deckpilot.workflows` 0.1.1: hostViews and the workflows host view are plugin API 1.9 privileged kinds: no package, signature, release or Marketplace entry until the security review of DeckPilot docs/marketplace/publisher-review-request.md opens the gate

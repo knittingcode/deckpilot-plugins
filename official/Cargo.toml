@@ -15,6 +15,7 @@ members = [
     "jira",
     "notifications",
     "test-fixtures/example-default",
+    "workflows",
 ]
 
 [workspace.package]
