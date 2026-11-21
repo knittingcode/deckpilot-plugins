@@ -18,6 +18,32 @@ the same.
 > *candidate* entry under `marketplace/`
 > ([docs/official-marketplace.md](../docs/official-marketplace.md)).
 
+## Moved plugins and the privileged-kinds gate
+
+A moved plugin is DeckPilot's `plugins/first-party/<name>` at the pinned
+commit with its version (a new patch: the bytes differ) and `repository`
+changed. Its `src/contract.rs` compares it with the pinned DeckPilot
+checkout while DeckPilot still has the source: the manifest (ids, action
+ids, parameter schemas, settings, permissions, dependencies) but those two
+fields, a higher version, and for Projects and Workspace also the files a
+bundle takes besides the module (`LICENSE`, `assets/`, `locales/`) byte for
+byte.
+
+| Plugin | Version (DeckPilot's) | Permission kinds | Gate status |
+| --- | --- | --- | --- |
+| `deckpilot.projects` | 0.1.1 (0.1.0) | `hostViews`, `profile`, `projectContext`, `resources` | held |
+| `deckpilot.workspace` | 0.1.1 (0.1.0) | `openUrl` (`fromParams`), `profile`, `resources` | held |
+
+Workspace's optional dependency on `deckpilot.projects` (`>=0.1.0 <1.0.0`)
+is DeckPilot's, unchanged, and 0.1.1 satisfies it.
+
+Both are `held` in `plugins.json` (see "Held plugins" below): their
+source is on main and goes through `check`, `test` and `compare`, while
+`package --first-party` must refuse them and they are never signed,
+released or given a Marketplace entry until the security review of
+DeckPilot's `docs/marketplace/publisher-review-request.md` opens the gate,
+in a reviewed change here and in DeckPilot.
+
 ## Layout
 
 ```text
@@ -98,7 +124,9 @@ own build of the version it shipped.
 | --- | --- |
 | `deckpilot.docker` 0.1.1 | the `tools` permission (docker only), the `resources` permission, `resource` action parameters |
 | `deckpilot.git` 0.1.1 | the `tools` permission (git only), the `resources` permission, `resource` action parameters |
+| `deckpilot.projects` 0.1.1 | the `projectContext`, `resources` and `hostViews` permissions, `node.changesContext`, `host:project.*` variable sources, the `projects` view, `statusItems`, `dashboardCards` |
 | `deckpilot.workflows` 0.1.1 | the `hostViews` permission and the `workflows` host view |
+| `deckpilot.workspace` 0.1.1 | the `resources` permission, `resource` action parameters, `openUrl.fromParams` |
 
 ## Releases
 

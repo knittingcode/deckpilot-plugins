@@ -35,10 +35,22 @@
       "permissions": ["notifications"]
     },
     {
+      "path": "projects",
+      "id": "deckpilot.projects",
+      "permissions": ["hostViews", "profile", "projectContext", "resources"],
+      "held": "the projectContext, resources and hostViews permissions, node.changesContext actions, host:project.* variable sources, the projects host view, statusItems and dashboardCards are plugin API 1.9 privileged kinds: no package, signature, release or Marketplace entry until the security review of DeckPilot docs/marketplace/publisher-review-request.md opens the gate"
+    },
+    {
       "path": "workflows",
       "id": "deckpilot.workflows",
       "permissions": ["hostViews"],
       "held": "hostViews and the workflows host view are plugin API 1.9 privileged kinds: no package, signature, release or Marketplace entry until the security review of DeckPilot docs/marketplace/publisher-review-request.md opens the gate"
+    },
+    {
+      "path": "workspace",
+      "id": "deckpilot.workspace",
+      "permissions": ["openUrl", "profile", "resources"],
+      "held": "the resources permission, resource action parameters and openUrl.fromParams are plugin API 1.9 privileged kinds: no package, signature, release or Marketplace entry until the security review of DeckPilot docs/marketplace/publisher-review-request.md opens the gate"
     }
   ],
   "fixtures": [

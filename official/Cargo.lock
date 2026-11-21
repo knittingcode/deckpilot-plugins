@@ -206,7 +206,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "deckpilot-projects"
+version = "0.1.1"
+dependencies = [
+ "deckpilot-plugin-sdk",
+ "jsonschema",
+ "serde_json",
+]
+
+[[package]]
 name = "deckpilot-workflows"
+version = "0.1.1"
+dependencies = [
+ "deckpilot-plugin-sdk",
+ "jsonschema",
+ "serde_json",
+]
+
+[[package]]
+name = "deckpilot-workspace"
 version = "0.1.1"
 dependencies = [
  "deckpilot-plugin-sdk",

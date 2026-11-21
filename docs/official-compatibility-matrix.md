@@ -25,9 +25,9 @@ The nine plugins DeckPilot bundles, as this repository builds, signs and
 | `deckpilot.gitlab` | `official/gitlab` | 0.1.2 | 0.1.1 | `>=0.6.0 <1.0.0` | `^1.0` | `network`, `credentials`, `openUrl` | none | no signed release | no: no signed release |
 | `deckpilot.jira` | `official/jira` | 0.1.2 | 0.1.1 | `>=0.6.0 <1.0.0` | `^1.0` | `network`, `credentials`, `openUrl` | none | no signed release | no: no signed release |
 | `deckpilot.notifications` | `official/notifications` | 0.1.2 | 0.1.1 | `>=0.6.0 <1.0.0` | `^1.0` | `notifications` | none | no signed release | no: no signed release |
-| `deckpilot.projects` | DeckPilot (not moved) | 0.1.0 | 0.1.0 | `>=0.10.0 <1.0.0` | `^1.9` | `projectContext*`, `resources*`, `profile`, `hostViews*` | none | no signed release | no: privileged-kinds gate closed |
+| `deckpilot.projects` | `official/projects` | 0.1.1 | 0.1.0 | `>=0.10.0 <1.0.0` | `^1.9` | `projectContext*`, `resources*`, `profile`, `hostViews*` | none | no signed release | no: held (source only; privileged-kinds gate closed) |
 | `deckpilot.workflows` | `official/workflows` | 0.1.1 | 0.1.0 | `>=0.10.0 <1.0.0` | `^1.9` | `hostViews*` | none | no signed release | no: held (source only; privileged-kinds gate closed) |
-| `deckpilot.workspace` | DeckPilot (not moved) | 0.1.0 | 0.1.0 | `>=0.10.0 <1.0.0` | `^1.9` | `resources*`, `openUrl`, `profile` | `deckpilot.projects` `>=0.1.0 <1.0.0` (optional) | no signed release | no: privileged-kinds gate closed |
+| `deckpilot.workspace` | `official/workspace` | 0.1.1 | 0.1.0 | `>=0.10.0 <1.0.0` | `^1.9` | `resources*`, `openUrl`, `profile` | `deckpilot.projects` `>=0.1.0 <1.0.0` (optional) | no signed release | no: held (source only; privileged-kinds gate closed) |
 
 `*` a plugin API 1.9 privileged kind: no signed artifact may carry it while the gate is
 closed, so such a plugin has neither a release nor an entry. *Shipped in DeckPilot*: the
@@ -40,4 +40,6 @@ Held (`official/plugins.json` `held`): the source is on main, built, tested and 
 
 * `deckpilot.docker` 0.1.1: the tools permission (process execution, the docker executable only), the resources permission and resource action parameters are plugin API 1.9 privileged kinds: no package, signature, release or Marketplace entry until the security review of DeckPilot docs/marketplace/publisher-review-request.md opens the gate
 * `deckpilot.git` 0.1.1: the tools permission (process execution, the git executable only), the resources permission and resource action parameters are plugin API 1.9 privileged kinds: no package, signature, release or Marketplace entry until the security review of DeckPilot docs/marketplace/publisher-review-request.md opens the gate
+* `deckpilot.projects` 0.1.1: the projectContext, resources and hostViews permissions, node.changesContext actions, host:project.* variable sources, the projects host view, statusItems and dashboardCards are plugin API 1.9 privileged kinds: no package, signature, release or Marketplace entry until the security review of DeckPilot docs/marketplace/publisher-review-request.md opens the gate
 * `deckpilot.workflows` 0.1.1: hostViews and the workflows host view are plugin API 1.9 privileged kinds: no package, signature, release or Marketplace entry until the security review of DeckPilot docs/marketplace/publisher-review-request.md opens the gate
+* `deckpilot.workspace` 0.1.1: the resources permission, resource action parameters and openUrl.fromParams are plugin API 1.9 privileged kinds: no package, signature, release or Marketplace entry until the security review of DeckPilot docs/marketplace/publisher-review-request.md opens the gate
