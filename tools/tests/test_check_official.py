@@ -115,7 +115,7 @@ case("process execution", manifest(lambda m: m["permissions"].append({"kind": "t
 case("a privileged kind", manifest(lambda m: m["permissions"].append({"kind": "hostViews", "justification": "x"})), False,
      "gate is closed|does not admit it")
 case("a plugin API the pin does not provide", manifest(lambda m: m["engines"].update(pluginApi="^1.99")), False, "not satisfied")
-case("a DeckPilot range without the pin", manifest(lambda m: m["engines"].update(deckpilot=">=0.11.0 <1.0.0")), False, "does not accept")
+case("a DeckPilot range without the pin", manifest(lambda m: m["engines"].update(deckpilot=">=0.12.0 <1.0.0")), False, "does not accept")
 case("another publisher", manifest(lambda m: m["publisher"].update(id="acme")), False, "publisher.id")
 case("a fixture with a bundled id", manifest(lambda m: m.update(id="deckpilot.github")), False, r"plugins.json's|fixture")
 case("a released plugin that DeckPilot does not bundle",
@@ -133,8 +133,13 @@ if HELD:
     for x in HELD:
         case(f"--release refuses held {x['id']}", lambda r: None, False, "not a released official plugin",
              extra=["--release", x["id"]])
-        case(f"{x['id']} without held is refused (gate closed)",
-             policy(lambda d, i=x["id"]: next(p for p in d["plugins"] if p["id"] == i).pop("held")), False, "gate is closed")
+        case(f"{x['id']} without held passes: exactly the approved record",
+             policy(lambda d, i=x["id"]: next(p for p in d["plugins"] if p["id"] == i).pop("held")), True,
+             r"member\(s\) checked")
+        case(f"{x['id']} without held, its review pending, is refused",
+             lambda r, i=x["id"]: (policy(lambda d: next(p for p in d["plugins"] if p["id"] == i).pop("held"))(r),
+                                   edit_json(r / "privileged-policy.json", lambda d: d["review"].update(outcome="pending"))),
+             False, "no approved security review")
     case("held for nothing", lambda r: (held_entry(lambda e: e.update(permissions=[]))(r),
                                         manifest(lambda m: (m.update(permissions=[]), m.pop("contributes", None)), H)(r)),
          False, "nothing holds it")
@@ -167,7 +172,7 @@ case("versions differ", replace(f"{FIXTURE}/Cargo.toml", 'version = "0.1.0"', 'v
 # DeckPilot's). The gate is closed in this repository; the cases with the
 # gate open run a copy of check-official.py with PRIVILEGED_GATE_OPEN = True
 # (the test's only), on a tree whose policy records an approved review.
-GATE_LINE = "PRIVILEGED_GATE_OPEN = False\n"
+GATE_LINE = "PRIVILEGED_GATE_OPEN = True\n"
 REVIEW = {"reviewer": "throwaway test reviewer", "date": "2026-11-21", "outcome": "approved",
           "record": "tools/tests/test_check_official.py"}
 PRIVILEGED = ["docker", "git", "projects", "workflows", "workspace"]
@@ -177,7 +182,7 @@ def run_open(root, *extra):
     script = Path(root).parent / "check-official-open.py"
     text = CHECK.read_text()
     assert text.count(GATE_LINE) == 1
-    script.write_text(text.replace(GATE_LINE, "PRIVILEGED_GATE_OPEN = True\n"))
+    script.write_text(text)
     args = [sys.executable, "-I", str(script), "--root", str(root), "--commit", COMMIT,
             "--app-version", ENV["DECKPILOT_VERSION"], "--plugin-api", ENV["DECKPILOT_PLUGIN_API"], *extra]
     p = subprocess.run(args, capture_output=True, text=True)
@@ -216,16 +221,17 @@ def reviewed_plugin(pid, fn):
     return privileged_policy(lambda d: fn(next(p for p in d["plugins"] if p["id"] == pid)))
 
 
-case("the gate is closed", lambda r: None, True, r"member")
+case("the gate is open, every privileged plugin still held", lambda r: None, True, r"member")
 gate = subprocess.run([sys.executable, "-I", str(CHECK), "--gate"], capture_output=True, text=True)
-if gate.stdout.strip() == "closed" and gate.returncode == 0:
+if gate.stdout.strip() == "open" and gate.returncode == 0:
     passed += 1
-    print("ok   --gate prints closed")
+    print("ok   --gate prints open")
 else:
     failed += 1
     print(f"FAIL --gate: {gate.stdout!r} {gate.returncode}")
-case("the committed policy records no review",
-     lambda r: None if json.loads((r / "privileged-policy.json").read_text())["review"] is None else 1 / 0, True, "member")
+case("the committed policy records the approved review",
+     lambda r: None if json.loads((r / "privileged-policy.json").read_text())["review"]["outcome"] == "approved" else 1 / 0,
+     True, "member")
 case("an invalid policy: threshold 1", privileged_policy(lambda d: d.update(minThreshold=1)), False, "minThreshold")
 case("an invalid policy: another plugin", reviewed_plugin("deckpilot.workflows", lambda p: p.update(id="deckpilot.github")),
      False, "not one of DeckPilot's privileged plugins")
@@ -387,11 +393,12 @@ for name, change, path in [
 case("a text parameter is not privileged", first_action(lambda a: a["parameters"].append({"key": "x", "label": "X", "kind": {"type": "text"}})), True, r"member\(s\) checked")
 
 # The mirror against the Rust validator itself, on DeckPilot's nine bundled
-# manifests at the pin: the pinned deckpilot-registry's `package
-# --first-party` (Manifest::validate_first_party) reports every privileged
-# usage as `- <path>: ... is only for DeckPilot's own plugins shipped inside
-# the app`; privileged_usages must report exactly the same paths. In CI
-# (CI=true) the pinned checkout and CLI are required.
+# manifests at the pin: the pinned deckpilot-registry's `package` with the
+# third-party rules (Manifest::validate, whatever the privileged-kinds gate:
+# with it open, `--first-party` admits the reviewed manifests instead)
+# reports every privileged usage as `- <path>: ... is only for DeckPilot's
+# own plugins shipped inside the app`; privileged_usages must report exactly
+# the same paths. In CI (CI=true) the pinned checkout and CLI are required.
 spec = __import__("importlib.util").util.spec_from_file_location("check_official", CHECK)
 RULES = __import__("importlib.util").util.module_from_spec(spec)
 spec.loader.exec_module(RULES)
@@ -410,8 +417,7 @@ if deckpilot.is_dir() and cli.is_file():
             # The manifest is checked before the module is read: any file
             # serves as the module, and the run fails either way.
             out = subprocess.run([str(cli), "package", "--plugin-dir", str(directory), "--module",
-                                  str(directory / "manifest.json"), "--out", str(Path(tmp) / "x.dpplugin"),
-                                  "--first-party"], capture_output=True, text=True)
+                                  str(directory / "manifest.json"), "--out", str(Path(tmp) / "x.dpplugin")], capture_output=True, text=True)
         rust = sorted(RUST_USAGE.findall(out.stdout + out.stderr))
         ours = sorted(path for path, _ in RULES.privileged_usages(json.loads((directory / "manifest.json").read_text())))
         if out.returncode != 0 and rust == ours and bool(rust) == expected_some:

@@ -825,7 +825,7 @@ def matrix(deckpilot):
         else:
             signature = "no signed release"
         if entry and entry.get("held") is not None:
-            market = "no: held (source only; privileged-kinds gate closed)"
+            market = "no: held (source only; released one at a time by a reviewed change; bundled in DeckPilot only)" if RULES.PRIVILEGED_GATE_OPEN else "no: held (source only; privileged-kinds gate closed)"
             held.append(f"* `{pid}` {manifest.get('version', '?')}: {entry['held']}")
         elif privileged(manifest):
             market = "no: privileged (bundled in DeckPilot only)"
@@ -867,8 +867,9 @@ def matrix(deckpilot):
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
         *rows,
         "",
-        "`*` a plugin API 1.9 privileged kind: no signed artifact may carry it while the gate is",
-        "closed, so such a plugin has neither a release nor an entry. *Shipped in DeckPilot*: the",
+        "`*` a plugin API 1.9 privileged kind: a signed artifact may carry it only exactly as the",
+        "reviewed privileged policy lists it, with the gate open, and such a plugin never has a",
+        "Marketplace entry (bundled in DeckPilot only). *Shipped in DeckPilot*: the",
         "highest version DeckPilot's `released-pins.json` records (the rollback floor of",
         "`release verify`). *Version*: the source (`official/<name>` once moved, else DeckPilot's",
         "at the pin).",

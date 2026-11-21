@@ -79,9 +79,13 @@ BUNDLED_PLUGIN_IDS = frozenset({
 PRIVILEGED_KINDS = frozenset({"tools", "resources", "projectContext", "hostViews"})
 # ViewKind::is_host_view: the app's own screens.
 HOST_VIEW_KINDS = frozenset({"workflows", "projects"})
-# The privileged-kinds gate of DeckPilot's publisher signature: closed until
-# the security review. Opening it is a reviewed change here AND in DeckPilot.
-PRIVILEGED_GATE_OPEN = False
+# The privileged-kinds gate of DeckPilot's publisher signature. Opening it is
+# a reviewed change here AND in DeckPilot (this one, pending the owner's
+# approval after the independent security review). Open, it still admits
+# nothing until official/privileged-policy.json records the review as
+# approved (reviewed_reasons), and only once the pinned DeckPilot carries
+# that same record (check --deckpilot).
+PRIVILEGED_GATE_OPEN = True
 # Process execution, ever: only these plugins, only these executables.
 PROCESS_ALLOW_LIST = {"deckpilot.git": ["git"], "deckpilot.docker": ["docker"]}
 # The reviewed privileged policy (DeckPilot privileged_policy.rs): its copy

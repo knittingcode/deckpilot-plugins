@@ -9,28 +9,29 @@ The nine plugins DeckPilot bundles, as this repository builds, signs and
 
 | Host | |
 | --- | --- |
-| DeckPilot version (pin) | 0.10.0 |
+| DeckPilot version (pin) | 0.11.0 |
 | Plugin API | 1.9 |
-| DeckPilot commit (`tools/deckpilot.env`) | `ce81ab4766143ded12e6cde15628b053b511c5c3` |
-| SDK pin (`official/Cargo.toml` rev) | `ce81ab4766143ded12e6cde15628b053b511c5c3` |
+| DeckPilot commit (`tools/deckpilot.env`) | `8dc27d5a52d0fd9407644fc9562840f458063373` |
+| SDK pin (`official/Cargo.toml` rev) | `8dc27d5a52d0fd9407644fc9562840f458063373` |
 | Publisher keys pinned in DeckPilot | 2 (threshold 2): `BDCDC80985EB60B5`, `8C3C4E42700FA702` |
-| Privileged-kinds gate | closed |
+| Privileged-kinds gate | open |
 | Registry serves bundled ids | no (not copied into registry/; DeckPilot accepts them only as releases signed by 2 distinct pinned publisher keys) |
 
 | Plugin | Source | Version | Shipped in DeckPilot | `engines.deckpilot` | `engines.pluginApi` | Permissions | Dependencies | Signature | Marketplace |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `deckpilot.docker` | `official/docker` | 0.1.1 | 0.1.0 | `>=0.9.0 <1.0.0` | `^1.9` | `tools(docker)*`, `resources*`, `profile`, `device` | `deckpilot.projects` `>=0.1.0 <1.0.0` (optional) | no signed release | no: held (source only; privileged-kinds gate closed) |
-| `deckpilot.git` | `official/git` | 0.1.1 | 0.1.0 | `>=0.9.0 <1.0.0` | `^1.9` | `tools(git)*`, `resources*`, `profile`, `device` | `deckpilot.projects` `>=0.1.0 <1.0.0` (optional) | no signed release | no: held (source only; privileged-kinds gate closed) |
+| `deckpilot.docker` | `official/docker` | 0.1.1 | 0.1.0 | `>=0.9.0 <1.0.0` | `^1.9` | `tools(docker)*`, `resources*`, `profile`, `device` | `deckpilot.projects` `>=0.1.0 <1.0.0` (optional) | no signed release | no: held (source only; released one at a time by a reviewed change; bundled in DeckPilot only) |
+| `deckpilot.git` | `official/git` | 0.1.1 | 0.1.0 | `>=0.9.0 <1.0.0` | `^1.9` | `tools(git)*`, `resources*`, `profile`, `device` | `deckpilot.projects` `>=0.1.0 <1.0.0` (optional) | no signed release | no: held (source only; released one at a time by a reviewed change; bundled in DeckPilot only) |
 | `deckpilot.github` | `official/github` | 0.2.1 | 0.2.0 | `>=0.6.0 <1.0.0` | `^1.0` | `network`, `credentials`, `openUrl` | none | no signed release | no: no signed release |
 | `deckpilot.gitlab` | `official/gitlab` | 0.1.2 | 0.1.1 | `>=0.6.0 <1.0.0` | `^1.0` | `network`, `credentials`, `openUrl` | none | no signed release | no: no signed release |
 | `deckpilot.jira` | `official/jira` | 0.1.2 | 0.1.1 | `>=0.6.0 <1.0.0` | `^1.0` | `network`, `credentials`, `openUrl` | none | no signed release | no: no signed release |
 | `deckpilot.notifications` | `official/notifications` | 0.1.2 | 0.1.1 | `>=0.6.0 <1.0.0` | `^1.0` | `notifications` | none | no signed release | no: no signed release |
-| `deckpilot.projects` | `official/projects` | 0.1.1 | 0.1.0 | `>=0.10.0 <1.0.0` | `^1.9` | `projectContext*`, `resources*`, `profile`, `hostViews*` | none | no signed release | no: held (source only; privileged-kinds gate closed) |
-| `deckpilot.workflows` | `official/workflows` | 0.1.1 | 0.1.0 | `>=0.10.0 <1.0.0` | `^1.9` | `hostViews*` | none | no signed release | no: held (source only; privileged-kinds gate closed) |
-| `deckpilot.workspace` | `official/workspace` | 0.1.1 | 0.1.0 | `>=0.10.0 <1.0.0` | `^1.9` | `resources*`, `openUrl`, `profile` | `deckpilot.projects` `>=0.1.0 <1.0.0` (optional) | no signed release | no: held (source only; privileged-kinds gate closed) |
+| `deckpilot.projects` | `official/projects` | 0.1.1 | 0.1.0 | `>=0.10.0 <1.0.0` | `^1.9` | `projectContext*`, `resources*`, `profile`, `hostViews*` | none | no signed release | no: held (source only; released one at a time by a reviewed change; bundled in DeckPilot only) |
+| `deckpilot.workflows` | `official/workflows` | 0.1.1 | 0.1.0 | `>=0.10.0 <1.0.0` | `^1.9` | `hostViews*` | none | no signed release | no: held (source only; released one at a time by a reviewed change; bundled in DeckPilot only) |
+| `deckpilot.workspace` | `official/workspace` | 0.1.1 | 0.1.0 | `>=0.10.0 <1.0.0` | `^1.9` | `resources*`, `openUrl`, `profile` | `deckpilot.projects` `>=0.1.0 <1.0.0` (optional) | no signed release | no: held (source only; released one at a time by a reviewed change; bundled in DeckPilot only) |
 
-`*` a plugin API 1.9 privileged kind: no signed artifact may carry it while the gate is
-closed, so such a plugin has neither a release nor an entry. *Shipped in DeckPilot*: the
+`*` a plugin API 1.9 privileged kind: a signed artifact may carry it only exactly as the
+reviewed privileged policy lists it, with the gate open, and such a plugin never has a
+Marketplace entry (bundled in DeckPilot only). *Shipped in DeckPilot*: the
 highest version DeckPilot's `released-pins.json` records (the rollback floor of
 `release verify`). *Version*: the source (`official/<name>` once moved, else DeckPilot's
 at the pin).
