@@ -3,7 +3,9 @@
 # ruleset), `<id>--v<version>` of a plugin DeckPilot bundles, and only once
 # the owner has set it up: the repository variable OFFICIAL_RELEASE_ENABLED
 # is `true`, the environment official-release exists (tag deckpilot.*--v*
-# only, required reviewers, no administrator bypass) and holds the TWO
+# only, no administrator bypass, authorized by the admin-only tag ruleset:
+# the single-maintainer model, docs/release-governance.md; a required
+# reviewer is accepted too) and holds the TWO
 # publisher keys the owner made (DECKPILOT_PUBLISHER_KEY_A with
 # DECKPILOT_PUBLISHER_KEY_A_PASSWORD, DECKPILOT_PUBLISHER_KEY_B with
 # DECKPILOT_PUBLISHER_KEY_B_PASSWORD), and DeckPilot pins both public keys
@@ -14,8 +16,11 @@
 # Jobs, in order:
 #   resolve   the tag names a released plugin at its manifest version, at a
 #             commit on main
-#   gate      UNPRIVILEGED: official-release is protected as required, and
-#             every required check of main passed for the tagged commit
+#   gate      UNPRIVILEGED: official-release is protected as required (tag
+#             policy deckpilot.*--v*, no administrator bypass, and the
+#             admin-only tag ruleset or a required reviewer authorizes the
+#             run), and every required check of main passed for the tagged
+#             commit
 #   checks    UNPRIVILEGED: checks, tests, the comparison with DeckPilot
 #   build-a,  UNPRIVILEGED (no environment, no secret, contents: read): two
 #   build-b   independent builds of the tagged commit, each on its own fresh
@@ -115,11 +120,12 @@ jobs:
           persist-credentials: false
           ref: ${{ needs.resolve.outputs.commit }}
           sparse-checkout: tools
-      - name: official-release deploys official release tags only, with a reviewer
+      - name: official-release deploys official release tags only and authorizes every run
         env:
           GH_TOKEN: ${{ github.token }}
-          # Owner settings (docs/separation.md): at least N listed reviewers,
-          # and the person who starts a run cannot approve it.
+          # Optional, unset for one maintainer (docs/release-governance.md):
+          # at least N listed reviewers, and the person who starts a run
+          # cannot approve it. For when a second maintainer joins.
           REQUIRE_REVIEWERS: ${{ vars.OFFICIAL_RELEASE_REQUIRE_REVIEWERS }}
           REQUIRE_PREVENT_SELF_REVIEW: ${{ vars.OFFICIAL_RELEASE_REQUIRE_PREVENT_SELF_REVIEW }}
         run: tools/check-environment.sh official-release

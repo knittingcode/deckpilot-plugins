@@ -59,11 +59,13 @@ needs an application release.
   checkouts that keep credentials.
 - `tools/check-hygiene.py` refuses committed keys and generated output.
 - `tools/check-environment.sh official-release`: tags `deckpilot.*--v*`
-  only, a required reviewer (no ruleset stands in for one), no
-  administrator bypass; stricter on the owner's settings
-  (`OFFICIAL_RELEASE_REQUIRE_REVIEWERS`,
-  `OFFICIAL_RELEASE_REQUIRE_PREVENT_SELF_REVIEW`,
-  [official/README.md](../official/README.md)).
+  only, no administrator bypass, and every run authorized by the active,
+  admin-only tag ruleset (no exclusion, unbypassable by the workflow
+  token) or by a required reviewer; stricter when the optional variables
+  are set (`OFFICIAL_RELEASE_REQUIRE_REVIEWERS`,
+  `OFFICIAL_RELEASE_REQUIRE_PREVENT_SELF_REVIEW`, unset under the
+  single-maintainer exception,
+  [release-governance.md](release-governance.md)).
 - `tools/check-workflows.py` also reads `secrets['NAME']` and refuses any
   other use of the secrets context (`toJSON(secrets)`, a computed index)
   and an environment named by an expression.

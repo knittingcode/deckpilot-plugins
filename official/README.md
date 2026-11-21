@@ -150,14 +150,24 @@ entry: it reaches users only bundled in DeckPilot.
 
 ## Releases
 
+Who may authorize a release, and what the two keys do and do not prove:
+[docs/release-governance.md](../docs/release-governance.md). DeckPilot has
+one maintainer, so releases run under a **documented single-maintainer
+exception** (2026-11-21): the owner is the sole release approver and the
+release tag is the authorization (tag authority); both keys stay
+mandatory (threshold 2, two signing jobs) and are both controlled by the
+owner, which is **not** independent custody.
+
 `official-release.yml`, for a tag `deckpilot.<name>--v<version>` that the
 owner creates (tags are admin-only), only when the owner has set it up:
 
 1. `resolve`: `OFFICIAL_RELEASE_ENABLED` is `true`; the tag names a released
    plugin at its manifest version, at a commit on `main`.
 2. `gate`: `tools/check-environment.sh official-release` (tags
-   `deckpilot.*--v*` only, a required reviewer, no administrator bypass) and
-   every required check of `main` passed for the commit.
+   `deckpilot.*--v*` only, no administrator bypass, and the run authorized
+   by the admin-only tag ruleset *Protect tags* or by a required reviewer;
+   the optional reviewer variables, if set, met) and every required check
+   of `main` passed for the commit.
 3. `checks` (no secret): checks, tests, the comparison with DeckPilot.
 4. `build-a` and `build-b` (no secret): two independent builds of the tagged
    commit, each on its own fresh runner, with nothing run before them;
@@ -166,9 +176,9 @@ owner creates (tags are admin-only), only when the owner has set it up:
    hands on build-a's package sha256 and size.
 6. `cli` (no secret) builds the pinned `deckpilot-registry` (DeckPilot code
    only) and hands it on as an artifact with its sha256.
-7. `sign-a` and `sign-b` (environment `official-release`, each a
-   deployment its reviewers approve): **two publisher keys, one per
-   job**. `sign-a` holds only `DECKPILOT_PUBLISHER_KEY_A` and its password, `sign-b` only
+7. `sign-a` and `sign-b` (environment `official-release`; deployments
+   only from the tag, approved by its required reviewers if it lists any):
+   **two publisher keys, one per job**. `sign-a` holds only `DECKPILOT_PUBLISHER_KEY_A` and its password, `sign-b` only
    `DECKPILOT_PUBLISHER_KEY_B` and its password; no runner ever has both.
    Each compiles nothing: it installs the `cli` job's binaries only if
    their sha256 match (`tools/cli-artifact.sh`) and re-checks build-a's
@@ -249,22 +259,26 @@ require every signer to be one of its keys, and nothing passes `--keys`.
 
 Not done by anyone yet; creating or rotating these secrets is the owner's:
 
-1. Create the **two** publisher keys offline, each by its own holder, on
-   separate machines, each with its own strong password:
+1. Create the **two** publisher keys offline, each with its own strong
+   password (under the default policy each by its own holder, on separate
+   machines; under the single-maintainer exception both by the owner):
    `deckpilot-registry keys generate --role publisher --out publisher-a.key`
    (and `publisher-b.key`), or `minisign -G`; keep encrypted offline
    backups. Note each key id, 16 uppercase hex:
    `python3 -I tools/lib/minisign_keyid.py publisher-a.key.pub` (the same
    id the `.pub` file's comment `minisign public key: <KEYID>` names).
-2. In the environment `official-release` (already created: deployment
-   tags `deckpilot.*--v*` only, required reviewers, prevent self-review,
-   administrators cannot bypass) add the secrets
+2. In the environment `official-release` (deployment tags
+   `deckpilot.*--v*` only, administrators cannot bypass; under the
+   single-maintainer exception no required reviewer, see
+   [the settings](../docs/release-governance.md#settings-of-the-exception))
+   add the secrets
    `DECKPILOT_PUBLISHER_KEY_A` (key A's secret key file text) and
    `DECKPILOT_PUBLISHER_KEY_A_PASSWORD`, `DECKPILOT_PUBLISHER_KEY_B` and
    `DECKPILOT_PUBLISHER_KEY_B_PASSWORD`. Nothing else holds them.
-3. Add the second required reviewer, so the gate's
-   `OFFICIAL_RELEASE_REQUIRE_REVIEWERS=2` is met (it fails closed until
-   then).
+3. Leave `OFFICIAL_RELEASE_REQUIRE_REVIEWERS` and
+   `OFFICIAL_RELEASE_REQUIRE_PREVENT_SELF_REVIEW` unset while there is one
+   maintainer (set, they fail closed until a second maintainer is listed;
+   [transition](../docs/release-governance.md#transition-to-team-governance)).
 4. Pin both public keys with `threshold: 2` in DeckPilot's
    `crates/deckpilot-plugin-registry/publisher/first-party.json` in a
    reviewed pull request, then move `tools/deckpilot.env` here to that
@@ -272,8 +286,9 @@ Not done by anyone yet; creating or rotating these secrets is the owner's:
    lower threshold). **Done 2026-11-21**: key A `BDCDC80985EB60B5`, key B
    `8C3C4E42700FA702`, threshold 2 (DeckPilot
    `docs/marketplace/publisher-signature.md`, "Provisioning"). Both keys
-   are currently held in one 1Password vault of one account; independent
-   custody needs a second person holding key B (pending).
+   are held in one 1Password vault of one account, the owner's: no
+   independent custody, an accepted risk of the single-maintainer
+   exception; independent custody needs a second maintainer holding key B.
    Then run the [key test](#key-test-of-the-publisher-keys) once.
 5. Have the security review of DeckPilot's
    `docs/marketplace/publisher-review-request.md` done (it also decides
@@ -282,14 +297,18 @@ Not done by anyone yet; creating or rotating these secrets is the owner's:
 
 Decisions only the owner can make (nothing here changes live settings):
 
-- **Who may approve a signing run.** `check-environment.sh official-release`
-  needs one required reviewer by default. The repository variables
+- **Who may approve a signing run.** Decided 2026-11-21: the owner alone,
+  by creating the tag (tag authority,
+  [docs/release-governance.md](../docs/release-governance.md)).
+  `check-environment.sh official-release` accepts the active, admin-only
+  tag ruleset *Protect tags* as the authorization, or a required reviewer
+  if one is listed. The repository variables
   `OFFICIAL_RELEASE_REQUIRE_REVIEWERS` (for example `2`: at least two listed
-  reviewers; GitHub then waits for one of them) and
-  `OFFICIAL_RELEASE_REQUIRE_PREVENT_SELF_REVIEW` (`true`: the environment's
-  "Prevent self-review" must be on, so whoever starts a run cannot approve
-  it) make the gate stricter; together they mean someone other than the
-  person who pushed the tag approves the signature. Set the environment
+  reviewers) and `OFFICIAL_RELEASE_REQUIRE_PREVENT_SELF_REVIEW` (`true`:
+  the environment's "Prevent self-review" must be on) are unset; they are
+  for a second maintainer. GitHub then still waits for **one** approval,
+  from a listed reviewer other than the person who started the run: one
+  initiator and one approver, not two approvals. Set the environment
   first, then the variables.
 - **Required checks.** The `main` ruleset requires six checks; *Official
   plugins* (the official/ pipeline and the two independent builds) is not
@@ -330,11 +349,10 @@ and `official-release.yml` never act on it.
 **Owner steps (each run):**
 
 1. Prerequisites, as for a release: the four secrets in `official-release`
-   (present), and the gate's reviewer rules met. With the current
-   variables (`OFFICIAL_RELEASE_REQUIRE_REVIEWERS=2`,
-   `OFFICIAL_RELEASE_REQUIRE_PREVENT_SELF_REVIEW=true`) the environment
-   must list at least two required reviewers, and the person who starts
-   the run cannot approve it: someone else on the list approves.
+   (present), and the gate's settings met: under the single-maintainer
+   exception no required reviewer and the reviewer variables unset, the
+   tag being authorized by *Protect tags* (which covers
+   `deckpilot.publisher-test--v<n>`).
 2. Pick the next unused run number `<n>` (1 to 9999; `git ls-remote --tags
    origin 'deckpilot.publisher-test--v*'`) and create the tag on the
    current `main` (tags are admin-only):
@@ -346,8 +364,8 @@ and `official-release.yml` never act on it.
    Pushing it starts nothing.
 3. Start the key test on that tag:
    `gh workflow run official-test-sign.yml --ref deckpilot.publisher-test--v<n>`
-4. When `gate` passes, `sign-a` and `sign-b` wait for the
-   `official-release` deployment review: a second reviewer approves both.
+4. When `gate` passes, `sign-a` and `sign-b` start (with a required
+   reviewer listed, they first wait for its approval).
 5. `verify` passes and its summary names both key ids, DeckPilot's
    commit and the sha256 of `first-party.json`. A failure in `sign-a` or
    `sign-b` means that secret or its password is wrong; a failure in
@@ -359,8 +377,8 @@ and `official-release.yml` never act on it.
 **What a pass proves:** each stored secret key decrypts with its stored
 password and is one of the two keys pinned in DeckPilot at
 `tools/deckpilot.env`'s commit, and the two are distinct (threshold 2).
-It proves nothing about custody (both keys are currently in one vault of
-one account) and releases nothing.
+It proves nothing about custody (both keys are in one vault of one
+account, the owner's: not independent custody) and releases nothing.
 
 Then the first plugin moves (Wave B): its source under `official/<name>`
 at a new patch version, listed in `plugins.json` with its permissions; a

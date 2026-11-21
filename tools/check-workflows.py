@@ -264,7 +264,7 @@ def check_publisher_workflow(path, body, jobs):
             problems.append(f"{where} holds both publisher keys: no job may have both")
         if not env or env.group(1) != PUBLISHER_ENVIRONMENT:
             problems.append(f"{where} holds a publisher key without naming environment {PUBLISHER_ENVIRONMENT} "
-                            "(its tag policy and required reviewers)")
+                            "(its tag policy and its authorization: the admin-only tag ruleset, or a required reviewer)")
         if job_if(chunk) != rules["if"]:
             problems.append(f"{where} holds a publisher key without the job condition `if: {rules['if']}` "
                             f"(this repository, {rules['tag']})")
