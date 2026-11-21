@@ -147,6 +147,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "deckpilot-notifications"
+version = "0.1.2"
+dependencies = [
+ "deckpilot-plugin-sdk",
+ "jsonschema",
+ "serde_json",
+]
+
+[[package]]
 name = "deckpilot-plugin-abi"
 version = "0.1.0"
 source = "git+https://github.com/knittingcode/deckpilot?rev=a0e40b270bbf87a2d5c59bf7edf2aa94adc0f660#a0e40b270bbf87a2d5c59bf7edf2aa94adc0f660"
