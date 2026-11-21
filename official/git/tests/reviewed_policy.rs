@@ -88,9 +88,32 @@ const REVIEWED_PERMISSIONS: &str = r#"  "permissions": [
 
 /// Executables and interpreters that must never appear in the manifest.
 const FORBIDDEN: &[&str] = &[
-    "sh", "bash", "zsh", "fish", "dash", "ksh", "csh", "tcsh", "cmd", "cmd.exe", "powershell",
-    "powershell.exe", "pwsh", "env", "sudo", "su", "osascript", "python", "python3", "node",
-    "perl", "ruby", "docker", "/bin/sh", "/bin/bash", "/usr/bin/env",
+    "sh",
+    "bash",
+    "zsh",
+    "fish",
+    "dash",
+    "ksh",
+    "csh",
+    "tcsh",
+    "cmd",
+    "cmd.exe",
+    "powershell",
+    "powershell.exe",
+    "pwsh",
+    "env",
+    "sudo",
+    "su",
+    "osascript",
+    "python",
+    "python3",
+    "node",
+    "perl",
+    "ruby",
+    "docker",
+    "/bin/sh",
+    "/bin/bash",
+    "/usr/bin/env",
 ];
 
 fn manifest() -> Value {
@@ -116,9 +139,11 @@ fn the_permissions_are_byte_for_byte_the_reviewed_ones() {
         1,
         "one permissions list"
     );
-    let reviewed: Value =
-        serde_json::from_str(&format!("{{{}}}", REVIEWED_PERMISSIONS.strip_suffix(',').unwrap()))
-            .expect("reviewed JSON");
+    let reviewed: Value = serde_json::from_str(&format!(
+        "{{{}}}",
+        REVIEWED_PERMISSIONS.strip_suffix(',').unwrap()
+    ))
+    .expect("reviewed JSON");
     assert_eq!(manifest()["permissions"], reviewed["permissions"]);
 }
 
@@ -127,7 +152,10 @@ fn only_git_runs_and_never_a_shell() {
     let manifest = manifest();
     assert_eq!(manifest["id"], "deckpilot.git");
     let permissions = manifest["permissions"].as_array().unwrap();
-    let tools: Vec<&Value> = permissions.iter().filter(|p| p["kind"] == "tools").collect();
+    let tools: Vec<&Value> = permissions
+        .iter()
+        .filter(|p| p["kind"] == "tools")
+        .collect();
     assert_eq!(tools.len(), 1, "one tools permission");
     let tools = tools[0]["tools"].as_array().unwrap();
     assert_eq!(tools.len(), 1, "one executable");
@@ -142,7 +170,10 @@ fn only_git_runs_and_never_a_shell() {
                         executables.push(v.as_str().unwrap_or("?").to_owned());
                     }
                     assert!(
-                        !matches!(k.as_str(), "shell" | "command" | "commandLine" | "script" | "env"),
+                        !matches!(
+                            k.as_str(),
+                            "shell" | "command" | "commandLine" | "script" | "env"
+                        ),
                         "the manifest has a `{k}` key"
                     );
                     walk(v, executables, strings);
@@ -166,7 +197,8 @@ fn only_git_runs_and_never_a_shell() {
     for sub in tools[0]["subcommands"].as_array().unwrap() {
         let name = sub["name"].as_str().unwrap();
         assert!(
-            name.chars().all(|c| c.is_ascii_lowercase() || c == '-' || c == ' '),
+            name.chars()
+                .all(|c| c.is_ascii_lowercase() || c == '-' || c == ' '),
             "subcommand `{name}` is a name, not a command line"
         );
         for option in sub["options"].as_array().into_iter().flatten() {
@@ -192,11 +224,16 @@ fn the_plugin_starts_no_process_itself() {
             "extern \"C\"",
             "#[link",
         ] {
-            assert!(!text.contains(forbidden), "src/{name} contains `{forbidden}`");
+            assert!(
+                !text.contains(forbidden),
+                "src/{name} contains `{forbidden}`"
+            );
         }
         // Every tool run names the reviewed tool.
         for (at, _) in text.match_indices("run_tool") {
-            let call = text[at..].split_once('(').map(|(_, rest)| rest.trim_start());
+            let call = text[at..]
+                .split_once('(')
+                .map(|(_, rest)| rest.trim_start());
             assert!(
                 call.is_some_and(|rest| rest.starts_with("Tool::Git")),
                 "src/{name}: a run_tool call that is not Tool::Git"
@@ -223,11 +260,19 @@ fn pinned_deckpilot() -> Option<PathBuf> {
     let head = std::fs::read_to_string(checkout.join(".git/HEAD")).ok();
     match head {
         Some(head) => {
-            assert_eq!(head.trim(), commit, "{} is not DeckPilot at {commit}", checkout.display());
+            assert_eq!(
+                head.trim(),
+                commit,
+                "{} is not DeckPilot at {commit}",
+                checkout.display()
+            );
             Some(checkout)
         }
         None if std::env::var_os("CI").is_some() => {
-            panic!("no pinned DeckPilot checkout at {} (tools/build-cli.sh)", checkout.display())
+            panic!(
+                "no pinned DeckPilot checkout at {} (tools/build-cli.sh)",
+                checkout.display()
+            )
         }
         None => {
             eprintln!("no pinned DeckPilot checkout: not compared with DeckPilot's deckpilot.git");
@@ -252,7 +297,10 @@ fn ids_actions_settings_and_permissions_are_deckpilots() {
         m.remove("version");
         m.remove("repository");
     }
-    assert_eq!(ours, deckpilot, "manifest.json differs from DeckPilot's beyond version and repository");
+    assert_eq!(
+        ours, deckpilot,
+        "manifest.json differs from DeckPilot's beyond version and repository"
+    );
     let text = String::from_utf8(read("manifest.json")).unwrap();
     assert!(
         text.contains(REVIEWED_PERMISSIONS),
@@ -260,8 +308,16 @@ fn ids_actions_settings_and_permissions_are_deckpilots() {
     );
     assert_eq!(EN, read("locales/en.json").as_slice(), "locales/en.json");
     assert_eq!(PL, read("locales/pl.json").as_slice(), "locales/pl.json");
-    assert_eq!(ICON, read("assets/icon-128.png").as_slice(), "assets/icon-128.png");
+    assert_eq!(
+        ICON,
+        read("assets/icon-128.png").as_slice(),
+        "assets/icon-128.png"
+    );
     for (name, text) in SOURCES {
-        assert_eq!(text.as_bytes(), read(&format!("src/{name}")).as_slice(), "src/{name}");
+        assert_eq!(
+            text.as_bytes(),
+            read(&format!("src/{name}")).as_slice(),
+            "src/{name}"
+        );
     }
 }
