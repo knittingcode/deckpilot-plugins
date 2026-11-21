@@ -21,17 +21,22 @@ neither cargo nor the manifest schema does:
   `permissions` in plugins.json (a new kind is a reviewed policy change).
   While the privileged-kinds gate is closed (DeckPilot
   docs/marketplace/publisher-review-request.md) no plugin may declare any
-  plugin API 1.9 privileged kind; process execution (`tools`) is in any
-  case only ever for deckpilot.git (git) and deckpilot.docker (docker).
+  plugin API 1.9 privileged kind unless plugins.json marks it `held` (a
+  reason): built, tested, packaged and compared, never released; process
+  execution (`tools`) is in any case only ever for deckpilot.git (git) and
+  deckpilot.docker (docker).
 * Compatibility: engines.pluginApi is satisfied by the pinned DeckPilot's
   plugin API (--plugin-api) and engines.deckpilot accepts its version
   (--app-version), so `release verify` will accept the host.
 * With --deckpilot DIR (a checkout of the pinned commit): every fixture is
   byte-identical to DeckPilot's plugins/first-party/test-fixtures/<name>,
-  Cargo.toml excepted.
+  Cargo.toml excepted; and every plugin that DeckPilot still has in
+  plugins/first-party/<name> keeps its contract: the same manifest but for
+  `version` and `repository`, the same locales and assets.
 
---list prints `<path> <id> <version> <package> <kind>` per member.
---release ID fails unless ID is a released plugin (not a fixture).
+--list prints `<path> <id> <version> <package> <kind>` per member, kind
+`plugin`, `held` (a plugin marked held) or `fixture`.
+--release ID fails unless ID is a released plugin (not held, not a fixture).
 """
 
 import argparse
@@ -145,7 +150,7 @@ def range_ok(text, version):
     return True
 
 
-def check_permissions(where, entry, manifest):
+def check_permissions(where, entry, manifest, held=False):
     declared = [p.get("kind") for p in manifest.get("permissions", [])]
     allowed = entry.get("permissions")
     if not isinstance(allowed, list):
@@ -162,11 +167,11 @@ def check_permissions(where, entry, manifest):
                 problem(f"{where}: process execution (`tools`) is only for "
                         f"{', '.join(f'{k} ({v[0]})' for k, v in PROCESS_ALLOW_LIST.items())}; "
                         f"{manifest.get('id')} asks for {names or 'it'}")
-        if kind in PRIVILEGED_KINDS and not PRIVILEGED_GATE_OPEN:
+        if kind in PRIVILEGED_KINDS and not PRIVILEGED_GATE_OPEN and not held:
             problem(f"{where}: `{kind}` is a plugin API 1.9 privileged kind; a signed release artifact "
                     "cannot carry it while the gate is closed (DeckPilot "
-                    "docs/marketplace/publisher-review-request.md)")
-        if p.get("fromParams") and not PRIVILEGED_GATE_OPEN:
+                    "docs/marketplace/publisher-review-request.md); mark the plugin `held` in plugins.json")
+        if p.get("fromParams") and not PRIVILEGED_GATE_OPEN and not held:
             problem(f"{where}: `openUrl.fromParams` is privileged; the gate is closed")
 
 
@@ -240,10 +245,22 @@ def main():
         if not range_ok(engines.get("deckpilot", ""), args.app_version):
             problem(f"{where}: engines.deckpilot {engines.get('deckpilot')} does not accept the pinned "
                     f"DeckPilot {args.app_version}")
-        check_permissions(where, entry, manifest)
+        held = entry.get("held")
+        if held is not None and (kind != "plugin" or not isinstance(held, str) or not held.strip()):
+            problem(f"{where}: `held` is a reason (text), for a plugin only")
+        if held:
+            privileged = ({p.get("kind") for p in manifest.get("permissions", [])} & PRIVILEGED_KINDS) | (
+                {"openUrl.fromParams"} if any(p.get("fromParams") for p in manifest.get("permissions", [])) else set())
+            if not privileged or PRIVILEGED_GATE_OPEN:
+                problem(f"{where}: held, but nothing holds it (no privileged kind, or the gate is open); "
+                        "remove `held`")
+            kind = "held"
+        check_permissions(where, entry, manifest, held=bool(held))
         if kind == "fixture" and args.deckpilot:
             theirs = args.deckpilot / "plugins/first-party/test-fixtures" / Path(path).name
             compare_tree(where, directory, theirs)
+        if kind != "fixture" and args.deckpilot:
+            compare_contract(where, directory, manifest, args.deckpilot / "plugins/first-party" / Path(path).name)
         rows.append((path, mid, manifest.get("version", ""), package, kind))
 
     if args.release is not None:
@@ -259,6 +276,36 @@ def main():
     else:
         print(f"official: {len(rows)} member(s) checked, SDK pinned to {args.commit[:12]}")
     return 0
+
+
+# Fields a moved plugin's manifest may change: its version (a new patch
+# version, official/README.md) and where its source lives.
+MOVED_FIELDS = ("version", "repository")
+
+
+def compare_contract(where, ours, manifest, theirs):
+    """A moved plugin keeps DeckPilot's contract while DeckPilot still has it."""
+    if not (theirs / "manifest.json").is_file():
+        return
+    original = load(theirs / "manifest.json")
+    if original is None:
+        return
+    for key in sorted(set(manifest) | set(original)):
+        if key not in MOVED_FIELDS and manifest.get(key) != original.get(key):
+            problem(f"{where}/manifest.json: `{key}` differs from DeckPilot's {theirs.name} at the pinned "
+                    "commit; ids, actions, settings, permissions and views are its contract")
+    for sub in ("locales", "assets"):
+        a, b = ours / sub, theirs / sub
+        if not b.is_dir() and not a.is_dir():
+            continue
+        def files(base):
+            return sorted(str(p.relative_to(base)) for p in base.rglob("*") if p.is_file()) if base.is_dir() else []
+        if files(a) != files(b):
+            problem(f"{where}/{sub}: files differ from DeckPilot's: {sorted(set(files(a)) ^ set(files(b)))}")
+            continue
+        for rel in files(a):
+            if not filecmp.cmp(a / rel, b / rel, shallow=False):
+                problem(f"{where}/{sub}/{rel} differs from DeckPilot's at the pinned commit")
 
 
 def compare_tree(where, ours, theirs):

@@ -14,6 +14,7 @@ members = [
     "gitlab",
     "jira",
     "test-fixtures/example-default",
+    "workflows",
 ]
 
 [workspace.package]

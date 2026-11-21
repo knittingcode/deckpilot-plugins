@@ -177,6 +177,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "deckpilot-workflows"
+version = "0.1.1"
+dependencies = [
+ "deckpilot-plugin-sdk",
+ "jsonschema",
+ "serde_json",
+]
+
+[[package]]
 name = "email_address"
 version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
