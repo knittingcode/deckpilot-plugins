@@ -127,6 +127,6 @@ jobs:
       - name: Modules and packages of both builds agree
         run: |
           cd "$RUNNER_TEMP/sums"
-          [ -s sums-a.txt ] && [ -s sums-b.txt ] || { echo "::error::a build wrote no sums"; exit 1; }
+          if [ ! -s sums-a.txt ] || [ ! -s sums-b.txt ]; then echo "::error::a build wrote no sums"; exit 1; fi
           cat sums-a.txt
           diff sums-a.txt sums-b.txt || { echo "::error::the two independent builds differ"; exit 1; }
