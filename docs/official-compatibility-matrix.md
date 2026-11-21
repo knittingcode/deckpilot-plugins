@@ -21,9 +21,9 @@ The nine plugins DeckPilot bundles, as this repository builds, signs and
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `deckpilot.docker` | DeckPilot (not moved) | 0.1.0 | 0.1.0 | `>=0.9.0 <1.0.0` | `^1.9` | `tools(docker)`, `resources*`, `profile`, `device` | `deckpilot.projects` `>=0.1.0 <1.0.0` (optional) | no signed release | no: privileged-kinds gate closed |
 | `deckpilot.git` | DeckPilot (not moved) | 0.1.0 | 0.1.0 | `>=0.9.0 <1.0.0` | `^1.9` | `tools(git)`, `resources*`, `profile`, `device` | `deckpilot.projects` `>=0.1.0 <1.0.0` (optional) | no signed release | no: privileged-kinds gate closed |
-| `deckpilot.github` | DeckPilot (not moved) | 0.2.0 | 0.2.0 | `>=0.6.0 <1.0.0` | `^1.0` | `network`, `credentials`, `openUrl` | none | no signed release | no: no signed release |
-| `deckpilot.gitlab` | DeckPilot (not moved) | 0.1.1 | 0.1.1 | `>=0.6.0 <1.0.0` | `^1.0` | `network`, `credentials`, `openUrl` | none | no signed release | no: no signed release |
-| `deckpilot.jira` | DeckPilot (not moved) | 0.1.1 | 0.1.1 | `>=0.6.0 <1.0.0` | `^1.0` | `network`, `credentials`, `openUrl` | none | no signed release | no: no signed release |
+| `deckpilot.github` | `official/github` | 0.2.1 | 0.2.0 | `>=0.6.0 <1.0.0` | `^1.0` | `network`, `credentials`, `openUrl` | none | no signed release | no: no signed release |
+| `deckpilot.gitlab` | `official/gitlab` | 0.1.2 | 0.1.1 | `>=0.6.0 <1.0.0` | `^1.0` | `network`, `credentials`, `openUrl` | none | no signed release | no: no signed release |
+| `deckpilot.jira` | `official/jira` | 0.1.2 | 0.1.1 | `>=0.6.0 <1.0.0` | `^1.0` | `network`, `credentials`, `openUrl` | none | no signed release | no: no signed release |
 | `deckpilot.notifications` | DeckPilot (not moved) | 0.1.1 | 0.1.1 | `>=0.6.0 <1.0.0` | `^1.0` | `notifications` | none | no signed release | no: no signed release |
 | `deckpilot.projects` | DeckPilot (not moved) | 0.1.0 | 0.1.0 | `>=0.10.0 <1.0.0` | `^1.9` | `projectContext*`, `resources*`, `profile`, `hostViews*` | none | no signed release | no: privileged-kinds gate closed |
 | `deckpilot.workflows` | DeckPilot (not moved) | 0.1.0 | 0.1.0 | `>=0.10.0 <1.0.0` | `^1.9` | `hostViews*` | none | no signed release | no: privileged-kinds gate closed |
