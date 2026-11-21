@@ -15,7 +15,7 @@ the manifest schema does:
 * locales/pl.json has a Polish text for exactly the texts of manifest.json
   (name, description, permission justifications, actions with their
   parameters and outputs, variables, settings, credential slots, error
-  codes), each within the manifest's own length limit. English is the
+  codes, navigation labels), each within the manifest's own length limit. English is the
   manifest itself. Plugin API 1.0 has no localized metadata, so the file is
   a source convention and is not packaged (docs/plugin-factory.md).
 
@@ -35,7 +35,8 @@ PUBLISHER = "deckpilot"
 # at the pinned commit; tools/check-schemas.sh compares): the agent never
 # takes these from a registry, so they have no source here.
 BUNDLED_PLUGIN_IDS = frozenset({
-    "deckpilot.github", "deckpilot.gitlab", "deckpilot.jira", "deckpilot.notifications",
+    "deckpilot.docker", "deckpilot.git", "deckpilot.github", "deckpilot.gitlab", "deckpilot.jira",
+    "deckpilot.notifications", "deckpilot.projects", "deckpilot.workflows", "deckpilot.workspace",
 })
 problems = []
 
@@ -94,6 +95,8 @@ def expected_texts(manifest):
             texts[("credentials", key, "description")] = (1, 300)
     for code in contributes.get("errorCodes", {}):
         texts[("errorCodes", code)] = (1, 200)
+    for nid in by(contributes.get("navigation"), "id"):
+        texts[("navigation", nid, "label")] = (1, 24)
     return texts
 
 

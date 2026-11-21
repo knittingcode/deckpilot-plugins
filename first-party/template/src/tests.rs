@@ -74,6 +74,48 @@ fn the_manifest_declares_what_the_code_uses() {
 }
 
 #[test]
+fn controls_need_api_1_3_and_reset_stays_on_keys() {
+    let m = manifest();
+    assert_eq!(m["engines"]["pluginApi"], format!("^{API}"));
+    let actions = m["contributes"]["actions"].as_array().expect("actions");
+    assert_eq!(
+        actions[0]["controls"],
+        json!({ "key": ["press"], "encoder": ["rotate-clockwise"] })
+    );
+    // No declaration: keys only, the plugin API default.
+    assert!(actions[1].get("controls").is_none());
+    let reset = plugin();
+    let reset = reset.actions().iter().find(|a| a.id() == "reset");
+    assert_eq!(reset.and_then(|a| a.declared_controls()), None);
+    // The same definition below plugin API 1.3 is refused.
+    let below = plugin().requires_api(ApiLevel { major: 1, minor: 2 });
+    assert!(below.validate().is_err());
+}
+
+#[test]
+fn navigation_opens_a_declared_view_with_a_bundled_svg_icon() {
+    let m = manifest();
+    let entry = &m["contributes"]["navigation"][0];
+    assert_eq!(entry["icon"], "assets/nav-counter.svg");
+    assert_eq!(
+        m["contributes"]["views"],
+        json!([{ "id": entry["view"], "kind": "variables" }])
+    );
+    let svg = include_str!("../assets/nav-counter.svg");
+    assert!(svg.starts_with("<svg xmlns=\"http://www.w3.org/2000/svg\""));
+    for refused in [
+        "<script",
+        "foreignObject",
+        " on",
+        "href",
+        "url(",
+        "<!DOCTYPE",
+    ] {
+        assert!(!svg.contains(refused), "the icon contains {refused}");
+    }
+}
+
+#[test]
 fn icon_is_a_128px_png() {
     let png = include_bytes!("../assets/icon-128.png");
     assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");

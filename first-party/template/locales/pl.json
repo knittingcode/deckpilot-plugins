@@ -1,10 +1,10 @@
 {
   "name": "Szablon",
-  "description": "Szablon wtyczki DeckPilot: liczy naciśnięcia klawisza, pamięta licznik po ponownym uruchomieniu i publikuje go jako zmienną. Nigdy nie jest publikowany.",
+  "description": "Szablon wtyczki DeckPilot: liczy naciśnięcia klawisza i obroty pokrętła, pamięta licznik po ponownym uruchomieniu i publikuje go jako zmienną. Nigdy nie jest publikowany.",
   "actions": {
     "count": {
       "name": "Zlicz",
-      "description": "Zwiększa licznik i podaje nową wartość.",
+      "description": "Zwiększa licznik po naciśnięciu klawisza lub obrocie pokrętła w prawo i podaje nową wartość.",
       "category": "Szablon",
       "parameters": {
         "step": { "label": "Krok", "description": "O ile zwiększa jedno uruchomienie." }
@@ -25,5 +25,8 @@
   },
   "errorCodes": {
     "counter-full": "Licznik osiągnął największą wartość; wyzeruj go."
+  },
+  "navigation": {
+    "counter": { "label": "Licznik" }
   }
 }
