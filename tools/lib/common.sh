@@ -22,28 +22,57 @@ summary() {
 # Where repositories are fetched from (tests point it at local repositories).
 GIT_BASE=${DECKPILOT_PLUGINS_GIT_BASE:-https://github.com}
 
+# Options for every git that runs on a throwaway repository: no automatic gc
+# or maintenance. Since git 2.47 a fetch starts `git maintenance run --auto
+# --detach` in the background; that process (locks, packs, commit-graph)
+# can still be writing into .git while the repository is removed, so `rm -rf`
+# fails with "Directory not empty" (seen in CI).
+GIT_NO_BACKGROUND=(-c gc.auto=0 -c maintenance.auto=false -c fetch.writeCommitGraph=false)
+
+# remove_tree DIR: rm -rf DIR, retried for a moment if something (a git
+# process that is still exiting) recreates files in it. Never fails: DIR is
+# a throwaway directory, and what decides the caller's result is already
+# known; a leftover is reported, not fatal.
+remove_tree() {
+  local dir=$1 try
+  for try in 1 2 3 4 5; do
+    rm -rf "$dir" 2>/dev/null && [ ! -e "$dir" ] && return 0
+    sleep "$try"
+  done
+  printf 'warning: could not remove %s\n' "$dir" >&2
+  return 0
+}
+
 # require_on_main OWNER/NAME SHA: SHA is a commit of OWNER/NAME's main
 # branch (an ancestor of, or equal to, its tip), or die. GitHub serves any
 # commit of a repository's fork network by SHA, so a commit that exists only
 # in a fork would otherwise build as "DeckPilot" (and run as
 # deckpilot-registry next to the signing keys). Checked in a separate,
 # treeless clone of main's full history before anything of SHA is fetched;
-# nothing of a commit outside main is ever downloaded.
+# nothing of a commit outside main is ever downloaded. The clone is a new,
+# unique directory per call (never one a previous call or a still-running
+# git may be using) and is removed afterwards; its removal never decides
+# the result.
 require_on_main() {
-  local repo=$1 sha=$2 dir=$WORK/main-check
+  local repo=$1 sha=$2 dir verdict=ok
   [[ $repo =~ ^[A-Za-z0-9-]{1,39}/[A-Za-z0-9._-]{1,100}$ ]] || die "bad repository $repo"
   [[ $sha =~ ^[0-9a-f]{40}$ ]] || die "bad commit $sha"
-  rm -rf "$dir"
-  mkdir -p "$dir"
-  git -C "$dir" init -q
-  git -C "$dir" -c protocol.version=2 fetch -q --filter=tree:0 "$GIT_BASE/$repo.git" \
-    "+refs/heads/main:refs/remotes/origin/main" || die "the main branch of $repo cannot be fetched"
-  if ! git -C "$dir" cat-file -e "$sha^{commit}" 2>/dev/null ||
-    ! git -C "$dir" merge-base --is-ancestor "$sha" refs/remotes/origin/main; then
-    rm -rf "$dir"
-    die "$sha is not a commit of $repo's main branch; refusing to build it (a fork's commit is served under the same URL)"
+  mkdir -p "$WORK"
+  dir=$(mktemp -d "$WORK/main-check.XXXXXX") || die "cannot create a directory in $WORK"
+  if ! git -C "$dir" init -q ||
+    ! GIT_NO_LAZY_FETCH=1 git -C "$dir" "${GIT_NO_BACKGROUND[@]}" -c protocol.version=2 fetch -q --filter=tree:0 \
+      "$GIT_BASE/$repo.git" "+refs/heads/main:refs/remotes/origin/main"; then
+    verdict=unfetchable
+  elif ! GIT_NO_LAZY_FETCH=1 git -C "$dir" "${GIT_NO_BACKGROUND[@]}" cat-file -e "$sha^{commit}" 2>/dev/null ||
+    ! GIT_NO_LAZY_FETCH=1 git -C "$dir" "${GIT_NO_BACKGROUND[@]}" merge-base --is-ancestor "$sha" refs/remotes/origin/main; then
+    verdict=off-main
   fi
-  rm -rf "$dir"
+  remove_tree "$dir"
+  case $verdict in
+    ok) ;;
+    unfetchable) die "the main branch of $repo cannot be fetched" ;;
+    *) die "$sha is not a commit of $repo's main branch; refusing to build it (a fork's commit is served under the same URL)" ;;
+  esac
 }
 
 # fetch_deckpilot DIR: DeckPilot at DECKPILOT_COMMIT in DIR, only once that
@@ -62,11 +91,12 @@ fetch_commit() {
   if [ -d "$dir/.git" ] && [ "$(git -C "$dir" rev-parse HEAD 2>/dev/null)" = "$sha" ]; then
     return
   fi
-  rm -rf "$dir"
+  remove_tree "$dir"
+  [ ! -e "$dir" ] || die "$dir cannot be removed"
   mkdir -p "$dir"
   git -C "$dir" init -q
-  git -C "$dir" -c protocol.version=2 fetch -q --depth 1 "$GIT_BASE/$repo.git" "$sha"
-  git -C "$dir" checkout -q --detach FETCH_HEAD
+  git -C "$dir" "${GIT_NO_BACKGROUND[@]}" -c protocol.version=2 fetch -q --depth 1 "$GIT_BASE/$repo.git" "$sha"
+  git -C "$dir" "${GIT_NO_BACKGROUND[@]}" checkout -q --detach FETCH_HEAD
   [ "$(git -C "$dir" rev-parse HEAD)" = "$sha" ] || die "$repo did not resolve to $sha"
 }
 
