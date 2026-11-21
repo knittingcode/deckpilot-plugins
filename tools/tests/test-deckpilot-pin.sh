@@ -3,7 +3,9 @@
 # a local repository: commits of main pass, a commit only on another ref
 # (what a fork's commit is: served by SHA under the same URL) and an
 # unknown commit fail, and fetch_deckpilot never checks such a commit out.
-# No network.
+# The check runs in its own directory per call, starts no background git
+# (gc/maintenance) and leaves nothing behind; a failure to remove that
+# directory never changes the check's verdict. No network.
 #
 #   tools/tests/test-deckpilot-pin.sh
 set -euo pipefail
@@ -27,14 +29,22 @@ fork=$(commit "attacker")
 git -C "$clone" push -q "$upstream" "fork:refs/pull/9/head"
 
 passed=0 failed=0
-# run <pass|fail> NAME SHA [function]
+# run <pass|fail> NAME SHA [function] [stuck]: with "stuck", removing any
+# directory fails (what a git still writing into it causes).
 run() {
-  local want=$1 name=$2 sha=$3 fn=${4:-require_on_main}
+  local want=$1 name=$2 sha=$3 fn=${4:-require_on_main} stuck=${5:-}
   local rc=0
   (
     export DECKPILOT_PLUGINS_WORK=$work/work DECKPILOT_PLUGINS_GIT_BASE=file://$work/remote
+    # Every git process (also a detached child) appends its events here.
+    export GIT_TRACE2_EVENT=$work/trace
     # shellcheck source=../lib/common.sh
     . "$root/tools/lib/common.sh"
+    # shellcheck disable=SC2329 # rm and sleep, replaced for remove_tree
+    if [ -n "$stuck" ]; then
+      rm() { echo "rm: cannot remove: Directory not empty" >&2; return 1; }
+      sleep() { :; }
+    fi
     DECKPILOT_REPOSITORY=acme/deckpilot DECKPILOT_COMMIT=$sha
     if [ "$fn" = fetch_deckpilot ]; then
       fetch_deckpilot "$work/work/checkout"
@@ -63,6 +73,32 @@ rm -rf "$work/work/checkout"
 run fail "fetch_deckpilot refuses a fork's commit" "$fork" fetch_deckpilot
 [ ! -e "$work/work/checkout" ] && { echo "ok   ... and fetches nothing of it"; passed=$((passed + 1)); } \
   || { echo "FAIL a checkout of the fork's commit exists"; failed=$((failed + 1)); }
+
+# check NAME CONDITION...: one more assertion.
+check() {
+  local name=$1; shift
+  if "$@"; then echo "ok   $name"; passed=$((passed + 1)); else echo "FAIL $name"; failed=$((failed + 1)); fi
+}
+no_leftover() { [ -z "$(find "$work/work" -maxdepth 1 -name 'main-check*' -print -quit)" ]; }
+no_background_git() { ! grep -q '"event":"child_start".*"argv":\["git","\(maintenance\|gc\)"' "$work/trace"; }
+
+check "no main-check directory is left behind" no_leftover
+check "no background gc or maintenance was started" no_background_git
+# The same check twice in a row, and while a leftover of an earlier call
+# exists: each call has its own directory.
+mkdir -p "$work/work/main-check/.git/objects" && touch "$work/work/main-check/.git/objects/busy"
+run pass "a leftover main-check directory does not matter" "$second"
+run pass "... nor does a second call right after" "$second"
+rm -rf "$work/work/main-check"
+check "... and both clean up after themselves" no_leftover
+# A directory that cannot be removed is reported, never fatal, and never
+# turns a refusal into a pass.
+run pass "an unremovable check directory does not fail a commit of main" "$second" require_on_main stuck
+grep -q "warning: could not remove" "$work/out" && { echo "ok   ... it is reported"; passed=$((passed + 1)); } \
+  || { echo "FAIL no warning: $(cat "$work/out")"; failed=$((failed + 1)); }
+run fail "an unremovable check directory still refuses a fork's commit" "$fork" require_on_main stuck
+grep -q "not a commit of acme/deckpilot's main" "$work/out" && { echo "ok   ... with the refusal"; passed=$((passed + 1)); } \
+  || { echo "FAIL the refusal: $(cat "$work/out")"; failed=$((failed + 1)); }
 
 echo
 echo "$passed passed, $failed failed"
