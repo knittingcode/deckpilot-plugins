@@ -380,9 +380,10 @@ def check_permissions(where, entry, manifest, held=False):
                     "as a `held` plugin (plugins.json)")
     elif not held and privileged_usages(manifest):
         # The gate is open: exactly the reviewed policy, nothing more.
+        usages = ", ".join(f"{path}: {what}" for path, what in privileged_usages(manifest))
         for reason in reviewed_reasons(REVIEWED_POLICY, manifest):
-            problem(f"{where}: the reviewed privileged policy (official/{PRIVILEGED_POLICY}) does not "
-                    f"admit it: {reason}")
+            problem(f"{where}: {usages}: the reviewed privileged policy (official/{PRIVILEGED_POLICY}) "
+                    f"does not admit it: {reason}")
 
 
 def main():

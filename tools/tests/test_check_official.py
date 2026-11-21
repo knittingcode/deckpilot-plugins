@@ -108,7 +108,8 @@ case("a lock on another DeckPilot rev", replace("Cargo.lock", COMMIT, "1" * 40),
 case("a member not in plugins.json", policy(lambda d: d.update(fixtures=[])), False, "not in plugins.json")
 case("a permission outside the policy", manifest(lambda m: m["permissions"].append({"kind": "storage", "justification": "x"})), False, "reviewed policy change")
 case("process execution", manifest(lambda m: m["permissions"].append({"kind": "tools", "tools": [{"executable": "git"}], "justification": "x"})), False, r"process execution|privileged kind")
-case("a privileged kind", manifest(lambda m: m["permissions"].append({"kind": "hostViews", "justification": "x"})), False, "gate is closed")
+case("a privileged kind", manifest(lambda m: m["permissions"].append({"kind": "hostViews", "justification": "x"})), False,
+     "gate is closed|does not admit it")
 case("a plugin API the pin does not provide", manifest(lambda m: m["engines"].update(pluginApi="^1.99")), False, "not satisfied")
 case("a DeckPilot range without the pin", manifest(lambda m: m["engines"].update(deckpilot=">=0.11.0 <1.0.0")), False, "does not accept")
 case("another publisher", manifest(lambda m: m["publisher"].update(id="acme")), False, "publisher.id")
@@ -313,7 +314,7 @@ for name, change, path in [
     ("statusItems, even empty", contributes("statusItems", []), r"contributes\.statusItems"),
     ("dashboardCards, even empty", contributes("dashboardCards", []), r"contributes\.dashboardCards"),
 ]:
-    case(f"privileged: {name}", change, False, path + r".*gate is closed")
+    case(f"privileged: {name}", change, False, path + r".*(gate is closed|does not admit it)")
 # A parameter kind that is not a resource is not one.
 case("a text parameter is not privileged", first_action(lambda a: a["parameters"].append({"key": "x", "label": "X", "kind": {"type": "text"}})), True, r"member\(s\) checked")
 
