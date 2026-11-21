@@ -67,7 +67,8 @@ RESERVED_PUBLISHERS = frozenset({
 # DeckPilot's BUNDLED_PLUGIN_IDS (crates/deckpilot-plugin-bundled/src/lib.rs
 # at the pinned commit): the agent refuses them from any registry.
 BUNDLED_PLUGIN_IDS = frozenset({
-    "deckpilot.github", "deckpilot.gitlab", "deckpilot.jira", "deckpilot.notifications",
+    "deckpilot.docker", "deckpilot.git", "deckpilot.github", "deckpilot.gitlab", "deckpilot.jira",
+    "deckpilot.notifications", "deckpilot.projects", "deckpilot.workflows", "deckpilot.workspace",
 })
 PLUGIN_PATH = re.compile(r"^(?:registry/plugins|plugins)/([^/]+)/")
 SEMVER_CORE = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$")

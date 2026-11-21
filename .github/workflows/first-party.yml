@@ -41,3 +41,7 @@ jobs:
         run: tools/build-cli.sh
       - name: Manifests, wasm modules, packages, throwaway-key signed registry, verify-site
         run: tools/first-party.sh package
+      - name: Tests of the plugin API 1.3 and 1.9 manifest rules with the pinned CLI
+        run: |
+          python3 -I tools/tests/test_manifest_api.py --cli .work/bin/deckpilot-registry \
+            --module .work/first-party/target/wasm32-unknown-unknown/guest/deckpilot_template.wasm

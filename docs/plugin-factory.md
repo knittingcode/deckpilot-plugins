@@ -197,7 +197,7 @@ first-party plugins*; untrusted, no secrets) runs `tools/first-party.sh`:
 
 ### Can a `deckpilot.*` plugin be installed from a registry?
 
-Yes, since DeckPilot B6 (PR #311, `70490125`, the pinned commit), under
+Yes, since DeckPilot B6 (PR #311, `70490125`; the pinned commit includes it), under
 conditions the client checks before any download
 (`RegistryClient::resolve_install`; DeckPilot
 `crates/deckpilot-plugin-registry/PUBLISHING.md`, "First-party plugins"):
@@ -213,13 +213,14 @@ conditions the client checks before any download
   such a plugin). Every other reserved publisher stays refused.
 
 `deckpilot-registry package` and `add-version` need `--first-party` for a
-`deckpilot.*` plugin, and `add-version` also checks the authorizing key
-set and the verified publisher. `tools/first-party.sh` and
+`deckpilot.*` plugin, and `add-version` also checks the authorizing key set
+and the verified publisher. `tools/first-party.sh` and
 `tools/build-plugin.sh` pass it; the earlier `deckpilot-test` workaround is
-gone. The agent never takes the plugins it bundles (`deckpilot.github`,
-`deckpilot.gitlab`, `deckpilot.jira`, `deckpilot.notifications`) from any
-registry; *Submission rules* and `tools/first-party.sh check` refuse them
-here.
+gone. The agent never takes the plugins it bundles (`deckpilot.docker`,
+`deckpilot.git`, `deckpilot.github`, `deckpilot.gitlab`, `deckpilot.jira`,
+`deckpilot.notifications`, `deckpilot.projects`, `deckpilot.workflows`,
+`deckpilot.workspace`) from any registry; *Submission rules* and
+`tools/first-party.sh check` refuse them here.
 
 What still blocks a user install is **B1**: no production keys exist
 (U-10, U-12 in [production-readiness.md](production-readiness.md)), and

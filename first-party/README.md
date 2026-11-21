@@ -8,10 +8,17 @@ to the plugins bundled with the application, whose sources stay in
 What each plugin can and cannot do today, and why, is in
 [docs/plugin-factory.md](../docs/plugin-factory.md). Read it first: plugin
 API 1.0 has no timers, no clock, no random source and no access to keys;
-1.1 adds the time and random bytes, and 1.2 key state (a plugin describes
-what its keys show). There are still no timers. A plugin that needs a
-later level declares it in `engines.pluginApi` and with
-`Plugin::requires_api` (see `memory/`).
+1.1 adds the time and random bytes, 1.2 key state (a plugin describes
+what its keys show), and 1.3 the controls an action can be bound to (keys,
+dials, touch zones; without `controls`, keys only) and toolbar entries that
+open views DeckPilot draws (see `template/`). DeckPilot 0.9.0 provides 1.4
+(manifest `dependencies`), 0.10.0 provides 1.9: 1.5 dialogs, 1.6
+translations, 1.7 editor navigation, 1.8 title suggestions; the 1.9
+permissions (`tools`, `resources`, `projectContext`, `hostViews`) are
+accepted only from the plugins bundled with the application, never from a
+registry. There are still no timers. A plugin that needs a later level
+declares it in `engines.pluginApi` and with `Plugin::requires_api` (see
+`memory/` and `template/`).
 
 > **Status.** Nothing here is published yet. Since DeckPilot B6 (pinned) a
 > registry may serve `deckpilot.*` plugins when its root-signed key set
@@ -47,9 +54,10 @@ published version adds a version record whose `source` names this
 repository, a source tag, the commit and `first-party/<name>`, made with
 `--first-party` by the owner ([docs/publishing.md](../docs/publishing.md),
 "First-party plugins"). The plugins the application bundles
-(`deckpilot.github`, `deckpilot.gitlab`, `deckpilot.jira`,
-`deckpilot.notifications`) never come here: `tools/first-party.sh check`
-refuses their ids.
+(`deckpilot.docker`, `deckpilot.git`, `deckpilot.github`,
+`deckpilot.gitlab`, `deckpilot.jira`, `deckpilot.notifications`,
+`deckpilot.projects`, `deckpilot.workflows`, `deckpilot.workspace`) never
+come here: `tools/first-party.sh check` refuses their ids.
 
 ## Commands
 

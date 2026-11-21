@@ -46,9 +46,11 @@ DeckPilot's own installable plugins live in [`first-party/`](../first-party/)
 and are published by the owner under the publisher `deckpilot`
 (`registry/publishers/knittingcode.json`, verified). A registry may serve
 them only because its root-signed key set authorizes the namespace
-([trust-model.md](trust-model.md#first-party-plugins-deckpilot)); the
-plugins the application bundles (`deckpilot.github`, `deckpilot.gitlab`,
-`deckpilot.jira`, `deckpilot.notifications`) are never listed.
+([trust-model.md](trust-model.md#first-party-plugins-deckpilot)); the plugins
+the application bundles (`deckpilot.docker`, `deckpilot.git`,
+`deckpilot.github`, `deckpilot.gitlab`, `deckpilot.jira`,
+`deckpilot.notifications`, `deckpilot.projects`, `deckpilot.workflows`,
+`deckpilot.workspace`) are never listed.
 
 `registry/plugins/deckpilot.<name>/plugin.json` and
 `plugins/deckpilot.<name>/build.json` (`"workspace": "first-party"`) are

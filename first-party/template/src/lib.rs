@@ -6,10 +6,17 @@
 //! for no permission: storage, settings, own variables and the log are
 //! always allowed for an enabled plugin.
 //!
-//! The module has no clock, no random source, no timers and no access to
-//! keys or devices (plugin API 1.0); see `docs/plugin-factory.md`.
+//! It also shows plugin API 1.3: `count` declares the controls it can be
+//! bound to (a key press and a clockwise dial turn, each adding `step`),
+//! while `reset` declares none and so works on keys only, the default. The
+//! manifest adds a toolbar entry (`contributes.navigation`) that opens a
+//! host-rendered view of the plugin's variables; the plugin ships no UI.
+//!
+//! The module has no timers and no access to keys or devices; see
+//! `docs/plugin-factory.md`.
 #![deny(unsafe_code)]
 
+use deckpilot_plugin_sdk::ApiLevel;
 use deckpilot_plugin_sdk::prelude::*;
 
 /// Must equal `manifest.json` (`id`, `version`).
@@ -24,14 +31,28 @@ const COUNT_VARIABLE: &str = "count";
 pub const COUNTER_FULL: &str = "counter-full";
 pub const PLUGIN_CODES: &[&str] = &[COUNTER_FULL];
 
-/// The plugin definition. The action ids, their order and their parameters
-/// must equal `manifest.json`; a unit test compares them.
+/// The plugin API level the plugin needs: 1.3, for `controls`. Must equal
+/// `engines.pluginApi` (`^1.3`) in `manifest.json`.
+pub const API: ApiLevel = ApiLevel { major: 1, minor: 3 };
+
+/// The plugin definition. The action ids, their order, their parameters
+/// and their controls must equal `manifest.json`; a unit test compares them.
 pub fn plugin() -> Plugin {
     Plugin::new(ID, VERSION)
+        .requires_api(API)
         .action(
             Action::new("count", count)
-                .param(Param::integer("step").min(1.0).max(100.0).default(1)),
+                .param(Param::integer("step").min(1.0).max(100.0).default(1))
+                // A key press or one clockwise detent of a dial adds `step`.
+                // Nothing counts down, so no counter-clockwise turn.
+                .controls(
+                    Controls::new()
+                        .key([Input::Press])
+                        .encoder([Input::RotateClockwise]),
+                ),
         )
+        // No controls: keys only (press, release, click, double click, long
+        // press), never a dial or a touch zone.
         .action(Action::new("reset", reset))
 }
 
