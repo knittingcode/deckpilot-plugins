@@ -7,7 +7,7 @@ order: 17
 
 DeckPilot traktuje każdą wtyczkę jako kod niezaufany: działa ona w piaskownicy, ma tylko uprawnienia przyznane przez użytkownika i nigdy nie widzi sekretu. Chroni to użytkowników przed wtyczką, ale wtyczka, która zachowuje się poprawnie, wciąż ma coś do zrobienia. Ta strona zbiera wytyczne dla autorów, wynikające z modelu piaskownicy i z tego, co sprawdzają recenzenci rejestru, oraz wyjaśnia, gdzie zgłosić lukę.
 
-> **Status:** DeckPilot 0.7.0 jest pierwszym wydaniem z obsługą wtyczek. Ani DeckPilot, ani rejestr wtyczek nie przeszły niezależnego przeglądu bezpieczeństwa i oba repozytoria informują o tym w swoich zasadach bezpieczeństwa.
+> **Status:** DeckPilot 0.7.0 jest pierwszym wydaniem z obsługą wtyczek, a 0.10.0 to bieżące wydanie. Ani DeckPilot, ani rejestr wtyczek nie przeszły niezależnego przeglądu bezpieczeństwa i oba repozytoria informują o tym w swoich zasadach bezpieczeństwa.
 
 ## Co wymusza platforma
 

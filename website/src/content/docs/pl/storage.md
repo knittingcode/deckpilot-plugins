@@ -108,7 +108,7 @@ Przy odinstalowaniu pamięć trwała jest zawsze usuwana. To jedyny trwały stan
 
 ## Pamięć trwała a brak zegara
 
-Moduł nie ma zegara, więc nie potrafi samodzielnie opatrzyć zapisywanych danych znacznikiem czasu. Przykłady używają nagłówka `Date` odpowiedzi HTTP jako czasu sprawdzenia:
+Moduł nie ma własnego zegara. Od API wtyczek 1.1 może zapytać agenta o czas za pomocą `Context::now`. Przykłady, napisane dla 1.0, używają nagłówka `Date` odpowiedzi HTTP jako czasu sprawdzenia:
 
 ```rust
         // The guest has no clock: the time of the check is the answer's Date header.

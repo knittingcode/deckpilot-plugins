@@ -7,7 +7,7 @@ order: 3
 
 `deckpilot-plugin-sdk` to crate Rusta, za pomocą którego piszesz wtyczkę. Deklaruje wtyczkę i jej akcje, sprawdza parametry, zanim uruchomi się twój kod, opakowuje każdą funkcję hosta (capability) z ABI gościa 1 w typowaną metodę i generuje eksporty WebAssembly. Ta strona jest mapą crate'a; pozostałe strony omawiają szczegółowo każdą jego część.
 
-> **Status:** Crate ma wersję 0.1.0, implementuje API wtyczek 1.0 i ABI gościa 1 i nie jest opublikowany w crates.io. Jak dodać go jako zależność, opisuje strona [Pierwsze kroki](../getting-started/#skąd-wziąć-sdk). Dopóki ma wersję 0.x, wersja minor może zmienić API w Ruście.
+> **Status:** Crate ma wersję 0.1.0, implementuje API wtyczek od 1.0 do 1.9 (DeckPilot 0.10.0 udostępnia 1.9; dodatki 1.9 poza `Context::profile` są przeznaczone wyłącznie dla własnych wtyczek DeckPilota dołączonych do aplikacji) i ABI gościa 1 i nie jest opublikowany w crates.io. Jak dodać go jako zależność, opisuje strona [Pierwsze kroki](../getting-started/#skąd-wziąć-sdk). Dopóki ma wersję 0.x, wersja minor może zmienić API w Ruście.
 
 ## Cała wtyczka
 
@@ -56,6 +56,7 @@ W prawdziwym cracie wtyczki eksporty generuje jeszcze jeden wiersz: `deckpilot_p
 | `CapabilityError`, `CapabilityErrorKind`, `NetworkErrorKind` | Dlaczego wywołanie funkcji hosta się nie powiodło |
 | `RunContext`, `RunTrigger`, `RunCause` | Co rozpoczęło bieżące uruchomienie |
 | `LogLevel`, `NotifySeverity`, `ActionOutcome` | Poziomy logowania, wygląd powiadomień, postać wyniku przesyłana w protokole |
+| `Controls`, `Control`, `Input` | Kontrolki i wejścia, na których działa akcja (API wtyczek 1.3) |
 
 ## Definiowanie wtyczki
 
@@ -65,7 +66,34 @@ W prawdziwym cracie wtyczki eksporty generuje jeszcze jeden wiersz: `deckpilot_p
 
 `Plugin::validate()` sprawdza identyfikatory, klucze, unikalność, rodzaje i wartości domyślne względem reguł manifestu. Wywołaj ją w teście jednostkowym. Przy niepoprawnej definicji każde wywołanie kończy się błędem z kodem `plugin-error`.
 
+`Plugin::requires_api(ApiLevel)` deklaruje poziom API wtyczek, bez którego wtyczka nie może działać; manifest deklaruje ten sam poziom w `engines.pluginApi`. Bez tego wywołania wtyczka wymaga poziomu 1.0. Zobacz [Zgodność wersji](../compatibility/#enginespluginapi).
+
 Szczegóły: [Akcje](../actions/) i [Parametry i ustawienia](../parameters/).
+
+## Kontrolki
+
+API wtyczek 1.3, dostępne od DeckPilota 0.8.0, pozwala akcji określić, na jakich kontrolkach działa: na klawiszach, pokrętłach (enkoderach) lub strefach dotykowych, oraz na których wejściach każdej z nich. Deklaruje je `Action::controls(Controls)`; `Controls::new()` z dołączonymi w łańcuchu `.key(..)`, `.encoder(..)` lub `.touch_zone(..)` wymienia wejścia `Input` dla każdego rodzaju. Ten przykład z dokumentacji crate'a przypisuje akcję do wciśnięcia lub kliknięcia klawisza oraz do obrotu pokrętła w prawo:
+
+```rust
+use deckpilot_plugin_sdk::prelude::*;
+use deckpilot_plugin_sdk::ApiLevel;
+
+fn next(_: &mut Context<'_>, _: &Args<'_>) -> ActionResult {
+    Ok(Output::ok())
+}
+
+fn plugin() -> Plugin {
+    Plugin::new("acme.pager", "1.0.0")
+        .requires_api(ApiLevel { major: 1, minor: 3 })
+        .action(Action::new("next", next).controls(
+            Controls::new()
+                .key([Input::Press, Input::Click])
+                .encoder([Input::RotateClockwise]),
+        ))
+}
+```
+
+Deklarowanie kontrolek wymaga `requires_api` 1.3: poniżej tego poziomu `Plugin::validate` je odrzuca. Wpis akcji w manifeście deklaruje te same `controls` (tę postać zwraca `Controls::to_json()`), a `testing::manifest_mismatches` porównuje oba. Akcja bez kontrolek działa tylko na klawiszach. Zobacz [Format manifestu](../manifest/#kontrolki) i [opis źródłowy](https://github.com/knittingcode/deckpilot/blob/main/docs/marketplace/sdk/actions.md#controls).
 
 ## Makro `plugin!`
 
@@ -111,14 +139,19 @@ Poza WebAssembly wywołanie funkcji hosta, które nie przechodzi przez `MockHost
 | Stała | Wartość | Znaczenie |
 | --- | --- | --- |
 | `deckpilot_plugin_sdk::SDK_VERSION` | `0.1.0` | Wersja samego crate'a |
-| `deckpilot_plugin_sdk::API_LEVEL` | 1.0 | Poziom API wtyczek; manifest deklaruje `"pluginApi": "^1.0"` |
+| `deckpilot_plugin_sdk::API_LEVEL` | 1.0 | Poziom API wtyczek, którego wtyczka wymaga, jeśli nie wywołuje `Plugin::requires_api`; manifest deklaruje wtedy `"pluginApi": "^1.0"` |
+| `deckpilot_plugin_sdk::LATEST_API_LEVEL` | 1.9 | Najwyższy poziom API wtyczek, który implementuje SDK (w commicie DeckPilota v0.10.0) |
+| `deckpilot_plugin_sdk::CONTROLS_API_LEVEL` | 1.3 | Poziom, który wprowadził `Action::controls` |
+| `deckpilot_plugin_sdk::DIALOGS_API_LEVEL` | 1.5 | Poziom, który wprowadził `Context::dialog` |
+| `deckpilot_plugin_sdk::LOCALIZATION_API_LEVEL` | 1.6 | Poziom, który wprowadził `Context::locale` i `Context::t` |
+| `deckpilot_plugin_sdk::PRIVILEGED_API_LEVEL` | 1.9 | Poziom operacji własnych wtyczek DeckPilota dołączonych do aplikacji oraz `Context::profile` |
 | `deckpilot_plugin_sdk::ABI_VERSION` | 1 | ABI gościa, sprawdzane asercją w czasie kompilacji |
 
 Zobacz [Zgodność wersji](../compatibility/).
 
 ## Czego SDK nie oferuje
 
-ABI 1 nie daje dostępu do systemu plików, procesów, schowka ani powłoki, nie ma zegara ani źródła losowości. `std::time::SystemTime::now()` i generatory liczb losowych w module zwracają błąd albo panikują. Nie ma timerów, pracy w tle, strumieniowego HTTP ani WebSocketów, a wtyczka nie może odczytywać zmiennych, aktywnego profilu ani projektu.
+ABI 1 nie daje dostępu do systemu plików, procesów, schowka ani powłoki. Czas i losowe bajty pochodzą wyłącznie od agenta, przez `Context::now` i `Context::random_bytes` (API wtyczek 1.1); `std::time::SystemTime::now()` i generatory liczb losowych w module zwracają błąd albo panikują. Nie ma timerów, pracy w tle, strumieniowego HTTP ani WebSocketów, a wtyczka nie może odczytywać zmiennych, aktywnego profilu ani projektu.
 
 SDK deklaruje też `Param::number` i `Param::secret`. Wersja manifestu 1 nie ma dla nich rodzaju parametru, więc działają pod `MockHost`, ale nie da się do nich dotrzeć przez agenta; zobacz [Parametry i ustawienia](../parameters/#rodzaje-których-nie-ma-w-manifeście).
 

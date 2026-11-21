@@ -7,7 +7,7 @@ order: 14
 
 Autorzy wtyczek niczego nie podpisują. Nie ma klucza autora, certyfikatu do kupienia ani pliku podpisu w pakiecie. Podpisywany jest rejestr: niewielki zbiór statycznych dokumentów, które przypinają każdy opublikowany pakiet przez jego sha256 i rozmiar. Ta strona wyjaśnia, kto co podpisuje i co klient DeckPilota weryfikuje, zanim zainstaluje wtyczkę.
 
-> **Status:** Rejestr produkcyjny pod adresem `https://knittingcode.github.io/deckpilot-plugins/v1/` jest podpisany zestawem kluczy 1: dwoma kluczami głównymi przechowywanymi offline, z progiem 1 z 2, oraz osobnymi kluczami indeksu i znacznika czasu. Znacznik czasu jest codziennie podpisywany na nowo. Publiczne klucze główne znajdują się w pliku [`keys/roots.json`](https://github.com/knittingcode/deckpilot-plugins/blob/main/keys/roots.json) repozytorium rejestru, z identyfikatorami kluczy `131875735F6B6F06` i `9D7D888C7D407086`. DeckPilot 0.7.0, pierwsze wydanie z obsługą wtyczek, ma je wbudowane.
+> **Status:** Rejestr produkcyjny pod adresem `https://knittingcode.github.io/deckpilot-plugins/v1/` jest podpisany zestawem kluczy 1: dwoma kluczami głównymi przechowywanymi offline, z progiem 1 z 2, oraz osobnymi kluczami indeksu i znacznika czasu. Znacznik czasu jest codziennie podpisywany na nowo. Publiczne klucze główne znajdują się w pliku [`keys/roots.json`](https://github.com/knittingcode/deckpilot-plugins/blob/main/keys/roots.json) repozytorium rejestru, z identyfikatorami kluczy `131875735F6B6F06` i `9D7D888C7D407086`. DeckPilot 0.7.0, pierwsze wydanie z obsługą wtyczek, i każde kolejne wydanie aż do bieżącego 0.10.0 mają je wbudowane.
 
 ## Co dostarcza autor
 
@@ -83,7 +83,7 @@ Agent zapisuje integralność zainstalowanych plików. Przed każdym uruchomieni
 
 ## Co pozostało przed otwarciem rejestru dla innych wydawców
 
-Klucze produkcyjne istnieją, a procesy publikowania podpisują nimi działający rejestr. DeckPilot korzysta z niego od wydania 0.7.0, które ma wbudowane klucze główne. Przy każdym odświeżeniu DeckPilot sprawdza podpisany zestaw kluczy, indeks, znacznik czasu oraz rozmiar i skrót SHA-256 każdego pakietu. To, czego według repozytorium rejestru brakuje przed otwarciem go dla wtyczek innych wydawców, opisuje lista kontrolna właściciela repozytorium, [docs/production-readiness.md](https://github.com/knittingcode/deckpilot-plugins/blob/main/docs/production-readiness.md), w sekcji „Before opening the registry to the public”.
+Klucze produkcyjne istnieją, a procesy publikowania podpisują nimi działający rejestr. DeckPilot korzysta z niego od wydania 0.7.0, które ma wbudowane klucze główne, podobnie jak każde kolejne wydanie. Przy każdym odświeżeniu DeckPilot sprawdza podpisany zestaw kluczy, indeks, znacznik czasu oraz rozmiar i skrót SHA-256 każdego pakietu. To, czego według repozytorium rejestru brakuje przed otwarciem go dla wtyczek innych wydawców, opisuje lista kontrolna właściciela repozytorium, [docs/production-readiness.md](https://github.com/knittingcode/deckpilot-plugins/blob/main/docs/production-readiness.md), w sekcji „Before opening the registry to the public”.
 
 ## Dokumentacja źródłowa
 

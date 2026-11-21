@@ -12,12 +12,13 @@ Wtyczka ma kilka numerów wersji, a każdy odpowiada na inne pytanie: na któryc
 | Fakt | Obecnie |
 | --- | --- |
 | Obsługa wtyczek | Dostępna od DeckPilota 0.7.0, z wtyczkami domyślnie włączonymi. DeckPilot 0.6.0 jej nie zawiera. Agent zbudowany ze źródeł wymaga funkcji Cargo `plugins`; `--disable-plugins` lub `DECKPILOT_ENABLE_PLUGINS=0` wyłącza wtyczki |
-| Publiczne wersje DeckPilota | [v0.7.0](https://github.com/knittingcode/deckpilot/releases/tag/v0.7.0) (2026-11-18), obecne stabilne wydanie i pierwsze z obsługą wtyczek. Wcześniej v0.6.0 (2026-11-17), pierwsze stabilne wydanie, bez obsługi wtyczek, oraz wydania wstępne v0.6.0-alpha.3 i v0.6.0-alpha.4 |
+| Publiczne wersje DeckPilota | [v0.10.0](https://github.com/knittingcode/deckpilot/releases/tag/v0.10.0) (2026-11-21), obecne stabilne wydanie, z API wtyczek 1.9. [v0.9.0](https://github.com/knittingcode/deckpilot/releases/tag/v0.9.0) (2026-11-20), z API wtyczek 1.4. [v0.8.1](https://github.com/knittingcode/deckpilot/releases/tag/v0.8.1) i [v0.8.0](https://github.com/knittingcode/deckpilot/releases/tag/v0.8.0) (2026-11-19), z API wtyczek 1.3. [v0.7.0](https://github.com/knittingcode/deckpilot/releases/tag/v0.7.0) (2026-11-18), pierwsze wydanie z obsługą wtyczek, z API wtyczek 1.2. Wcześniej v0.6.0 (2026-11-17), pierwsze stabilne wydanie, bez obsługi wtyczek, oraz wydania wstępne v0.6.0-alpha.3 i v0.6.0-alpha.4 |
 | SDK dla Rusta | `deckpilot-plugin-sdk` 0.1.0, nieopublikowany w crates.io |
 | SDK dla JavaScriptu | Wyłącznie deklaracje typów; nie pozwala zbudować ani uruchomić wtyczki |
 | Rejestr | Działa pod adresem `https://knittingcode.github.io/deckpilot-plugins/v1/`, podpisany produkcyjnym zestawem kluczy 1. Publikuje własne wtyczki DeckPilota; nie jest jeszcze otwarty dla innych wydawców |
+| Wtyczki dołączone do aplikacji | Od DeckPilota 0.10.0 Git, Docker, Workspace, Projects, GitHub, GitLab, Jira i Workflows to własne wtyczki DeckPilota dołączone do aplikacji, razem z powiadomieniami (`deckpilot.git`, `deckpilot.docker`, `deckpilot.workspace`, `deckpilot.projects`, `deckpilot.github`, `deckpilot.gitlab`, `deckpilot.jira`, `deckpilot.workflows`, `deckpilot.notifications`). Pochodzą wyłącznie z pakietu aplikacji, nigdy z rejestru |
 
-API wtyczek 1.x, ABI gościa 1 i wersja manifestu 1 są tym, co implementuje gałąź `main` DeckPilota.
+API wtyczek 1.x (1.9 w DeckPilocie 0.10.0), ABI gościa 1 i wersja manifestu 1 są tym, co implementuje DeckPilot.
 
 ## Numery wersji
 
@@ -25,7 +26,7 @@ API wtyczek 1.x, ABI gościa 1 i wersja manifestu 1 są tym, co implementuje ga�
 | --- | --- | --- | --- |
 | Wersja manifestu | `manifestVersion` | `1` | Jedyna wersja, którą agent odczytuje |
 | ABI gościa | `runtime.abi`; eksport `dp_abi_version` modułu | `1` | Host ładuje wyłącznie moduły ABI 1 |
-| Poziom API wtyczek | `engines.pluginApi` | `1.0` | `^MAJOR.MINOR`: ten sam numer główny, co najmniej ten numer poboczny |
+| Poziom API wtyczek | `engines.pluginApi` | DeckPilot 0.7.0 udostępnia `1.2`, 0.8.x `1.3`, 0.9.0 `1.4`, 0.10.0 `1.9` | `^MAJOR.MINOR`: ten sam numer główny, co najmniej ten numer poboczny |
 | Wersja DeckPilota | `engines.deckpilot` | `>=0.5.0 <1.0.0` w przykładach | Zakres dopasowywany do wersji agenta |
 | Wersja SDK | `engines.sdk` | `0.1.0` | Informacyjna |
 | Wersja wtyczki | `version` | twoja | Wersjonowanie semantyczne z ograniczoną postacią wydania wstępnego |
@@ -49,7 +50,43 @@ Klient rejestru sprawdza zakres przed instalacją, a agent sprawdza go względem
 
 ### `engines.pluginApi`
 
-Poziom API wtyczek, którego potrzebuje moduł, zapisywany jako `^MAJOR.MINOR`. Agent udostępnia poziom 1.0, więc `^1.0` to jedyna wartość, z którą instalacja jest dziś możliwa.
+Poziom API wtyczek, którego potrzebuje moduł, zapisywany jako `^MAJOR.MINOR`: ten sam numer główny i co najmniej ten numer poboczny. Agent z niższym poziomem nie instaluje wtyczki i zgłasza jej wersję jako niezgodną.
+
+| DeckPilot | Udostępniany poziom API wtyczek | Wartości `pluginApi`, z którymi instalacja jest możliwa |
+| --- | --- | --- |
+| 0.6.0 | brak: bez obsługi wtyczek | żadne |
+| 0.7.0 | 1.2 | od `^1.0` do `^1.2` |
+| 0.8.0, 0.8.1 | 1.3 | od `^1.0` do `^1.3` |
+| 0.9.0 | 1.4 | od `^1.0` do `^1.4` |
+| 0.10.0 | 1.9 | od `^1.0` do `^1.9` |
+
+Każdy poziom poboczny dodaje coś, z czego wtyczka może korzystać:
+
+| Poziom | Dodaje |
+| --- | --- |
+| 1.1 | Czas (`Context::now`) i losowe bajty (`Context::random_bytes`) |
+| 1.2 | Stan klawisza: procedura stanu akcji rysuje jej klawisz ([Akcje](../actions/)) |
+| 1.3 | Dla każdej akcji: kontrolki i wejścia, na których działa (`controls`), oraz do czterech pozycji paska narzędzi (`navigation`), które otwierają widoki rysowane przez samego DeckPilota (`views`); zobacz [Format manifestu](../manifest/#kontrolki) |
+| 1.4 | `context` widoku (selektory urządzenia i profilu pokazywane razem z nim) oraz `dependencies`: do 16 innych wtyczek, których wtyczka potrzebuje i które DeckPilot rozwiązuje i instaluje razem z nią przed pobraniem. `requiresDependencies` akcji wymienia opcjonalne zależności, bez których akcja nie może działać. Zależność niczego nie przyznaje |
+| 1.5 | Uprawnienie `dialogs` i `Context::dialog`: standardowe okna potwierdzenia, komunikatu, formularza i wyboru rysowane przez DeckPilota, tylko w uruchomieniu rozpoczętym przez użytkownika, bez pól na sekrety |
+| 1.6 | Tłumaczenia: pliki `locales/<tag>.json` w pakiecie, `locales` i `defaultLocale` w manifeście, klucze `t:` w tekstach manifestu, `Context::locale` i `Context::t` |
+| 1.7 | `editorNavigation` akcji: co jej uruchomienie robi ze stroną lub układem pokazywanym przez urządzenie, na potrzeby podglądu w Device Editorze |
+| 1.8 | `title` akcji (sugerowany i dynamiczny tytuł, jego położenie) oraz `contributes.visualAssets`: ikony i tła do bibliotek ikon i teł DeckPilota |
+| 1.9 | Głównie dla własnych wtyczek DeckPilota dołączonych do aplikacji; zobacz [niżej](#api-wtyczek-19) |
+
+Deklaruj `^1.0`, chyba że wtyczka nie może działać bez późniejszego dodatku. Na wywołanie, którego agent nie zna, odpowiada on, że nie jest obsługiwane, więc wtyczka, która może się bez niego obejść, zostaje przy `^1.0` i działa w każdym DeckPilocie z obsługą wtyczek. Wtyczka deklarująca wyższy poziom podnosi go także w kodzie, za pomocą `Plugin::requires_api`; `testing::manifest_mismatches` porównuje oba.
+
+Manifest, który używa `controls`, `navigation` lub `views`, musi deklarować `"pluginApi": "^1.3"`; walidator manifestu odrzuca niższy poziom, a agenty poniżej 1.3 i tak odrzucają taki manifest. Ponieważ DeckPilot 0.8.0 jest pierwszym wydaniem udostępniającym 1.3, taka wtyczka powinna też deklarować `"deckpilot": ">=0.8.0"` (na przykład `">=0.8.0 <1.0.0"`), aby DeckPilot 0.7.0 jej nie oferował. Wtyczki deklarujące od `^1.0` do `^1.2` nadal działają w DeckPilocie 0.8.0.
+
+To samo dotyczy późniejszych poziomów: manifest, który korzysta z dodatku z poziomów od 1.4 do 1.8, musi deklarować ten poziom i powinien podać pierwsze wydanie, które go udostępnia, jako dolną granicę `engines.deckpilot`: `">=0.9.0"` dla 1.4, `">=0.10.0"` dla poziomów od 1.5 do 1.8. Każda wtyczka deklarująca niższy poziom nadal działa w DeckPilocie 0.10.0.
+
+### API wtyczek 1.9
+
+API wtyczek 1.9 to podstawa, na której DeckPilot 0.10.0 przeniósł Gita, Dockera, Workspace, Projects i Workflows ze swojego rdzenia do własnych wtyczek dołączonych do aplikacji. Jego dodatki to uprawnienia `tools` (pośredniczone uruchomienia `git` i `docker`), `resources`, `projectContext` i `hostViews`, `openUrl` z `fromParams`, parametry `resource`, `requiresPermissions` akcji oraz zmienne, których wartość DeckPilot wylicza z aktywnego projektu. Wszystkie są akceptowane **wyłącznie** od własnych wtyczek DeckPilota dostarczanych wewnątrz aplikacji, których każdy plik zgadza się z odciskami wkompilowanymi w agenta. Manifest wtyczki zewnętrznej, pakiet z rejestru (także pakiet `deckpilot.*`) oraz pakiet instalowany ręcznie lub deweloperski, który deklaruje którykolwiek z nich, są odrzucane (`first-party-only`); narzędzia rejestru również je odrzucają. Ogólne uruchamianie procesów, powłoka, system plików i kod interfejsu wtyczki pozostają niemożliwe do przyznania dla każdego wydawcy.
+
+Jedynym dodatkiem 1.9 dostępnym dla każdego wydawcy jest uprawnienie `profile` (`Context::profile`: nazwa aktywnego profilu oraz, z `project`, aktywny projekt); zobacz [Uprawnienia](../permissions/). Wtyczka zewnętrzna, która z niego nie korzysta, nie ma powodu deklarować `^1.9`.
+
+Pełne reguły są w [dokumentacji uprawnień](https://github.com/knittingcode/deckpilot/blob/v0.10.0/docs/marketplace/sdk/permissions.md#plugin-api-19-first-party-bundled-plugins-only) DeckPilota.
 
 ### `engines.sdk`
 

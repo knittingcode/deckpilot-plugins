@@ -33,7 +33,7 @@ The rules below come from the JSON Schema (draft 2020-12) at [plugins/schemas/pl
 | `assets` | no | `keyIcons` (at most 64 PNGs by name), `screenshots` (at most 8 PNGs), `readme` (`"README.md"`), `changelog` (`"CHANGELOG.md"`). Everything named here is packaged |
 | `permissions` | yes | An array of at most 16 entries; may be empty. See [Permissions](../permissions/) |
 | `supports` | no | Device families the plugin requires or uses. Accepted by the schema, not used by the agent in this version |
-| `contributes` | yes | `actions`, `variables`, `settings`, `credentials`, `errorCodes`; each is optional |
+| `contributes` | yes | `actions`, `variables`, `settings`, `credentials`, `errorCodes`, `navigation`, `views`; each is optional |
 
 ## Actions
 
@@ -48,8 +48,32 @@ The rules below come from the JSON Schema (draft 2020-12) at [plugins/schemas/pl
 | `parameters` | yes | At most 32; may be empty. See [Parameters](../parameters/) |
 | `node` | no | The workflow node contract: outputs, timeout, retry and effect. See [Actions](../actions/#node-metadata) |
 | `requiresProject`, `deprecated`, `replacedBy` | no | `replacedBy` names another action of this plugin and needs `deprecated: true` |
-| `state` | no | Validated, but ABI 1 has no state call, so no button state is ever pulled from a plugin |
-| `device` | no | Accepted, not used |
+| `state` | no | Key state refresh (`onEvents`, or `every` with `intervalSeconds` from 1 to 86,400; needs `effect: readOnly`). From plugin API 1.2 the agent asks the action's state handler for keys shown on a device, at most every 5 seconds; it needs the `device` permission with `state: true`. See [key state](https://github.com/knittingcode/deckpilot/blob/main/docs/marketplace/sdk/actions.md#key-state) in DeckPilot's documentation |
+| `device` | no | `{ "requires": [...] }`. Accepted, not used: it never makes an action bindable to a dial or a touch zone; that is what `controls` is for |
+| `controls` | no | Plugin API 1.3: the controls and inputs the action works on. Without it, keys only. See [Controls](#controls) |
+
+### Controls
+
+`controls` needs `"engines": { "pluginApi": "^1.3" }` and, so that DeckPilot 0.7.0 does not offer the plugin, `"deckpilot": ">=0.8.0"`. Per control kind it lists the inputs the action can be bound to:
+
+```json
+"controls": { "key": ["press", "click", "long-press"],
+              "encoder": ["rotate-clockwise", "rotate-counter-clockwise"] }
+```
+
+| Kind | Inputs it may list |
+| --- | --- |
+| `key` | `press`, `release`, `click`, `double-click`, `long-press` |
+| `encoder` (a dial) | `rotate-clockwise`, `rotate-counter-clockwise`, `press`, `release`, `click`, `double-click`, `long-press` (the last five only on dials that can be pressed) |
+| `touchZone` | `tap`, `long-touch`, `swipe` |
+
+- At least one kind; each kind lists 1 to 8 inputs, each once, and only inputs a control of that kind can produce.
+- A kind that is absent is not supported: the editors do not offer the action there, saving such a binding is refused, and the agent does not run one that was stored. DeckPilot 0.8.0 keeps such a binding and shows it as unavailable.
+- Without `controls` the action works on keys only, with every key input: the default of every manifest before 1.3. `device.requires`, even `["dials"]`, adds no kind.
+- A dial action runs once per rotation event the device reports, whatever the number of detents.
+- In the SDK the action declares the same with `Action::controls`; see [SDK overview](../sdk/#controls).
+
+The full rules are in [DeckPilot's manifest reference](https://github.com/knittingcode/deckpilot/blob/main/docs/marketplace/sdk/manifest.md#controls) and [docs/device-controls.md](https://github.com/knittingcode/deckpilot/blob/main/docs/device-controls.md).
 
 ## Variables
 
@@ -82,6 +106,31 @@ The rules below come from the JSON Schema (draft 2020-12) at [plugins/schemas/pl
 | `queryName` | Required with `query`: `[A-Za-z0-9_.-]{1,64}` |
 | `setupUrl` | An https URL where the user creates the secret |
 
+## Toolbar entries and views
+
+`contributes.navigation` and `contributes.views` need `"engines": { "pluginApi": "^1.3" }` and, so that DeckPilot 0.7.0 does not offer the plugin, `"deckpilot": ">=0.8.0"`. Each navigation entry is a button in the toolbar of DeckPilot's main window that opens a view DeckPilot draws itself. The plugin ships no HTML, URL or code for it.
+
+```json
+"navigation": [{ "id": "dashboard", "label": "Status",
+                 "icon": { "light": "assets/nav.svg", "dark": "assets/nav-dark.svg" },
+                 "view": "dashboard" }],
+"views": [{ "id": "dashboard", "kind": "variables" }]
+```
+
+| Field | Rule |
+| --- | --- |
+| `navigation` | At most 4 entries, ids unique |
+| `navigation[].id` | `[a-z][a-z0-9]*(-[a-z0-9]+)*`, 1 to 32 characters |
+| `navigation[].label` | 1 to 24 characters, no leading or trailing spaces, no control characters |
+| `navigation[].icon` | One path for both themes, or `{ "light", "dark" }` with at least one of them |
+| `navigation[].view` | The id of one of `views` |
+| `views` | At most 8 views, ids unique; `id` as `navigation[].id` |
+| `views[].kind` | `variables` (the plugin's variables, live), `actions` (the Action Library with the plugin's actions) or `settings` (the plugin's settings) |
+
+An icon is a file of the package under `assets/`, ending in `.png`, `.webp` or `.svg`. It is checked when the package is built and when it is installed: a PNG or WebP of at most 256 KiB and 512×512 pixels, or an SVG of at most 64 KiB without scripts, `<foreignObject>`, event handlers, external, `data:` or `javascript:` links, style imports or entities. The agent sanitizes an SVG again every time it serves one, and the app shows icons only as images, with its own icon when there is none to show. Entries appear only for installed and enabled plugins; more than fit are under *More plugin views*.
+
+The complete icon rules are in [DeckPilot's manifest reference](https://github.com/knittingcode/deckpilot/blob/main/docs/marketplace/sdk/manifest.md#contributesnavigation-and-contributesviews).
+
 ## Error codes
 
 `contributes.errorCodes` maps at most 64 codes to a meaning of 1 to 200 characters. A code matches `[a-z][a-z0-9]*(-[a-z0-9]+)*`, is at most 64 characters, and must not redeclare a shared code. See [Actions](../actions/#error-codes).
@@ -92,7 +141,7 @@ Three checks keep the manifest and the code together:
 
 - **Action ids.** When the host loads the module, the supervisor compares the action ids the module reports with the manifest's and refuses a mismatch.
 - **Parameters.** The agent validates every invocation against the manifest before the host runs, and the SDK validates again against the `Param` declarations.
-- **A unit test.** `testing::manifest_mismatches` lists every difference in id, version, `engines.pluginApi`, `engines.sdk`, action ids and order, and each parameter's `required`, kind, bounds, options and default. See [Testing](../testing/#code-and-manifest-agree).
+- **A unit test.** `testing::manifest_mismatches` lists every difference in id, version, `engines.pluginApi`, `engines.sdk`, action ids and order, action `controls`, and each parameter's `required`, kind, bounds, options and default. See [Testing](../testing/#code-and-manifest-agree).
 
 ## A complete example
 

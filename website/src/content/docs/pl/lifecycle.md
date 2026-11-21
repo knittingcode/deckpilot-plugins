@@ -102,8 +102,8 @@ Pierwotny projekt i deklaracje typów JavaScript opisują więcej, niż implemen
 - **Brak pracy w tle.** Żadnych timerów ani interwałów. Uprawnienie `background` istnieje w schemacie manifestu, ale nie ma żadnego skutku. Wtyczka działa tylko wtedy, gdy działa jedna z jej akcji.
 - **Brak haków aktywacji z funkcjami hosta.** Init i shutdown to jedyne haki i nie mogą wywoływać funkcji hosta.
 - **Brak powiadomienia o zmianie ustawień.** Odczytuj `Context::settings()` w każdym wywołaniu.
-- **Brak stanu przycisku.** Pole `state` manifestu przechodzi walidację, ale nic nie pobiera stanu z wtyczki. Nie ma dostępu do urządzenia.
-- **Brak zegara i brak uśpienia.** Moduł nie może odczytać czasu ani czekać.
+- **Stan przycisku tylko przez stan klawisza.** Od API wtyczek 1.2 agent pyta procedurę stanu akcji, co pokazuje jej klawisz ([stan klawisza](https://github.com/knittingcode/deckpilot/blob/main/docs/marketplace/sdk/actions.md#key-state)); innego dostępu do urządzenia wtyczka nie ma. Od API wtyczek 1.3 akcja może zadeklarować pokrętła i strefy dotykowe, na których działa; zobacz [Format manifestu](../manifest/#kontrolki).
+- **Brak uśpienia.** Moduł nie może czekać. Czas odczytuje wyłącznie od agenta, za pomocą `Context::now` (API wtyczek 1.1).
 - **Brak raportowania postępu** z działającej akcji.
 
 Jedno, czego procedura obsługi może się dowiedzieć o swoim wywołaniu, to co je rozpoczęło: `Context::run_context()` zwraca informację, czy uruchomienie rozpoczął przycisk, gest, aplikacja czy workflow, a w przypadku workflow, czy zrobił to użytkownik, harmonogram czy zdarzenie. Nie udostępnia terminu ani numeru próby.

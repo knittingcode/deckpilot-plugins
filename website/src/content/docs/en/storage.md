@@ -108,7 +108,7 @@ Storage is always deleted on uninstall. It is the only durable state of a plugin
 
 ## Storage and the missing clock
 
-A module has no clock, so it cannot timestamp what it stores on its own. The examples use the `Date` header of an HTTP response as the time of a check:
+A module has no clock of its own. From plugin API 1.1 it can ask the agent for the time with `Context::now`. The examples, written for 1.0, use the `Date` header of an HTTP response as the time of a check:
 
 ```rust
         // The guest has no clock: the time of the check is the answer's Date header.
