@@ -117,6 +117,11 @@ check() {
   if [ -d "$DECKPILOT_DIR/plugins/first-party" ]; then
     list --deckpilot "$DECKPILOT_DIR"
   else
+    # With the privileged-kinds gate open, the reviewed privileged policy
+    # must be compared with the pinned DeckPilot's: no checkout, no check.
+    if [ "$(python3 -I "$REPO_ROOT/tools/check-official.py" --gate)" = open ]; then
+      die "the privileged-kinds gate is open, but there is no pinned DeckPilot checkout ($DECKPILOT_DIR) to compare official/privileged-policy.json with; run tools/build-cli.sh"
+    fi
     note "no pinned DeckPilot checkout ($DECKPILOT_DIR): fixtures not compared (tools/build-cli.sh fetches it)"
     list
   fi

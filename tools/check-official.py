@@ -103,12 +103,34 @@ def problem(message):
     print(f"error: {message}", file=sys.stderr)
 
 
+def no_duplicate_keys(pairs):
+    """object_pairs_hook: a JSON object naming a key twice is refused (a
+    later value would silently win)."""
+    keys = [k for k, _ in pairs]
+    duplicates = sorted({k for k in keys if keys.count(k) > 1})
+    if duplicates:
+        raise ValueError(f"duplicate key(s) {', '.join(duplicates)}")
+    return dict(pairs)
+
+
 def load(path):
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=no_duplicate_keys)
     except (OSError, ValueError) as e:
         problem(f"{path}: {e}")
         return None
+
+
+def strict_equal(a, b):
+    """JSON equality without Python's coercions: true is not 1, 1 is not
+    1.0 (DeckPilot compares serde_json values, which keep the types)."""
+    if type(a) is not type(b):
+        return False
+    if isinstance(a, dict):
+        return a.keys() == b.keys() and all(strict_equal(a[k], b[k]) for k in a)
+    if isinstance(a, list):
+        return len(a) == len(b) and all(strict_equal(x, y) for x, y in zip(a, b))
+    return a == b
 
 
 def toml_value(text, key):
@@ -330,7 +352,7 @@ def reviewed_reasons(policy, manifest):
     if entry["version"] != version:
         return [f"the review covers {pid} {entry['version']} only, not {version}"]
     reasons = []
-    if (manifest.get("permissions") or []) != entry["permissions"]:
+    if not strict_equal(manifest.get("permissions") or [], entry["permissions"]):
         reasons.append("the permissions differ from the reviewed ones")
     reviewed = {c["path"]: c for c in entry["constructs"]}
     usages = privileged_usages(manifest)
@@ -342,7 +364,7 @@ def reviewed_reasons(policy, manifest):
             reasons.append(f"{path} is {what}, the review has {c['what']}")
         elif "value" in c:
             try:
-                if value_at(manifest, path) != c["value"]:
+                if not strict_equal(value_at(manifest, path), c["value"]):
                     reasons.append(f"{path} ({what}) differs from the reviewed value")
             except KeyError:
                 reasons.append(f"{path} ({what}) differs from the reviewed value")
