@@ -1,0 +1,12 @@
+{
+  "$comment": "The official plugins (the ones DeckPilot bundles) built here, and the permission policy each must keep (official/README.md). `plugins` are released (signed, one GitHub Release per version); `fixtures` are built, packaged, signed with throwaway keys and compared with DeckPilot's build in CI only, never released. `permissions` is the exact set of permission kinds a plugin's manifest may declare: anything else, and every plugin API 1.9 privileged kind while the gate is closed, fails tools/check-official.py.",
+  "officialVersion": 1,
+  "plugins": [],
+  "fixtures": [
+    {
+      "path": "test-fixtures/example-default",
+      "id": "deckpilot.example-default",
+      "permissions": ["notifications"]
+    }
+  ]
+}

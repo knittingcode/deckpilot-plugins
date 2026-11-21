@@ -10,6 +10,7 @@
 | [third-party-readiness.md](third-party-readiness.md) | Opening the registry to other publishers: what exists, what is missing, the gate that keeps it closed |
 | [plugin-factory.md](plugin-factory.md) | DeckPilot's own installable plugins: what plugin API 1.0 to 1.9 can do (capability matrix), each planned plugin, data providers, the capabilities proposed, and how `first-party/` is built |
 | [separation.md](separation.md) | Why and how this repository never touches DeckPilot application releases |
+| [../official/README.md](../official/README.md) | The official plugins (the ones DeckPilot bundles): their pinned SDK, reproducible build, permission policy, publisher signature and release workflow |
 
 Contributor guide: [../CONTRIBUTING.md](../CONTRIBUTING.md). Reporting a
 malicious plugin or a vulnerability: [../SECURITY.md](../SECURITY.md).

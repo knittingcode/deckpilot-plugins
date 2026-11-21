@@ -1,0 +1,51 @@
+# The official plugins: the ones DeckPilot bundles (official/README.md).
+#
+# One Cargo workspace with one Cargo.lock, built for wasm32-unknown-unknown
+# with the `guest` profile against the plugin SDK and the first-party support
+# crate of the DeckPilot commit pinned in tools/deckpilot.env, as git
+# dependencies: a build depends on this repository's revision alone, never
+# on a DeckPilot checkout. tools/check-official.py refuses a `rev` that
+# differs from DECKPILOT_COMMIT and any path dependency outside official/.
+[workspace]
+resolver = "3"
+# One line per member, sorted. Every member is listed in plugins.json.
+members = [
+    "test-fixtures/example-default",
+]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.90"
+license = "Apache-2.0"
+repository = "https://github.com/knittingcode/deckpilot-plugins"
+publish = false
+
+[workspace.dependencies]
+# Not published to crates.io: git dependencies on the pinned DeckPilot
+# commit (plugins/runtime/guest/plugin-sdk, plugins/runtime/crates/abi,
+# plugins/first-party/support).
+deckpilot-plugin-sdk = { git = "https://github.com/knittingcode/deckpilot", rev = "a0e40b270bbf87a2d5c59bf7edf2aa94adc0f660" }
+deckpilot-plugin-abi = { git = "https://github.com/knittingcode/deckpilot", rev = "a0e40b270bbf87a2d5c59bf7edf2aa94adc0f660" }
+deckpilot-first-party-support = { git = "https://github.com/knittingcode/deckpilot", rev = "a0e40b270bbf87a2d5c59bf7edf2aa94adc0f660" }
+# The versions of DeckPilot's plugins/runtime workspace.
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+jsonschema = { version = "0.61.2", default-features = false }
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+
+# DeckPilot's plugins/runtime `guest` profile, so a module built here is
+# built like a bundled one.
+[profile.guest]
+inherits = "release"
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

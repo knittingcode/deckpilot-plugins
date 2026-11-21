@@ -1,0 +1,27 @@
+# TEST FIXTURE, never released: DeckPilot's plugins/first-party/test-fixtures/
+# example-default at the pinned commit (tools/deckpilot.env), byte for byte
+# except this file (tools/check-official.py compares). It is the canary of
+# the official pipeline until the first plugin moves here: built against
+# the SDK as a git dependency, packaged, signed with a throwaway key,
+# verified, and compared with DeckPilot's own build (tools/official.sh).
+[package]
+name = "deckpilot-example-default"
+description = "Test fixture: a default-class bundled first-party plugin (never shipped)"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+deckpilot-plugin-sdk.workspace = true
+
+[dev-dependencies]
+jsonschema.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true
