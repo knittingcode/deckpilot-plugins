@@ -16,6 +16,17 @@ tag=${1:?usage: resolve-tag.sh TAG}
 [[ $tag =~ ^[a-z][a-z0-9.-]{3,56}--v[0-9A-Za-z.+-]{1,32}$ ]] || die "$tag is not a publication tag (<id>--v<version>)"
 id=${tag%%--v*}
 version=${tag#*--v}
+# The plugins DeckPilot bundles are never registry publications, whatever
+# publish.yml's tag filter says: official-release.yml releases them.
+bundled=$(python3 -I -c '
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("c", sys.argv[1])
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+print("\n".join(sorted(m.BUNDLED_PLUGIN_IDS)))' "$REPO_ROOT/tools/check-official.py") || die "the bundled plugin ids cannot be read"
+[ -n "$bundled" ] || die "the bundled plugin ids are empty"
+if grep -qxF -- "$id" <<<"$bundled"; then
+  die "$id is a plugin DeckPilot bundles: the registry never publishes it (official-release.yml releases it)"
+fi
 commit=$(git -C "$REPO_ROOT" rev-parse --verify "refs/tags/$tag^{commit}") || die "no tag $tag"
 git -C "$REPO_ROOT" merge-base --is-ancestor "$commit" origin/main ||
   die "$tag ($commit) is not on main; only reviewed commits are published"

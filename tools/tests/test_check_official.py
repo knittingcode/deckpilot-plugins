@@ -88,5 +88,47 @@ case("a released plugin that DeckPilot does not bundle",
 case("--release refuses a fixture", lambda r: None, False, "not a released official plugin", extra=["--release", "deckpilot.example-default"])
 case("versions differ", replace(f"{FIXTURE}/Cargo.toml", 'version = "0.1.0"', 'version = "0.1.1"'), False, "differs from manifest.json")
 
+# Every privileged usage of DeckPilot's privileged.rs `usages`, one by one,
+# through the whole check (the gate is closed).
+def contributes(key, value):
+    return manifest(lambda m: m.setdefault("contributes", {}).__setitem__(key, value))
+
+
+def first_action(fn):
+    return manifest(lambda m: fn(m["contributes"]["actions"][0]))
+
+
+for name, change, path in [
+    ("openUrl.fromParams", manifest(lambda m: m["permissions"].append({"kind": "openUrl", "fromParams": True, "justification": "x"})), r"permissions\[1\]\.fromParams"),
+    ("node.changesContext", first_action(lambda a: a.setdefault("node", {}).__setitem__("changesContext", True)), r"node\.changesContext"),
+    ("a resource parameter", first_action(lambda a: a["parameters"].append({"key": "repo", "label": "Repo", "kind": "resource", "kinds": ["folder"]})), r"parameters\[\d+\]\.kind: a `resource` parameter"),
+    ("a variable host source", contributes("variables", [{"id": "project", "label": "Project", "type": "text", "source": "activeProject"}]), r"variables\[0\]\.source"),
+    ("a host view", contributes("views", [{"id": "w", "label": "Workflows", "kind": "workflows"}]), r"views\[0\]\.kind: the `workflows` view"),
+    ("statusItems, even empty", contributes("statusItems", []), r"contributes\.statusItems"),
+    ("dashboardCards, even empty", contributes("dashboardCards", []), r"contributes\.dashboardCards"),
+]:
+    case(f"privileged: {name}", change, False, path + r".*gate is closed")
+
+# The mirror against DeckPilot's own bundled manifests (the pinned checkout
+# of tools/build-cli.sh, when it exists): the five plugins that use the
+# privileged kinds have usages, the four others none.
+spec = __import__("importlib.util").util.spec_from_file_location("check_official", CHECK)
+RULES = __import__("importlib.util").util.module_from_spec(spec)
+spec.loader.exec_module(RULES)
+deckpilot = ROOT / ".work/deckpilot/plugins/first-party"
+if deckpilot.is_dir():
+    for name, privileged in [("docker", True), ("git", True), ("projects", True), ("workflows", True),
+                             ("workspace", True), ("github", False), ("gitlab", False), ("jira", False),
+                             ("notifications", False)]:
+        found = RULES.privileged_usages(json.loads((deckpilot / name / "manifest.json").read_text()))
+        if bool(found) == privileged:
+            passed += 1
+            print(f"ok   DeckPilot's {name}: {len(found)} privileged usage(s)")
+        else:
+            failed += 1
+            print(f"FAIL DeckPilot's {name}: {found}")
+else:
+    print("note: no pinned DeckPilot checkout (.work/deckpilot); its manifests not compared")
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

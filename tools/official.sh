@@ -25,14 +25,25 @@
 #                  while no production key is pinned. Keys are scratch.
 # all              check, test, package, repro, compare, sign-test.
 #
+# fresh-build SUMS one build of every member and its packages in a fresh
+#                  target directory, nothing run first; sha256 of each module
+#                  and package to SUMS. official.yml runs it in two separate
+#                  jobs and compares them.
+#
 # Release (official-release.yml only):
 # resolve TAG      TAG is <id>--v<version> of a released plugin whose
 #                  manifest has that version, at a commit on main.
-# release-build ID clean double build of ID, compared; package; prints
-#                  `sha256=` and `size=` for the job outputs.
-# release-sign ID  with DECKPILOT_PUBLISHER_KEY (+ _PASSWORD) from the
-#                  protected environment: release sign, then release verify
-#                  with the keys pinned in the DeckPilot build (never --keys).
+# release-build ID VERSION
+#                  ONE build of ID in a fresh target directory and its
+#                  package; prints `module=`, `sha256=`, `size=`. Two jobs
+#                  on fresh runners run it; release-compare checks they agree.
+# release-sign ID DIR VERSION SHA256 SIZE
+#                  in the step that alone has DECKPILOT_PUBLISHER_KEY:
+#                  `release sign --id --version` (the tag's) only.
+# release-verify ID DIR VERSION SHA256 SIZE
+#                  the next step, without the key: release verify with the
+#                  keys pinned in the DeckPilot build (never --keys), the
+#                  rollback floor and the revocations, every platform.
 #
 # Runs plugin build scripts: never run check..sign-test where a secret is.
 . "$(dirname "$0")/lib/common.sh"
@@ -216,11 +227,13 @@ sign_test() {
   while read -r path id version crate kind; do
     pkg=$PACKAGES/$id-$version.dpplugin
     rm -f "$pkg.minisig"
-    "$CLI" release sign --package "$pkg" --key "$keys/publisher.key" --out "$pkg.minisig" >&2
+    "$CLI" release sign --package "$pkg" --id "$id" --version "$version" --key "$keys/publisher.key" \
+      --out "$pkg.minisig" >&2
     local claim=(--package "$pkg" --signature "$pkg.minisig" --id "$id" --version "$version"
       --sha256 "$(sha "$pkg")" --size "$(size "$pkg")"
       --app-version "$DECKPILOT_VERSION" --plugin-api "$DECKPILOT_PLUGIN_API" --platform macos
-      --released-pins "$released" --audit "$audit")
+      --released-pins "$released" --revocations "$DECKPILOT_DIR/plugins/first-party/artifacts.json"
+      --audit "$audit")
     rm -rf "$OUT/verified/$id"
     "$CLI" release verify "${claim[@]}" --keys "$keys/publisher.json" --unpack "$OUT/verified/$id" >&2
     # The pins DeckPilot would record for these files must pass its guard.
@@ -258,37 +271,85 @@ resolve() {
   printf 'id=%s\nversion=%s\ncommit=%s\n' "$id" "$version" "$commit"
 }
 
-release_build() {
-  local id=$1 crate
-  crate=$(list --list | awk -v id="$id" '$2 == id && $5 == "plugin" {print $4}')
-  [ -n "$crate" ] || die "$id is not a released official plugin"
-  local version
-  version=$(list --list | awk -v id="$id" '$2 == id {print $3}')
-  build "$OUT/release-a" "$crate"
-  build "$OUT/release-b" "$crate"
-  [ "$(sha "$(module_of "$OUT/release-a" "$crate")")" = "$(sha "$(module_of "$OUT/release-b" "$crate")")" ] \
-    || die "$id: two clean builds differ; refusing to release"
-  package_all "$OUT/release-a" "$OUT/release" "$id"
-  local pkg=$OUT/release/$id-$version.dpplugin
-  printf 'sha256=%s\nsize=%s\n' "$(sha "$pkg")" "$(size "$pkg")"
+# fresh_build SUMS: one build of every member in a fresh target directory
+# and its packages, without running anything else first (no tests, no
+# build scripts of a previous step); SUMS gets the sha256 of every module
+# and package. official.yml runs it in two separate jobs, on fresh runners,
+# and compares the two files (independent builds, finding 4).
+fresh_build() {
+  local sums=$1
+  rm -rf "$OUT/fresh" "$OUT/fresh-packages"
+  build "$OUT/fresh"
+  package_all "$OUT/fresh" "$OUT/fresh-packages"
+  local path id version crate kind
+  : >"$sums"
+  while read -r path id version crate kind; do
+    printf '%s  module %s\n' "$(sha "$(module_of "$OUT/fresh" "$crate")")" "$id-$version" >>"$sums"
+    printf '%s  package %s.dpplugin (%s bytes)\n' "$(sha "$OUT/fresh-packages/$id-$version.dpplugin")" \
+      "$id-$version" "$(size "$OUT/fresh-packages/$id-$version.dpplugin")" >>"$sums"
+  done < <(list --list)
+  cat "$sums"
 }
 
+# release_build ID VERSION: ONE build of ID in a fresh target directory and
+# its package, for official-release.yml's two independent build jobs (each
+# on its own fresh runner, nothing run before it); the sign job compares
+# their outputs. VERSION is the release tag's: the manifest must say it.
+release_build() {
+  local id=$1 version=$2 crate
+  crate=$(list --list | awk -v id="$id" '$2 == id && $5 == "plugin" {print $4}')
+  [ -n "$crate" ] || die "$id is not a released official plugin"
+  [ "$(list --list | awk -v id="$id" '$2 == id {print $3}')" = "$version" ] \
+    || die "$id is not at version $version (the release tag's)"
+  build "$OUT/release-target" "$crate"
+  package_all "$OUT/release-target" "$OUT/release" "$id"
+  local pkg=$OUT/release/$id-$version.dpplugin
+  printf 'module=%s\nsha256=%s\nsize=%s\n' "$(sha "$(module_of "$OUT/release-target" "$crate")")" \
+    "$(sha "$pkg")" "$(size "$pkg")"
+}
+
+# release_compare A_MODULE A_SHA256 A_SIZE B_MODULE B_SHA256 B_SIZE: the
+# two independent builds agree on the module and the package.
+release_compare() {
+  [ "$1" = "$4" ] || die "the two independent builds produced different modules ($1, $4); refusing to release"
+  [ "$2" = "$5" ] && [ "$3" = "$6" ] \
+    || die "the two independent builds produced different packages ($2 $3 bytes, $5 $6 bytes); refusing to release"
+  [[ $2 =~ ^[0-9a-f]{64}$ ]] || die "no package sha256 from the build jobs"
+  note "independent builds agree: module $1, package $2 ($3 bytes)"
+}
+
+# release_sign ID DIR VERSION SHA256 SIZE: the signature, nothing else. ID
+# and VERSION are the release tag's (resolve), passed to `release sign`,
+# which refuses a package that says otherwise and parses the package before
+# it loads the key. Its step alone has the secret; release_verify runs in
+# the next step, without it.
 release_sign() {
   local id=$1 dir=$2 version=$3 sha256=$4 bytes=$5
   require_cli
   local pkg=$dir/$id-$version.dpplugin
   [ "$(sha "$pkg")" = "$sha256" ] && [ "$(size "$pkg")" = "$bytes" ] \
-    || die "$pkg is not the package the build job produced"
+    || die "$pkg is not the package the build jobs produced"
   [ -n "${DECKPILOT_PUBLISHER_KEY:-}" ] || die "DECKPILOT_PUBLISHER_KEY is not set: the owner provisions it in official-release"
-  "$CLI" release sign --package "$pkg" --key-env DECKPILOT_PUBLISHER_KEY \
+  "$CLI" release sign --package "$pkg" --id "$id" --version "$version" --key-env DECKPILOT_PUBLISHER_KEY \
     --password-env DECKPILOT_PUBLISHER_KEY_PASSWORD --out "$pkg.minisig"
-  # The keys pinned in the DeckPilot build must accept it: never --keys.
-  local platform
+}
+
+# release_verify ID DIR VERSION SHA256 SIZE: with the keys pinned in the
+# DeckPilot build (never --keys), for every platform, against DeckPilot's
+# rollback floor (released-pins.json) and revocations (artifacts.json),
+# audited. Refuses to run where the publisher key is in the environment.
+release_verify() {
+  local id=$1 dir=$2 version=$3 sha256=$4 bytes=$5
+  [ -z "${DECKPILOT_PUBLISHER_KEY:-}${DECKPILOT_PUBLISHER_KEY_PASSWORD:-}" ] \
+    || die "release-verify runs without the publisher key in its environment"
+  require_cli
+  local pkg=$dir/$id-$version.dpplugin platform
   for platform in macos linux windows; do
     "$CLI" release verify --package "$pkg" --signature "$pkg.minisig" --id "$id" --version "$version" \
       --sha256 "$sha256" --size "$bytes" --app-version "$DECKPILOT_VERSION" \
       --plugin-api "$DECKPILOT_PLUGIN_API" --platform "$platform" \
       --released-pins "$DECKPILOT_DIR/plugins/first-party/released-pins.json" \
+      --revocations "$DECKPILOT_DIR/plugins/first-party/artifacts.json" \
       --audit "$dir/publisher-audit.jsonl"
   done
 }
@@ -338,9 +399,12 @@ case $what in
   sign-test) sign_test ;;
   all) check; run_tests; package; repro; compare; sign_test ;;
   resolve) resolve "${2:?TAG}" ;;
-  release-build) release_build "${2:?ID}" ;;
+  fresh-build) fresh_build "${2:?SUMS}" ;;
+  release-build) release_build "${2:?ID}" "${3:?VERSION}" ;;
+  release-compare) release_compare "${2:?}" "${3:?}" "${4:?}" "${5:?}" "${6:?}" "${7:?}" ;;
   release-sign) release_sign "${2:?ID}" "${3:?DIR}" "${4:?VERSION}" "${5:?SHA256}" "${6:?SIZE}" ;;
+  release-verify) release_verify "${2:?ID}" "${3:?DIR}" "${4:?VERSION}" "${5:?SHA256}" "${6:?SIZE}" ;;
   release-upload) release_upload "${2:?TAG}" "${3:?ID}" "${4:?VERSION}" "${5:?DIR}" "${6:?SHA256}" "${7:?SIZE}" ;;
-  *) die "usage: official.sh [check|test|package|repro|compare|sign-test|all] | resolve TAG | release-build ID | release-sign ID DIR VERSION SHA256 SIZE" ;;
+  *) die "usage: official.sh [check|test|package|repro|compare|sign-test|all] | fresh-build SUMS | resolve TAG | release-build ID VERSION | release-compare A_MODULE A_SHA A_SIZE B_MODULE B_SHA B_SIZE | release-sign|release-verify ID DIR VERSION SHA256 SIZE | release-upload TAG ID VERSION DIR SHA256 SIZE" ;;
 esac
 note "official: $what passed"

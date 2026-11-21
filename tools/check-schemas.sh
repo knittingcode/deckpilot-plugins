@@ -4,7 +4,7 @@
 # ids and bundled plugin ids of tools/check-submission.py (bundled ids also
 # of tools/check-first-party.py) must equal DeckPilot's.
 . "$(dirname "$0")/lib/common.sh"
-fetch_commit "$DECKPILOT_DIR" "$DECKPILOT_REPOSITORY" "$DECKPILOT_COMMIT"
+fetch_deckpilot "$DECKPILOT_DIR"
 
 status=0
 check() {

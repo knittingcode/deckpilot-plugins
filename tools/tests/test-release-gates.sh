@@ -105,6 +105,12 @@ fresh; official; edit policies-official-release.json '.branch_policies[0].name =
 fresh; official; edit policies-official-release.json '.branch_policies += [{name: "main", type: "branch"}]'; expect fail "official-release deploys from main too" "expected exactly" -- env_check official-release
 fresh; official; edit env-official-release.json '.can_admins_bypass = true'; expect fail "administrators can bypass official-release" "administrators can bypass" -- env_check official-release
 fresh; expect fail "official-release does not exist" "does not exist" -- env_check official-release
+fresh; official; expect fail "REQUIRE_REVIEWERS=2 with one reviewer" "asks for at least 2" -- env REQUIRE_REVIEWERS=2 "$root/tools/check-environment.sh" official-release
+fresh; official; edit env-official-release.json '(.protection_rules[] | select(.type == "required_reviewers") | .reviewers) += [{type: "User", reviewer: {login: "second", id: 2}}]'; expect pass "REQUIRE_REVIEWERS=2 with two reviewers" "2 required reviewer" -- env REQUIRE_REVIEWERS=2 "$root/tools/check-environment.sh" official-release
+fresh; official; expect fail "REQUIRE_PREVENT_SELF_REVIEW and self-review allowed" "allows self-review" -- env REQUIRE_PREVENT_SELF_REVIEW=true "$root/tools/check-environment.sh" official-release
+fresh; official; edit env-official-release.json '(.protection_rules[] | select(.type == "required_reviewers")).prevent_self_review = true'; expect pass "REQUIRE_PREVENT_SELF_REVIEW and self-review prevented" "required reviewer" -- env REQUIRE_PREVENT_SELF_REVIEW=true "$root/tools/check-environment.sh" official-release
+fresh; official; expect fail "a malformed REQUIRE_REVIEWERS" "must be 1 to 6" -- env REQUIRE_REVIEWERS=two "$root/tools/check-environment.sh" official-release
+fresh; no_reviewer; expect fail "REQUIRE_REVIEWERS is never met by a ruleset" "asks for at least 1" -- env REQUIRE_REVIEWERS=1 "$root/tools/check-environment.sh" registry-release
 
 echo "== check-required-checks.sh"
 runs_merge="check-runs-$MERGE.json" runs_head="check-runs-$HEAD.json"

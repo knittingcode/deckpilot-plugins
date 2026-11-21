@@ -59,7 +59,8 @@ bundle() {
   local pkg=$id-$version.dpplugin
   mkdir -p "$b/assets"
   cp "$T/pkg/$pkg" "$b/assets/"
-  "$CLI" release sign --package "$b/assets/$pkg" --key "$T/keys/$key.key" --out "$b/assets/$pkg.minisig" >/dev/null
+  "$CLI" release sign --package "$b/assets/$pkg" --id "$id" --version "$version" --key "$T/keys/$key.key" \
+    --out "$b/assets/$pkg.minisig" >/dev/null
   jq -n --arg tag "$id--v$version" --arg pkg "$pkg" \
     --argjson ps "$(wc -c <"$b/assets/$pkg" | tr -d ' ')" --arg pd "sha256:$(shasum -a 256 "$b/assets/$pkg" | cut -d' ' -f1)" \
     --argjson ss "$(wc -c <"$b/assets/$pkg.minisig" | tr -d ' ')" --arg sd "sha256:$(shasum -a 256 "$b/assets/$pkg.minisig" | cut -d' ' -f1)" \
