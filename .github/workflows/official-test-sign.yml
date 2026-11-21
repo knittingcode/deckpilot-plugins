@@ -8,18 +8,21 @@
 # that the secrets in official-release are the pinned keys and that their
 # passwords unlock them.
 #
-# The owner authorizes each run twice: by creating the key test tag
-# deckpilot.publisher-test--v<n> on a commit of main (tags are admin-only by
-# ruleset; official-release deploys deckpilot.*--v* tags, which admits it),
-# and by approving the official-release deployment of sign-a and sign-b
-# (required reviewer). Start it, never on push:
+# The owner authorizes each run by creating the key test tag
+# deckpilot.publisher-test--v<n> on a commit of main: tags are admin-only by
+# the "Protect tags" ruleset, which covers it, and official-release deploys
+# deckpilot.*--v* tags only, which admits it (the single-maintainer tag
+# authority, docs/release-governance.md). If the environment lists a
+# required reviewer, approving the deployment of sign-a and sign-b is a
+# second authorization. Start it, never on push:
 #   gh workflow run official-test-sign.yml --ref deckpilot.publisher-test--v<n>
 #
 # Jobs, in order:
 #   resolve   the run is on a key test tag at a commit on main; the run
 #             number n
-#   gate      UNPRIVILEGED: official-release is protected as required, and
-#             every required check of main passed for the tagged commit
+#   gate      UNPRIVILEGED: official-release is protected as required (as in
+#             official-release.yml), and every required check of main
+#             passed for the tagged commit
 #   cli       UNPRIVILEGED: builds the pinned deckpilot-registry (DeckPilot
 #             code only) and hands it on as an artifact with its sha256
 #   sign-a,   environment official-release, ONE publisher key each (sign-a
@@ -97,7 +100,7 @@ jobs:
           persist-credentials: false
           ref: ${{ needs.resolve.outputs.commit }}
           sparse-checkout: tools
-      - name: official-release deploys official release tags only, with a reviewer
+      - name: official-release deploys official release tags only and authorizes every run
         env:
           GH_TOKEN: ${{ github.token }}
           REQUIRE_REVIEWERS: ${{ vars.OFFICIAL_RELEASE_REQUIRE_REVIEWERS }}

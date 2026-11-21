@@ -81,6 +81,7 @@ fresh; no_reviewer; edit ruleset-27309841.json '.conditions.ref_name.include = [
 fresh; no_reviewer; edit ruleset-27309841.json '.rules |= map(select(.type != "creation"))'; expect fail "the tag ruleset allows creating tags" "there is no" -- env_check registry-release
 fresh; no_reviewer; edit ruleset-27309841.json '.current_user_can_bypass = "always"'; expect fail "the workflow token can bypass the tag ruleset" "there is no" -- env_check registry-release
 fresh; no_reviewer; edit ruleset-27309841.json '.conditions.ref_name.include = ["refs/tags/*--v*"]'; expect pass "a tag ruleset on *--v* only also authorizes" "authorized by ruleset" -- env_check registry-release
+fresh; no_reviewer; edit ruleset-27309841.json '.conditions.ref_name.include = ["refs/tags/deckpilot.*--v*"]'; expect fail "a tag ruleset on the official tags only does not authorize every release tag" "there is no" -- env_check registry-release
 
 echo "== check-environment.sh registry-timestamp"
 fresh; expect pass "main's ruleset authorizes" 'authorized by ruleset "Protect main"' -- env_check registry-timestamp
@@ -100,7 +101,40 @@ official() {
     > "$work/api/policies-official-release.json"
 }
 fresh; official; expect pass "a required reviewer authorizes official-release" "1 required reviewer" -- env_check official-release
-fresh; official; edit env-official-release.json '.protection_rules |= map(select(.type != "required_reviewers"))'; expect fail "official-release: no ruleset stands in for a reviewer" "needs a required reviewer" -- env_check official-release
+# The owner's settings (single maintainer, docs/release-governance.md): no
+# reviewer, the optional variables unset; the admin-only "Protect tags"
+# ruleset (~ALL) is the authorization. Each case below changes one thing.
+solo() { official; edit env-official-release.json '.protection_rules |= map(select(.type != "required_reviewers"))'; }
+fresh; solo; expect pass "the owner's settings: no reviewer, the tag ruleset authorizes official-release" 'official-release: no reviewer; deploys tag:deckpilot.\*--v\* only; administrators cannot bypass it; authorized by ruleset "Protect tags"' -- env_check official-release
+fresh; solo; edit ruleset-27309841.json '.conditions.ref_name.include = ["refs/tags/deckpilot.*--v*"]'; expect pass "official-release: a tag ruleset on deckpilot.*--v* (release and key test tags)" 'authorized by ruleset "Protect tags"' -- env_check official-release
+fresh; solo; edit ruleset-27309841.json '.conditions.ref_name.include = ["refs/tags/*--v*"]'; expect pass "official-release: a tag ruleset on *--v*" 'authorized by ruleset' -- env_check official-release
+fresh; solo; echo '[]' > "$work/api/rulesets-tag.json"; expect fail "official-release: no reviewer and no tag ruleset" "requires no reviewer and there is no" -- env_check official-release
+fresh; solo; STUB_FAIL='rulesets\?targets=tag'; export STUB_FAIL; expect fail "official-release: the rulesets cannot be read" "rulesets cannot be read" -- env_check official-release
+fresh; solo; STUB_FAIL='rulesets/27309841'; export STUB_FAIL; expect fail "official-release: the ruleset cannot be read" "ruleset 27309841 cannot be read" -- env_check official-release
+fresh; solo; edit ruleset-27309841.json '.enforcement = "evaluate"'; expect fail "official-release: the tag ruleset only evaluates" "there is no" -- env_check official-release
+fresh; solo; edit ruleset-27309841.json '.enforcement = "disabled"'; expect fail "official-release: the tag ruleset is disabled" "there is no" -- env_check official-release
+fresh; solo; edit ruleset-27309841.json '.conditions.ref_name.exclude = ["refs/tags/deckpilot.*"]'; expect fail "official-release: the tag ruleset excludes the official tags" "there is no" -- env_check official-release
+fresh; solo; edit ruleset-27309841.json '.conditions.ref_name.exclude = ["refs/tags/deckpilot.publisher-test--v*"]'; expect fail "official-release: the tag ruleset excludes the key test tags" "there is no" -- env_check official-release
+fresh; solo; edit ruleset-27309841.json '.conditions.ref_name.exclude = ["refs/tags/v0*"]'; expect fail "official-release: the tag ruleset has any exclusion" "there is no" -- env_check official-release
+fresh; solo; edit ruleset-27309841.json '.conditions.ref_name.include = ["refs/tags/v*"]'; expect fail "official-release: the tag ruleset covers other tags only" "there is no" -- env_check official-release
+fresh; solo; edit ruleset-27309841.json '.conditions.ref_name.include = ["refs/tags/deckpilot.*"]'; expect fail "official-release: a ruleset pattern the check does not know (deckpilot.*)" "there is no" -- env_check official-release
+fresh; solo; edit ruleset-27309841.json '.rules |= map(select(.type != "creation"))'; expect fail "official-release: the tag ruleset allows creating tags" "there is no" -- env_check official-release
+fresh; solo; edit ruleset-27309841.json '.rules |= map(select(.type != "update"))'; expect fail "official-release: the tag ruleset allows moving tags" "there is no" -- env_check official-release
+fresh; solo; edit ruleset-27309841.json '.rules |= map(select(.type != "deletion"))'; expect fail "official-release: the tag ruleset allows deleting tags" "there is no" -- env_check official-release
+fresh; solo; edit ruleset-27309841.json '.rules = []'; expect fail "official-release: the tag ruleset restricts nothing" "there is no" -- env_check official-release
+fresh; solo; edit ruleset-27309841.json '.current_user_can_bypass = "always"'; expect fail "official-release: the workflow token can bypass the tag ruleset" "there is no" -- env_check official-release
+fresh; solo; edit ruleset-27309841.json '.current_user_can_bypass = "pull_requests_only"'; expect fail "official-release: the workflow token can bypass the tag ruleset (pull requests)" "there is no" -- env_check official-release
+fresh; solo; edit ruleset-27309841.json 'del(.current_user_can_bypass)'; expect fail "official-release: the bypass of the workflow token is unknown" "there is no" -- env_check official-release
+fresh; solo; edit ruleset-27309841.json '.target = "branch"'; expect fail "official-release: the ruleset is a branch ruleset" "there is no" -- env_check official-release
+fresh; solo; edit env-official-release.json '.can_admins_bypass = true'; expect fail "official-release (tag authority): administrators can bypass the environment" "administrators can bypass" -- env_check official-release
+fresh; solo; edit policies-official-release.json '.branch_policies[0].name = "*--v*"'; expect fail "official-release (tag authority): deploys from every release tag" "expected exactly 'tag:deckpilot" -- env_check official-release
+fresh; solo; edit policies-official-release.json '.branch_policies[0].name = "deckpilot.*"'; expect fail "official-release (tag authority): deploys from a non-release tag (deckpilot.*)" "deploys from 'tag:deckpilot.\*'," -- env_check official-release
+fresh; solo; edit policies-official-release.json '.branch_policies = [{name: "main", type: "branch"}]'; expect fail "official-release (tag authority): deploys from main" "deploys from 'branch:main'" -- env_check official-release
+fresh; solo; edit policies-official-release.json '.branch_policies += [{name: "main", type: "branch"}]'; expect fail "official-release (tag authority): deploys from main too" "expected exactly" -- env_check official-release
+fresh; solo; edit env-official-release.json '.deployment_branch_policy.protected_branches = true | .deployment_branch_policy.custom_branch_policies = false'; expect fail "official-release (tag authority): deploys from protected branches" "selected branches and tags" -- env_check official-release
+fresh; solo; expect fail "official-release (tag authority): REQUIRE_REVIEWERS set is never met by the ruleset" "asks for at least 1" -- env REQUIRE_REVIEWERS=1 "$root/tools/check-environment.sh" official-release
+fresh; solo; expect fail "official-release (tag authority): REQUIRE_PREVENT_SELF_REVIEW set is never met by the ruleset" "allows self-review" -- env REQUIRE_PREVENT_SELF_REVIEW=true "$root/tools/check-environment.sh" official-release
+fresh; solo; expect pass "official-release (tag authority): REQUIRE_PREVENT_SELF_REVIEW=false" 'authorized by ruleset' -- env REQUIRE_PREVENT_SELF_REVIEW=false REQUIRE_REVIEWERS= "$root/tools/check-environment.sh" official-release
 fresh; official; edit policies-official-release.json '.branch_policies[0].name = "*--v*"'; expect fail "official-release deploys from every release tag" "expected exactly 'tag:deckpilot" -- env_check official-release
 fresh; official; edit policies-official-release.json '.branch_policies += [{name: "main", type: "branch"}]'; expect fail "official-release deploys from main too" "expected exactly" -- env_check official-release
 fresh; official; edit env-official-release.json '.can_admins_bypass = true'; expect fail "administrators can bypass official-release" "administrators can bypass" -- env_check official-release
@@ -118,10 +152,11 @@ fresh; official; edit policies-official-release.json '.branch_policies = [{name:
 fresh; official; edit policies-official-release.json '.branch_policies = []'; expect fail "official-release has no deployment policy" "deploys from 'nothing'" -- env_check official-release
 fresh; official; edit env-official-release.json '.deployment_branch_policy = null'; expect fail "official-release deploys from every branch and tag" "selected branches and tags" -- env_check official-release
 fresh; official; edit env-official-release.json '.deployment_branch_policy.protected_branches = true | .deployment_branch_policy.custom_branch_policies = false'; expect fail "official-release deploys from protected branches" "selected branches and tags" -- env_check official-release
-# The owner's settings today: one reviewer, self-review prevented, the
-# variables asking for two reviewers: the gate fails closed.
-fresh; official; edit env-official-release.json '(.protection_rules[] | select(.type == "required_reviewers")).prevent_self_review = true'; expect fail "the owner's settings with one reviewer: fails closed" "asks for at least 2" -- env REQUIRE_REVIEWERS=2 REQUIRE_PREVENT_SELF_REVIEW=true "$root/tools/check-environment.sh" official-release
-fresh; official; edit env-official-release.json '(.protection_rules[] | select(.type == "required_reviewers")) |= (.prevent_self_review = true | .reviewers += [{type: "User", reviewer: {login: "second", id: 2}}])'; expect pass "the owner's settings with two reviewers" "2 required reviewer" -- env REQUIRE_REVIEWERS=2 REQUIRE_PREVENT_SELF_REVIEW=true "$root/tools/check-environment.sh" official-release
+# The optional reviewer variables, for a future second maintainer: one
+# reviewer, self-review prevented, the variables asking for two reviewers:
+# the gate fails closed; two reviewers pass.
+fresh; official; edit env-official-release.json '(.protection_rules[] | select(.type == "required_reviewers")).prevent_self_review = true'; expect fail "the second-maintainer settings with one reviewer: fails closed" "asks for at least 2" -- env REQUIRE_REVIEWERS=2 REQUIRE_PREVENT_SELF_REVIEW=true "$root/tools/check-environment.sh" official-release
+fresh; official; edit env-official-release.json '(.protection_rules[] | select(.type == "required_reviewers")) |= (.prevent_self_review = true | .reviewers += [{type: "User", reviewer: {login: "second", id: 2}}])'; expect pass "the second-maintainer settings with two reviewers" "2 required reviewer" -- env REQUIRE_REVIEWERS=2 REQUIRE_PREVENT_SELF_REVIEW=true "$root/tools/check-environment.sh" official-release
 fresh; official; expect fail "a malformed REQUIRE_REVIEWERS" "must be 1 to 6" -- env REQUIRE_REVIEWERS=two "$root/tools/check-environment.sh" official-release
 fresh; no_reviewer; expect fail "REQUIRE_REVIEWERS is never met by a ruleset" "asks for at least 1" -- env REQUIRE_REVIEWERS=1 "$root/tools/check-environment.sh" registry-release
 

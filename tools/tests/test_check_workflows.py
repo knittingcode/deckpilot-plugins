@@ -145,7 +145,7 @@ official("a key in the verify job",
          False, "job verify holds DECKPILOT_PUBLISHER_KEY_A: the publisher keys belong to sign-a and sign-b only")
 official("a key in a third job",
          release_workflow(others=sign_job("sign-c", "A")), False, "job sign-c holds .*belong to sign-a and sign-b only")
-official("a key job without the environment (no tag policy, no reviewers)",
+official("a key job without the environment (no tag policy, no authorization)",
          release_workflow(a=sign_job("sign-a", "A", env="")), False, "without naming environment official-release")
 official("a key job in another environment",
          release_workflow(a=sign_job("sign-a", "A", env="    environment: registry-release\n")), False, "environment registry-release is not allowed")
