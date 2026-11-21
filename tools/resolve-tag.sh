@@ -8,6 +8,9 @@
 #   registry--v<anything>     re-sign the index only (revocations, yanks,
 #                              listing changes); no new package
 #
+# Never the plugins DeckPilot bundles (official-release.yml) or the
+# publisher key test's deckpilot.publisher-test--v<n> (official-test-sign.yml).
+#
 # The tagged commit must be on main (reviewed). Every other recorded version
 # must already have its release asset, so the new index never points at a
 # missing download. Prints key=value lines for $GITHUB_OUTPUT.
@@ -16,6 +19,10 @@ tag=${1:?usage: resolve-tag.sh TAG}
 [[ $tag =~ ^[a-z][a-z0-9.-]{3,56}--v[0-9A-Za-z.+-]{1,32}$ ]] || die "$tag is not a publication tag (<id>--v<version>)"
 id=${tag%%--v*}
 version=${tag#*--v}
+# The publisher key test's tags (official-test-sign.yml) are never a
+# publication, whatever publish.yml's tag filter says.
+[ "$id" != deckpilot.publisher-test ] ||
+  die "$tag is a publisher key test tag (official-test-sign.yml): never a registry publication"
 # The plugins DeckPilot bundles are never registry publications, whatever
 # publish.yml's tag filter says: official-release.yml releases them.
 bundled=$(python3 -I -c '

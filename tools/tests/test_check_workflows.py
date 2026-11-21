@@ -60,11 +60,11 @@ case("an environment block named by expression",
      workflow("    environment:\n      name: ${{ github.ref_name }}\n"), False, "an expression")
 case("an unknown environment", workflow("    environment: staging\n"), False, "environment staging is not allowed")
 case("the publisher key outside official-release.yml",
-     workflow(step=env_step("secrets.DECKPILOT_PUBLISHER_KEY_A")), False, "belongs to official-release.yml only")
+     workflow(step=env_step("secrets.DECKPILOT_PUBLISHER_KEY_A")), False, "belongs to official-release.yml and official-test-sign.yml only")
 case("the publisher key, index syntax, outside official-release.yml",
-     workflow(step=env_step("secrets['DECKPILOT_PUBLISHER_KEY_B']")), False, "belongs to official-release.yml only")
+     workflow(step=env_step("secrets['DECKPILOT_PUBLISHER_KEY_B']")), False, "belongs to official-release.yml and official-test-sign.yml only")
 case("the publisher key in lower case outside official-release.yml (GitHub's names are case-insensitive)",
-     workflow(step=env_step("secrets.deckpilot_publisher_key_a_password")), False, "belongs to official-release.yml only")
+     workflow(step=env_step("secrets.deckpilot_publisher_key_a_password")), False, "belongs to official-release.yml and official-test-sign.yml only")
 # The retired single key; its name is assembled so nothing references it.
 RETIRED = "DECKPILOT_PUBLISHER_" + "KEY"
 case("the retired single publisher key outside official-release.yml",
@@ -209,6 +209,117 @@ official("verify in the environment",
 official("release in the environment",
          release_workflow(release=plain_job("release", "verify", extra="    environment: official-release\n")),
          False, "job release names environment official-release; only sign-a and sign-b do")
+
+official("a signing step that runs another command",
+         release_workflow(a=sign_job("sign-a", "A", steps=sign_job("x", "A").split("    steps:\n" + CHECKOUT)[1]
+                                     .replace("tools/official.sh release-sign A", "tools/sign-anything.sh A"))),
+         False, "does not run tools/official.sh release-sign")
+official("a verify job that does not run release-verify",
+         release_workflow(verify=plain_job("verify", "resolve, compare, cli, sign-a, sign-b")), False,
+         "job verify does not run tools/official.sh release-verify")
+official("no gate job checking the environment",
+         release_workflow().replace("tools/check-environment.sh official-release", "echo skipped"), False,
+         "no job `gate` running tools/check-environment.sh official-release")
+official("the key test's signing command in official-release.yml",
+         release_workflow(a=sign_job("sign-a", "A", steps=sign_job("x", "A").split("    steps:\n" + CHECKOUT)[1]
+                                     .replace("release-sign A \"$ID\" d \"$V\" \"$S\" \"$N\" out", "test-sign A 1 out"))),
+         False, "nothing compiles|does not run tools/official.sh release-sign")
+
+
+# official-test-sign.yml: the key test. The same two jobs and rules, on a
+# key test tag, by workflow_dispatch only, and nothing released.
+TEST_IF = ("github.repository == 'knittingcode/deckpilot-plugins' && github.event_name == 'workflow_dispatch' && "
+           "github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/deckpilot.publisher-test--v')")
+UPLOAD = ("      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2\n"
+          "        with:\n          name: s\n          path: out\n          retention-days: 1\n")
+
+
+def test_sign_job(name, key, cond=f"    if: {TEST_IF}\n", env="    environment: official-release\n",
+                  needs="    needs: [resolve, gate, cli]\n", upload=UPLOAD, run=None):
+    run = f"tools/official.sh test-sign {key} \"$RUN\" out" if run is None else run
+    steps = (f"      - run: tools/cli-artifact.sh install \"$D\" \"$A\" \"$B\"\n"
+             f"      - name: Sign\n        env:\n"
+             f"          DECKPILOT_PUBLISHER_KEY_{key}: ${{{{ secrets.DECKPILOT_PUBLISHER_KEY_{key} }}}}\n"
+             f"          DECKPILOT_PUBLISHER_KEY_{key}_PASSWORD: ${{{{ secrets.DECKPILOT_PUBLISHER_KEY_{key}_PASSWORD }}}}\n"
+             f"        run: {run}\n{upload}")
+    return sign_job(name, key, steps=steps, env=env, cond=cond, needs=needs)
+
+
+TEST_ON = "on:\n  workflow_dispatch:\n"
+
+
+def test_workflow(on=TEST_ON, a=None, b=None, verify=None, others=""):
+    a = test_sign_job("sign-a", "A") if a is None else a
+    b = test_sign_job("sign-b", "B") if b is None else b
+    verify = plain_job("verify", "resolve, cli, sign-a, sign-b",
+                       step="      - run: tools/official.sh test-verify \"$RUN\" d \"$KA\" \"$KB\"\n") if verify is None else verify
+    return (f"name: Official key test\n{on}permissions: {{}}\njobs:\n"
+            f"  gate:\n    runs-on: ubuntu-24.04\n    permissions:\n      contents: read\n    steps:\n{CHECKOUT}"
+            f"      - run: tools/check-environment.sh official-release\n{others}{a}{b}{verify}")
+
+
+def key_test(name, text, ok, message=""):
+    case(name, text, ok, message, file="official-test-sign.yml")
+
+
+key_test("the key test: two signing jobs, one key each, a keyless verify", test_workflow(), True, "1 workflow")
+key_test("the key test on a push", test_workflow(on=TEST_ON + "  push:\n    tags: [\"deckpilot.publisher-test--v*\"]\n"),
+         False, "trigger `push`")
+key_test("the key test on a pull request", test_workflow(on=TEST_ON + "  pull_request:\n"), False, "trigger `pull_request`")
+key_test("the key test without workflow_dispatch", test_workflow(on="on:\n  schedule:\n    - cron: '0 0 * * *'\n"),
+         False, "trigger `schedule`")
+key_test("the key test with a dispatch input",
+         test_workflow(on=TEST_ON + "    inputs:\n      run:\n        type: string\n"), False, "takes no inputs")
+key_test("the key test's key job with official-release's condition (any release tag)",
+         test_workflow(a=test_sign_job("sign-a", "A", cond=f"    if: {IF}\n")), False, "without the job condition")
+key_test("the key test's key job without a condition", test_workflow(b=test_sign_job("sign-b", "B", cond="")), False,
+         "without the job condition")
+key_test("the key test's key job without the environment", test_workflow(a=test_sign_job("sign-a", "A", env="")), False,
+         "without naming environment official-release")
+key_test("the key test's key job without the gate",
+         test_workflow(a=test_sign_job("sign-a", "A", needs="    needs: [resolve, cli]\n")), False, "without needing `gate`")
+key_test("the key test without a gate job",
+         test_workflow().replace("tools/check-environment.sh official-release", "echo skipped"), False, "no job `gate`")
+key_test("the key test signing a release",
+         test_workflow(a=test_sign_job("sign-a", "A", run="tools/official.sh release-sign A \"$ID\" d \"$V\" \"$S\" \"$N\" out")),
+         False, "the key test signs only the test message")
+key_test("the key test running release sign directly",
+         test_workflow(b=test_sign_job("sign-b", "B", run="\"$CLI\" release sign --package p --key-env DECKPILOT_PUBLISHER_KEY_B")),
+         False, "the key test signs only the test message")
+key_test("the key test compiling where a key is",
+         test_workflow(a=test_sign_job("sign-a", "A", run="tools/build-cli.sh && tools/official.sh test-sign A 1 out")),
+         False, "nothing compiles")
+key_test("the key test with both keys in one job",
+         test_workflow(a=sign_job("sign-a", "A", cond=f"    if: {TEST_IF}\n", needs="    needs: [resolve, gate, cli]\n",
+                                  steps=both)), False, "holds both publisher keys")
+key_test("the key test with a release job",
+         test_workflow(others=plain_job("release", "verify")), False, "a job `release`: the key test releases nothing")
+key_test("the key test uploading to a release",
+         test_workflow(others=plain_job("upload", "verify", step="      - run: gh release upload t f\n")), False,
+         "the key test signs only the test message")
+key_test("the key test with a write permission",
+         test_workflow(others=plain_job("other", "verify", extra="    permissions:\n      contents: write\n")), False,
+         "writes nothing")
+key_test("the key test keeping a signature for a week",
+         test_workflow(a=test_sign_job("sign-a", "A", upload=UPLOAD.replace("retention-days: 1", "retention-days: 7"))),
+         False, "kept longer than one day")
+key_test("the key test without a verify job", test_workflow(verify=""), False, "no job `verify`")
+key_test("the key test's verify not waiting for sign-b",
+         test_workflow(verify=plain_job("verify", "sign-a", step="      - run: tools/official.sh test-verify 1 d a b\n")),
+         False, "verify does not need both")
+key_test("the key test's verify with a key",
+         test_workflow(verify=plain_job("verify", "sign-a, sign-b", step=env_step("secrets.DECKPILOT_PUBLISHER_KEY_A"))),
+         False, "belong to sign-a and sign-b only")
+key_test("the key test's verify in the environment",
+         test_workflow(verify=plain_job("verify", "sign-a, sign-b", extra="    environment: official-release\n",
+                                        step="      - run: tools/official.sh test-verify 1 d a b\n")),
+         False, "job verify names environment official-release")
+key_test("the key test's verify not running test-verify",
+         test_workflow(verify=plain_job("verify", "sign-a, sign-b")), False, "does not run tools/official.sh test-verify")
+key_test("a registry secret in the key test",
+         test_workflow(others=plain_job("other", "gate", step=env_step("secrets.REGISTRY_INDEX_KEY"))), False, "not a publisher key")
+key_test("a registry environment in the key test",
+         test_workflow(others=plain_job("other", "gate", extra="    environment: registry-release\n")), False, "not allowed")
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

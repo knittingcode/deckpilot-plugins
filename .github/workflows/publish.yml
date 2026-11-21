@@ -42,9 +42,11 @@ name: Publish
 on:
   push:
     # Not the plugins DeckPilot bundles: the registry never serves them;
-    # their tags are official-release.yml's.
+    # their tags are official-release.yml's. Not the publisher key test's
+    # tags either (official-test-sign.yml, never a release).
     tags:
       - "*--v*"
+      - "!deckpilot.publisher-test--v*"
       - "!deckpilot.docker--v*"
       - "!deckpilot.git--v*"
       - "!deckpilot.github--v*"

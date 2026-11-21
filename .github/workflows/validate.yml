@@ -24,7 +24,7 @@ jobs:
   hygiene:
     name: Repository hygiene
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -53,6 +53,14 @@ jobs:
         run: tools/tests/test-cli-artifact.sh
       - name: Tests of the two-key official release steps (missing or extra keys, one signature, no release)
         run: tools/tests/test-official-release.sh
+      - name: Tests of the publisher pin check
+        run: python3 -I tools/tests/test_check_publisher_pin.py
+      # Git only (the commit of tools/deckpilot.env, on DeckPilot's main);
+      # nothing of DeckPilot is built or run here.
+      - name: DeckPilot pins at least two distinct publisher keys (threshold >= 2); the verify jobs use exactly that file
+        run: |
+          tools/official.sh fetch-deckpilot
+          python3 -I tools/check-publisher-pin.py
 
   submission:
     name: Submission rules

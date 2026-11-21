@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Tests of official.sh release-sign, release-verify and release-upload, the
 # steps of official-release.yml's sign-a/sign-b, verify and release jobs,
+# and of test-resolve, test-sign and test-verify, the key test's
+# (official-test-sign.yml),
 # without a key, a network or the real deckpilot-registry: fail closed on a
 # missing or extra secret, one key missing (one signature, a skipped
 # signing job), a duplicated or misnamed signature, a DeckPilot that pins
@@ -105,16 +107,35 @@ mkdir -p "$DECKPILOT_PLUGINS_WORK/bin"
 cat > "$DECKPILOT_PLUGINS_WORK/bin/deckpilot-registry" << 'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
-[ "$1 $2" = "release verify" ] || { echo "stub: $*" >&2; exit 2; }
-audit="" dir="" pkg=""
+command="$1 $2"
+audit="" dir="" pkg="" run="" out=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --signatures-dir) dir=$2; shift 2 ;;
     --package) pkg=$2; shift 2 ;;
     --audit) audit=$2; shift 2 ;;
+    --run) run=$2; shift 2 ;;
+    --out-dir) out=$2; shift 2 ;;
     *) shift ;;
   esac
 done
+case $command in
+  "release test-message")
+    printf 'deckpilot-publisher-test v1 run:%s\n' "$run" > "$out/deckpilot-publisher-test-v$run.txt"; exit 0 ;;
+  "release test-verify")
+    n=$(find "$dir" -maxdepth 1 -name "deckpilot-publisher-test-v$run.txt.*.minisig" | wc -l | tr -d ' ')
+    if [ "$n" != 2 ] && [ -z "${STUB_ACCEPT_ONE:-}" ]; then
+      echo "error: key test $run refused: $n valid signature(s), 2 required" >&2; exit 1
+    fi
+    echo "key test $run verified"; exit 0 ;;
+  "release verify") ;;
+  *) echo "stub: $command" >&2; exit 2 ;;
+esac
+# The key test message is never a release (its comment is another domain),
+# unless STUB_ACCEPT_TEST says otherwise.
+if head -c 24 "$pkg" | grep -q '^deckpilot-publisher-test' && [ -z "${STUB_ACCEPT_TEST:-}" ]; then
+  echo "error: refused: 0 valid signature(s) from distinct pinned publisher keys, 2 required" >&2; exit 1
+fi
 n=$(find "${dir:-$(dirname "$pkg")}" -maxdepth 1 -name "$(basename "$pkg").*.minisig" | wc -l | tr -d ' ')
 if [ "$n" != 2 ] && [ -z "${STUB_ACCEPT_ONE:-}" ]; then
   echo "error: refused: $n valid signature(s) from distinct keys of the role, 2 required" >&2; exit 1
@@ -126,7 +147,22 @@ printf '#!/bin/sh\nexit 0\n' > "$DECKPILOT_PLUGINS_WORK/bin/schema-check"
 chmod +x "$DECKPILOT_PLUGINS_WORK/bin/"*
 pinned=$DECKPILOT_PLUGINS_WORK/deckpilot/crates/deckpilot-plugin-registry/publisher/first-party.json
 mkdir -p "$(dirname "$pinned")" "$DECKPILOT_PLUGINS_WORK/deckpilot/plugins/first-party"
-pin() { jq -n --argjson t "$1" --argjson n "$2" '{publisherKeysVersion: 1, publisher: "deckpilot", keys: [range($n) | "key\(.)"], threshold: $t, revokedKeys: []}' > "$pinned"; }
+# pin THRESHOLD N [KEYID...]: DeckPilot's first-party.json with N public
+# keys in minisign's format, of these key ids (default: KA, KB, then others).
+pin() {
+  local t=$1 n=$2; shift 2
+  python3 -I - "$t" "$n" "$pinned" "$@" << 'PY'
+import base64, json, sys
+t, n, out, ids = int(sys.argv[1]), int(sys.argv[2]), sys.argv[3], sys.argv[4:]
+ids = (ids or ["0123456789ABCDEF", "FEDCBA9876543210", "1111111111111111", "2222222222222222"])[:n]
+def key(kid):
+    raw = b"Ed" + bytes.fromhex(kid)[::-1] + bytes(32)
+    text = f"untrusted comment: minisign public key: {kid}\n{base64.b64encode(raw).decode()}\n"
+    return base64.b64encode(text.encode()).decode()
+json.dump({"publisherKeysVersion": 1, "publisher": "deckpilot", "keys": [key(k) for k in ids],
+           "threshold": t, "revokedKeys": []}, open(out, "w"))
+PY
+}
 pin 2 2
 # set NAME FILE...: a release directory with the package and these signatures (SRC:DEST).
 release_dir() {
@@ -168,8 +204,66 @@ pin 1 2
 expect fail "DeckPilot pins two keys, threshold 1" "threshold 1.*at least 2" -- verify "$two" "$KA" "$KB"
 pin 2 0
 expect fail "DeckPilot pins no key" "pins 0 publisher key" -- verify "$two" "$KA" "$KB"
+pin 2 2 "$KA" 1111111111111111
+expect fail "a signature by a key DeckPilot does not pin" "key $KB signed, but DeckPilot .* does not pin it" -- verify "$two" "$KA" "$KB"
 pin 2 2
 expect fail "the pinned verifier accepts one signature alone" "accept .* alone: the threshold is not two" -- env STUB_ACCEPT_ONE=1 "$root/tools/official.sh" release-verify "$ID" "$two" "$VERSION" "$SHA" "$SIZE" "$KA" "$KB"
+
+echo "== the key test (official-test-sign.yml)"
+# (A well-formed tag then needs its commit on main: not testable on a pull
+# request's merge commit; official-test-sign.yml's resolve job checks it.)
+for tag in deckpilot.publisher-test--v0 deckpilot.publisher-test--v07 deckpilot.publisher-test--v10000 \
+  deckpilot.publisher-test--v1.0.0 deckpilot.git--v1.2.3 deckpilot.publisher-test registry--v1; do
+  expect fail "not a key test tag: $tag" "is not a key test tag" -- official test-resolve "$tag"
+done
+tsign() { "$root/tools/official.sh" test-sign "$@"; }
+expect fail "key test: no secret, fails closed" "DECKPILOT_PUBLISHER_KEY_A is not set.*official-release" -- tsign A 1 "$work/t-sig"
+expect fail "key test: key B without its password" "DECKPILOT_PUBLISHER_KEY_B_PASSWORD is not set" -- \
+  env DECKPILOT_PUBLISHER_KEY_B=k "$root/tools/official.sh" test-sign B 1 "$work/t-sig"
+expect fail "key test: the job of key A also has key B" "also has DECKPILOT_PUBLISHER_KEY_B.*own job" -- \
+  env DECKPILOT_PUBLISHER_KEY_A=k DECKPILOT_PUBLISHER_KEY_A_PASSWORD=p DECKPILOT_PUBLISHER_KEY_B_PASSWORD=p \
+  "$root/tools/official.sh" test-sign A 1 "$work/t-sig"
+expect fail "key test: the retired single key" "$retired is in the environment of the job signing with key B" -- \
+  env DECKPILOT_PUBLISHER_KEY_B=k DECKPILOT_PUBLISHER_KEY_B_PASSWORD=p "$retired=k" \
+  "$root/tools/official.sh" test-sign B 1 "$work/t-sig"
+expect fail "key test: a third key slot" "A or B" -- \
+  env DECKPILOT_PUBLISHER_KEY_A=k DECKPILOT_PUBLISHER_KEY_A_PASSWORD=p "$root/tools/official.sh" test-sign C 1 "$work/t-sig"
+expect fail "key test: a run that is not a number" "1 to 9999" -- \
+  env DECKPILOT_PUBLISHER_KEY_A=k DECKPILOT_PUBLISHER_KEY_A_PASSWORD=p "$root/tools/official.sh" test-sign A x "$work/t-sig"
+expect fail "key test: an output directory that already holds something" "new or empty" -- \
+  env DECKPILOT_PUBLISHER_KEY_A=k DECKPILOT_PUBLISHER_KEY_A_PASSWORD=p "$root/tools/official.sh" test-sign A 1 "$work/full"
+TNAME=deckpilot-publisher-test-v1.txt
+# key_test_dir NAME FILE...: a directory with these key test signatures (SRC:DEST).
+key_test_dir() {
+  local d=$work/t-$1; shift
+  rm -rf "$d"; mkdir -p "$d"
+  local f
+  for f in "$@"; do cp "$work/${f%%:*}" "$d/${f#*:}"; done
+  echo "$d"
+}
+tverify() { official test-verify 1 "$@"; }
+pin 2 2
+ttwo=$(key_test_dir two a.sig:"$TNAME.$KA.minisig" b.sig:"$TNAME.$KB.minisig")
+expect pass "key test: both pinned keys signed, one alone refused, never a release" \
+  "release verify refuses it as a release of [0-9]+ id" -- tverify "$ttwo" "$KA" "$KB"
+expect fail "key test: a publisher key in the verify job" "test-verify runs without any publisher key" -- \
+  env DECKPILOT_PUBLISHER_KEY_A=k "$root/tools/official.sh" test-verify 1 "$ttwo" "$KA" "$KB"
+expect fail "key test: sign-b skipped (no key id)" "reported no key id" -- tverify "$ttwo" "$KA" ""
+expect fail "key test: the same key twice" "same key" -- tverify "$ttwo" "$KA" "$KA"
+tone=$(key_test_dir one a.sig:"$TNAME.$KA.minisig")
+expect fail "key test: one signature" "has 1 signature\\(s\\)" -- tverify "$tone" "$KA" "$KB"
+tdup=$(key_test_dir dup a.sig:"$TNAME.$KA.minisig" a.sig:"$TNAME.$KB.minisig")
+expect fail "key test: a duplicated signature under the other key's name" "carries key id $KA, not $KB" -- tverify "$tdup" "$KA" "$KB"
+expect fail "key test: another run's signatures" "is not a signature file deckpilot-publisher-test-v2.txt" -- official test-verify 2 "$ttwo" "$KA" "$KB"
+pin 2 2 "$KA" 1111111111111111
+expect fail "key test: a key DeckPilot does not pin" "key $KB signed, but DeckPilot .* does not pin it" -- tverify "$ttwo" "$KA" "$KB"
+pin 1 2
+expect fail "key test: DeckPilot pins threshold 1" "threshold 1.*at least 2" -- tverify "$ttwo" "$KA" "$KB"
+pin 2 2
+expect fail "key test: the pinned verifier accepts one signature alone" "alone: the threshold is not two" -- \
+  env STUB_ACCEPT_ONE=1 "$root/tools/official.sh" test-verify 1 "$ttwo" "$KA" "$KB"
+expect fail "key test: release verify would accept the test signatures as a release" "accepts the key test signatures as a release" -- \
+  env STUB_ACCEPT_TEST=1 "$root/tools/official.sh" test-verify 1 "$ttwo" "$KA" "$KB"
 
 echo "== release-upload (release)"
 # A stand-in gh: one release in $work/gh.json; `upload` adds an asset,
