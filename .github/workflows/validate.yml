@@ -49,6 +49,8 @@ jobs:
         run: tools/tests/test-deckpilot-pin.sh
       - name: Tests of the registry tag guard (never a bundled plugin)
         run: tools/tests/test-resolve-tag.sh
+      - name: Tests of the tools handed to signing jobs (sha256-checked, nothing compiled there)
+        run: tools/tests/test-cli-artifact.sh
 
   submission:
     name: Submission rules

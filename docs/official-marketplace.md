@@ -90,10 +90,11 @@ when a plugin moves to `official/`, run `matrix` again (the check fails
 otherwise).
 
 **Promotion into the signed index is not possible yet** and needs, in this
-order: (1) DeckPilot accepting a registry copy of a bundled plugin as an
-update of the bundled one (today the agent refuses it before download;
-that is a reviewed DeckPilot change and an application release, with the
-tests X12 gets); (2) `MARKETPLACE_SERVES_BUNDLED` and a promotion step
+order: (1) a publisher key pinned in a DeckPilot release: the agent
+(knittingcode/deckpilot#378) takes a registry copy of an official plugin,
+a bundled one included, only as a release signed by the publisher keys
+compiled into it and verified before install, and refuses it before any
+download while no key is pinned; (2) `MARKETPLACE_SERVES_BUNDLED` and a promotion step
 here, plus `check-submission.py` and `check-first-party.py` allowing those
 ids and `publish.yml` publishing an index for an official tag without
 rebuilding or re-uploading the asset (its `build` job rebuilds from a

@@ -178,7 +178,9 @@ def privileged_usages(manifest):
         if node.get("changesContext") is True:
             found.append((f"contributes.actions[{a}].node.changesContext", "`node.changesContext`"))
         for q, parameter in enumerate(action.get("parameters") or []):
-            if isinstance(parameter, dict) and parameter.get("kind") == "resource":
+            kind = parameter.get("kind") if isinstance(parameter, dict) else None
+            # ParameterKind is tagged by `type`: {"type": "resource", "kinds": [...]}.
+            if isinstance(kind, dict) and kind.get("type") == "resource":
                 found.append((f"contributes.actions[{a}].parameters[{q}].kind", "a `resource` parameter"))
     for i, variable in enumerate(contributes.get("variables") or []):
         if isinstance(variable, dict) and variable.get("source") is not None:

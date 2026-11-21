@@ -68,6 +68,24 @@ case("a registry secret in official-release.yml",
      workflow(step=env_step("secrets.REGISTRY_INDEX_KEY")), False, "not the publisher key", file="official-release.yml")
 case("a registry environment in official-release.yml",
      workflow("    environment: registry-release\n"), False, "not allowed", file="official-release.yml")
+case("an if: condition without ${{ }} using the whole context",
+     workflow(step="      - if: toJSON(secrets) != '{}'\n        run: echo hi\n"), False, "secrets context")
+case("an if: condition naming a registry secret", workflow(step="      - if: secrets.REGISTRY_INDEX_KEY != ''\n        run: echo hi\n"), True)
+case("a multi-line expression using the whole context",
+     workflow(step="      - env:\n          K: ${{\n            toJSON(secrets)\n          }}\n        run: echo \"$K\"\n"), False, "secrets context")
+case("a signing job that compiles the CLI",
+     workflow("    environment: registry-release\n", "      - run: tools/build-cli.sh\n"), False, "nothing compiles where a signing key is")
+case("a signing job that runs cargo in a block",
+     workflow("    environment: official-release\n", "      - run: |\n          echo start\n          cargo build --release\n"),
+     False, "nothing compiles", file="official-release.yml")
+case("a signing job that runs an official.sh build step",
+     workflow("    environment: official-release\n", "      - run: tools/official.sh release-build deckpilot.git 1.0.0\n"),
+     False, "nothing compiles", file="official-release.yml")
+case("a signing job that installs the cli job's binaries and signs",
+     workflow("    environment: official-release\n",
+              "      - run: tools/cli-artifact.sh install \"$D\" \"$A\" \"$B\"\n      - run: tools/official.sh release-sign x d 1 s 2\n"),
+     True, file="official-release.yml")
+case("an unprivileged job may compile", workflow(step="      - run: tools/build-cli.sh\n"), True)
 case("pull_request_target", workflow().replace("  push:", "  pull_request_target:"), False, "pull_request_target")
 
 print(f"\n{passed} passed, {failed} failed")
