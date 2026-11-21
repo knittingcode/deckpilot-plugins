@@ -3,6 +3,16 @@
   "officialVersion": 1,
   "plugins": [
     {
+      "path": "docker",
+      "id": "deckpilot.docker",
+      "permissions": ["device", "profile", "resources", "tools"]
+    },
+    {
+      "path": "git",
+      "id": "deckpilot.git",
+      "permissions": ["device", "profile", "resources", "tools"]
+    },
+    {
       "path": "github",
       "id": "deckpilot.github",
       "permissions": ["credentials", "network", "openUrl"]
