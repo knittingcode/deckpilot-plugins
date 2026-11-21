@@ -16,6 +16,16 @@
       "path": "jira",
       "id": "deckpilot.jira",
       "permissions": ["credentials", "network", "openUrl"]
+    },
+    {
+      "path": "projects",
+      "id": "deckpilot.projects",
+      "permissions": ["hostViews", "profile", "projectContext", "resources"]
+    },
+    {
+      "path": "workspace",
+      "id": "deckpilot.workspace",
+      "permissions": ["openUrl", "profile", "resources"]
     }
   ],
   "fixtures": [
