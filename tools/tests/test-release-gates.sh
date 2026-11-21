@@ -92,6 +92,20 @@ fresh; edit env-registry-timestamp.json '.can_admins_bypass = true'; expect fail
 fresh; expect fail "an unknown environment" "usage" -- env_check github-pages
 fresh; expect fail "no repository" "GITHUB_REPOSITORY" -- env GITHUB_REPOSITORY= "$root/tools/check-environment.sh" registry-release
 
+echo "== check-environment.sh official-release"
+# The registry-release answers, deploying from the official release tags.
+official() {
+  cp "$work/api/env-registry-release.json" "$work/api/env-official-release.json"
+  jq '.branch_policies = [{name: "deckpilot.*--v*", type: "tag"}]' "$work/api/policies-registry-release.json" \
+    > "$work/api/policies-official-release.json"
+}
+fresh; official; expect pass "a required reviewer authorizes official-release" "1 required reviewer" -- env_check official-release
+fresh; official; edit env-official-release.json '.protection_rules |= map(select(.type != "required_reviewers"))'; expect fail "official-release: no ruleset stands in for a reviewer" "needs a required reviewer" -- env_check official-release
+fresh; official; edit policies-official-release.json '.branch_policies[0].name = "*--v*"'; expect fail "official-release deploys from every release tag" "expected exactly 'tag:deckpilot" -- env_check official-release
+fresh; official; edit policies-official-release.json '.branch_policies += [{name: "main", type: "branch"}]'; expect fail "official-release deploys from main too" "expected exactly" -- env_check official-release
+fresh; official; edit env-official-release.json '.can_admins_bypass = true'; expect fail "administrators can bypass official-release" "administrators can bypass" -- env_check official-release
+fresh; expect fail "official-release does not exist" "does not exist" -- env_check official-release
+
 echo "== check-required-checks.sh"
 runs_merge="check-runs-$MERGE.json" runs_head="check-runs-$HEAD.json"
 fresh; expect pass "every required check passed (Submission rules on the head of #38)" "head of #38 .* Submission rules" -- checks "$MERGE"

@@ -1,0 +1,203 @@
+# Trusted release of one official plugin version (official/README.md).
+# Runs only for a release tag the owner creates (tags are admin-only by
+# ruleset), `<id>--v<version>` of a plugin DeckPilot bundles, and only once
+# the owner has set it up: the repository variable OFFICIAL_RELEASE_ENABLED
+# is `true`, the environment official-release exists (tag deckpilot.*--v*
+# only, a required reviewer, no administrator bypass) and holds the
+# publisher key the owner made (DECKPILOT_PUBLISHER_KEY and
+# DECKPILOT_PUBLISHER_KEY_PASSWORD), and DeckPilot pins its public key.
+# Until then every run stops in `resolve`. Retry on the same tag ref:
+#   gh workflow run official-release.yml --ref <tag>
+#
+# Jobs, in order:
+#   resolve   the tag names a released plugin at its manifest version, at a
+#             commit on main
+#   gate      UNPRIVILEGED: official-release is protected as required, and
+#             every required check of main passed for the tagged commit
+#   build     UNPRIVILEGED (no environment, no secret, contents: read): two
+#             clean builds from the tagged commit, compared; the package
+#   sign      environment official-release, the publisher key: builds
+#             nothing; re-checks the package against the build job's
+#             sha256 and size, signs it, verifies it with the keys pinned in
+#             the DeckPilot build (never --keys) and audits the result
+#   release   contents: write: uploads package and signature to the GitHub
+#             Release of the tag (never creates a tag)
+#
+# The registry (publish.yml) never serves these plugins; its tag filter
+# excludes them.
+name: Official release
+
+on:
+  push:
+    tags:
+      - "deckpilot.docker--v*"
+      - "deckpilot.git--v*"
+      - "deckpilot.github--v*"
+      - "deckpilot.gitlab--v*"
+      - "deckpilot.jira--v*"
+      - "deckpilot.notifications--v*"
+      - "deckpilot.projects--v*"
+      - "deckpilot.workflows--v*"
+      - "deckpilot.workspace--v*"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: official-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    name: Resolve the release tag
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ github.ref_name }}
+      id: ${{ steps.tag.outputs.id }}
+      version: ${{ steps.tag.outputs.version }}
+      commit: ${{ steps.tag.outputs.commit }}
+    steps:
+      - name: Official releases must be enabled and the run must be on a tag
+        env:
+          ENABLED: ${{ vars.OFFICIAL_RELEASE_ENABLED }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          [ "$ENABLED" = true ] || { echo "::error::OFFICIAL_RELEASE_ENABLED is not 'true': the official-release environment and the publisher key are not set up"; exit 1; }
+          [ "$REF_TYPE" = tag ] || { echo "::error::run official-release.yml on a release tag (gh workflow run official-release.yml --ref <tag>)"; exit 1; }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - id: tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: tools/official.sh resolve "$TAG" | tee -a "$GITHUB_OUTPUT"
+
+  gate:
+    name: Release gate
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      checks: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.resolve.outputs.commit }}
+          sparse-checkout: tools
+      - name: official-release deploys official release tags only, with a reviewer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: tools/check-environment.sh official-release
+      - name: Every required check of main passed for the tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT: ${{ needs.resolve.outputs.commit }}
+        run: tools/check-required-checks.sh "$COMMIT"
+
+  build:
+    name: Build the package
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    outputs:
+      sha256: ${{ steps.build.outputs.sha256 }}
+      size: ${{ steps.build.outputs.size }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.resolve.outputs.commit }}
+      - name: The pinned toolchain with the wasm target
+        run: |
+          channel=$(sed -n 's/^channel *= *"\([0-9.]*\)".*/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal --no-self-update \
+            --component rustfmt --component clippy --target wasm32-unknown-unknown
+      - name: Build the pinned deckpilot-registry and schema-check
+        run: tools/build-cli.sh
+      - name: Checks, tests and the canary
+        run: |
+          tools/official.sh check
+          tools/official.sh test
+          tools/official.sh compare
+      - id: build
+        name: Two clean builds, compared, and the package
+        env:
+          ID: ${{ needs.resolve.outputs.id }}
+        run: tools/official.sh release-build "$ID" | tee -a "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: official-package
+          path: .work/official/release
+          retention-days: 1
+          if-no-files-found: error
+
+  sign:
+    name: Sign the package
+    needs: [resolve, gate, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: official-release
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.resolve.outputs.commit }}
+      - name: Build the pinned deckpilot-registry (DeckPilot code only, no plugin code)
+        run: tools/build-cli.sh
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: official-package
+          path: ${{ runner.temp }}/official
+      - name: Check, sign, and verify with the keys pinned in DeckPilot
+        env:
+          DECKPILOT_PUBLISHER_KEY: ${{ secrets.DECKPILOT_PUBLISHER_KEY }}
+          DECKPILOT_PUBLISHER_KEY_PASSWORD: ${{ secrets.DECKPILOT_PUBLISHER_KEY_PASSWORD }}
+          ID: ${{ needs.resolve.outputs.id }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          SHA256: ${{ needs.build.outputs.sha256 }}
+          SIZE: ${{ needs.build.outputs.size }}
+        run: tools/official.sh release-sign "$ID" "$RUNNER_TEMP/official" "$VERSION" "$SHA256" "$SIZE"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: official-signed
+          path: ${{ runner.temp }}/official
+          retention-days: 7
+          if-no-files-found: error
+
+  release:
+    name: Upload the release assets
+    needs: [resolve, build, sign]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.resolve.outputs.commit }}
+          sparse-checkout: tools
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: official-signed
+          path: ${{ runner.temp }}/official
+      - name: Upload to the release of the tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+          ID: ${{ needs.resolve.outputs.id }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          SHA256: ${{ needs.build.outputs.sha256 }}
+          SIZE: ${{ needs.build.outputs.size }}
+        run: tools/official.sh release-upload "$TAG" "$ID" "$VERSION" "$RUNNER_TEMP/official" "$SHA256" "$SIZE"

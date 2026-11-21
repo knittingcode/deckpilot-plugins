@@ -4,10 +4,12 @@
 Complements actionlint and zizmor (tools/lint-workflows.sh) with the rules
 of docs/architecture.md and docs/separation.md:
 
-* secrets: only the registry role keys; never DeckPilot's application
-  signing secrets;
-* environments: only registry-release, registry-timestamp, github-pages;
-  never production-release;
+* secrets: only the registry role keys, and the first-party publisher key
+  in official-release.yml alone; never DeckPilot's application signing
+  secrets;
+* environments: only registry-release, registry-timestamp, github-pages,
+  and official-release in official-release.yml alone; never
+  production-release;
 * no pull_request_target or workflow_run triggers, no actions/cache;
 * every remote action pinned to a full commit SHA with a version comment;
 * every actions/checkout sets persist-credentials: false;
@@ -28,6 +30,13 @@ ALLOWED_SECRETS = {
     "REGISTRY_TIMESTAMP_KEY_PASSWORD",
 }
 ALLOWED_ENVIRONMENTS = {"registry-release", "registry-timestamp", "github-pages"}
+# The first-party publisher key (DeckPilot docs/marketplace/
+# publisher-signature.md) signs official release artifacts only: its secrets
+# and its environment belong to official-release.yml and nothing else, and
+# that workflow reads no registry secret.
+PUBLISHER_WORKFLOW = "official-release.yml"
+PUBLISHER_SECRETS = {"DECKPILOT_PUBLISHER_KEY", "DECKPILOT_PUBLISHER_KEY_PASSWORD"}
+PUBLISHER_ENVIRONMENT = "official-release"
 FORBIDDEN = {
     "pull_request_target": "pull_request_target runs with secrets on untrusted code",
     "workflow_run": "workflow_run can carry untrusted artifacts into a trusted context",
@@ -62,8 +71,14 @@ def main():
                 problems.append(f"{path}: `{word}`: {why}")
         if not re.search(r"^permissions:\s*\{\}\s*$", text, re.M):
             problems.append(f"{path}: top-level `permissions: {{}}` is required")
+        publisher = path.name == PUBLISHER_WORKFLOW
         for name in SECRET.findall(body):
-            if name not in ALLOWED_SECRETS:
+            if publisher:
+                if name not in PUBLISHER_SECRETS:
+                    problems.append(f"{path}: secret {name} is not the publisher key")
+            elif name in PUBLISHER_SECRETS:
+                problems.append(f"{path}: the publisher key belongs to {PUBLISHER_WORKFLOW} only")
+            elif name not in ALLOWED_SECRETS:
                 problems.append(f"{path}: secret {name} is not a registry role key")
         if re.search(r"^\s*secrets:\s*inherit\s*$", body, re.M):
             problems.append(f"{path}: `secrets: inherit` passes every secret; name the ones needed")
@@ -89,7 +104,8 @@ def main():
             if b and i + 1 < len(code):
                 n = NAME.match(code[i + 1])
                 env = n.group(1) if n else "<unnamed>"
-            if env is not None and env not in ALLOWED_ENVIRONMENTS:
+            allowed = {PUBLISHER_ENVIRONMENT} if publisher else ALLOWED_ENVIRONMENTS
+            if env is not None and env not in allowed:
                 problems.append(f"{path}:{i + 1}: environment {env} is not allowed")
     for problem in problems:
         print(f"error: {problem}", file=sys.stderr)

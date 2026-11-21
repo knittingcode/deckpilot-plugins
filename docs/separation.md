@@ -7,8 +7,8 @@ secret or an environment. This follows DeckPilot's distribution contract
 | | Application | Plugins |
 | --- | --- | --- |
 | Repository | `knittingcode/deckpilot` | `knittingcode/deckpilot-plugins` (this one) |
-| Releases | application versions, tags `v*` | plugin versions, tags `<id>--v<version>`; index-only `registry--v…` |
-| Signed with | the application updater key and Apple Developer ID, environment `production-release` | registry roles: root (offline), index and timestamp keys, environments `registry-release` and `registry-timestamp` |
+| Releases | application versions, tags `v*` | plugin versions, tags `<id>--v<version>`; index-only `registry--v…`; official plugins (the ones DeckPilot bundles), tags `deckpilot.<name>--v<version>` |
+| Signed with | the application updater key and Apple Developer ID, environment `production-release` | registry roles: root (offline), index and timestamp keys, environments `registry-release` and `registry-timestamp`; official release artifacts: the first-party publisher key, environment `official-release` |
 | Served from | GitHub Releases of `knittingcode/deckpilot` | GitHub Pages of this repository (metadata) and its GitHub Releases (packages) |
 
 ## What this repository never does
@@ -44,8 +44,21 @@ needs an application release.
   lint*): workflows may reference only the secrets `REGISTRY_INDEX_KEY`,
   `REGISTRY_INDEX_KEY_PASSWORD`, `REGISTRY_TIMESTAMP_KEY` and
   `REGISTRY_TIMESTAMP_KEY_PASSWORD`, and only the environments
-  `registry-release`, `registry-timestamp` and `github-pages`;
+  `registry-release`, `registry-timestamp` and `github-pages`; the
+  publisher key (`DECKPILOT_PUBLISHER_KEY`,
+  `DECKPILOT_PUBLISHER_KEY_PASSWORD`) and its environment
+  `official-release` only in `official-release.yml`, which reads no
+  registry secret;
   `production-release`, `TAURI_SIGNING*` and `APPLE_*` are refused, as are
   `pull_request_target`, `workflow_run`, caches, unpinned actions and
   checkouts that keep credentials.
 - `tools/check-hygiene.py` refuses committed keys and generated output.
+- `tools/check-environment.sh official-release`: tags `deckpilot.*--v*`
+  only, a required reviewer (no ruleset stands in for one), no
+  administrator bypass. `publish.yml`'s tag filter excludes the official
+  plugins' tags, which only `official-release.yml` takes.
+
+The first-party publisher key is DeckPilot's (its public key is pinned in
+`crates/deckpilot-plugin-registry/publisher/first-party.json` of
+`knittingcode/deckpilot`), but it signs here and only here: DeckPilot only
+verifies. It is not created yet; see [official/README.md](../official/README.md).

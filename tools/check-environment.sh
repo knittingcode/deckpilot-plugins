@@ -6,6 +6,8 @@
 #
 #   tools/check-environment.sh registry-release     (release tags *--v* only)
 #   tools/check-environment.sh registry-timestamp   (branch main only)
+#   tools/check-environment.sh official-release     (tags deckpilot.*--v* only,
+#                                                    a required reviewer)
 #
 # Requires, failing closed on any error or unexpected answer:
 #   - the environment exists and administrators cannot bypass it;
@@ -22,6 +24,8 @@
 #     * registry-timestamp, branch authority: an active ruleset on main, with
 #       no exclusion, requires pull requests and status checks and forbids
 #       force pushes and deletion, and this token cannot bypass it.
+#   official-release (the first-party publisher key) accepts only a required
+#   reviewer: no ruleset stands in for it.
 #
 # GitHub creates a missing environment, unprotected, the first time a job
 # names it, so this check runs before that job and stops the run.
@@ -37,7 +41,8 @@ name=${1:-}
 case "$name" in
   registry-release) want="tag:*--v*" target=tag ;;
   registry-timestamp) want="branch:main" target=branch ;;
-  *) fail "usage: check-environment.sh registry-release|registry-timestamp" ;;
+  official-release) want="tag:deckpilot.*--v*" target=reviewer ;;
+  *) fail "usage: check-environment.sh registry-release|registry-timestamp|official-release" ;;
 esac
 
 environment=$("$gh" api "repos/$repo/environments/$name") \
@@ -58,6 +63,8 @@ if [ "$reviewers" -ge 1 ]; then
   echo "$name: $reviewers required reviewer(s); deploys $want only; administrators cannot bypass it"
   exit 0
 fi
+
+[ "$target" != reviewer ] || fail "$name requires no reviewer; the publisher key needs a required reviewer"
 
 # No reviewer: the ruleset is the authorization.
 if [ "$target" = tag ]; then

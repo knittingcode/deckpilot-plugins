@@ -57,7 +57,9 @@ repository, a source tag, the commit and `first-party/<name>`, made with
 (`deckpilot.docker`, `deckpilot.git`, `deckpilot.github`,
 `deckpilot.gitlab`, `deckpilot.jira`, `deckpilot.notifications`,
 `deckpilot.projects`, `deckpilot.workflows`, `deckpilot.workspace`) never
-come here: `tools/first-party.sh check` refuses their ids.
+come here: `tools/first-party.sh check` refuses their ids. They move to
+[`official/`](../official/README.md), which releases signed artifacts for
+the application to bundle, never registry entries.
 
 ## Commands
 

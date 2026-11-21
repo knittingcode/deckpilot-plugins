@@ -38,7 +38,19 @@ name: Publish
 
 on:
   push:
-    tags: ["*--v*"]
+    # Not the plugins DeckPilot bundles: the registry never serves them;
+    # their tags are official-release.yml's.
+    tags:
+      - "*--v*"
+      - "!deckpilot.docker--v*"
+      - "!deckpilot.git--v*"
+      - "!deckpilot.github--v*"
+      - "!deckpilot.gitlab--v*"
+      - "!deckpilot.jira--v*"
+      - "!deckpilot.notifications--v*"
+      - "!deckpilot.projects--v*"
+      - "!deckpilot.workflows--v*"
+      - "!deckpilot.workspace--v*"
   workflow_dispatch:
 
 permissions: {}
