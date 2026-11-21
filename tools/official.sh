@@ -254,12 +254,6 @@ signature_set() {
   printf '%s' "$paths"
 }
 
-# signature_args DIR NAME: `--signature FILE` for each of signature_set.
-signature_args() {
-  local file
-  while IFS= read -r file; do printf -- '--signature\n%s\n' "$file"; done < <(signature_set "$1" "$2")
-}
-
 sign_test() {
   require_cli
   [ -d "$PACKAGES" ] || package
@@ -290,60 +284,65 @@ sign_test() {
   }
   while read -r path id version crate kind; do
     pkg=$PACKAGES/$id-$version.dpplugin
+    local name=$id-$version.dpplugin
     sigs=$OUT/signatures/$id
-    rm -rf "$sigs" "$PACKAGES/$id-$version.dpplugin".*minisig
+    rm -rf "$sigs" "$PACKAGES/$name".*minisig
     mkdir -p "$sigs/all"
     for k in a b wrong revoked; do
       "$CLI" release sign --package "$pkg" --id "$id" --version "$version" --key "$keys/$k.key" \
-        --out "$sigs/$k.sig" >&2
-      cp "$sigs/$k.sig" "$sigs/all/$id-$version.dpplugin.$(keyid "$keys/$k.key.pub").minisig"
-      [ "$(keyid "$sigs/$k.sig")" = "$(keyid "$keys/$k.key.pub")" ] || die "the signature by key $k carries another key id"
+        --out-dir "$sigs/all" >&2
+      [ -f "$sigs/all/$name.$(keyid "$keys/$k.key.pub").minisig" ] \
+        || die "release sign did not write $name.$(keyid "$keys/$k.key.pub").minisig for key $k"
     done
+    local A B W R
+    A=$name.$(keyid "$keys/a.key.pub").minisig B=$name.$(keyid "$keys/b.key.pub").minisig
+    W=$name.$(keyid "$keys/wrong.key.pub").minisig R=$name.$(keyid "$keys/revoked.key.pub").minisig
+    # set DIR FILE...: a signatures directory holding these files of all/.
+    set_of() {
+      local d=$sigs/$1 f; shift
+      mkdir -p "$d"
+      for f in "$@"; do cp "$sigs/all/$f" "$d/"; done
+      echo "$d"
+    }
     local claim=(--id "$id" --version "$version"
       --app-version "$DECKPILOT_VERSION" --plugin-api "$DECKPILOT_PLUGIN_API" --platform macos
       --released-pins "$released" --revocations "$DECKPILOT_DIR/plugins/first-party/artifacts.json")
     local test_keys=(--keys "$keys/publisher.json")
     local digest=(--package "$pkg" --sha256 "$(sha "$pkg")" --size "$(size "$pkg")")
-    refused "one signature (threshold 2)" "threshold|required" "${digest[@]}" --signature "$sigs/a.sig"
-    cp "$sigs/a.sig" "$sigs/a-again.sig"
-    refused "the same key's signature twice" "threshold|required|distinct" "${digest[@]}" \
-      --signature "$sigs/a.sig" --signature "$sigs/a-again.sig"
+    refused "one signature (threshold 2)" "threshold|required" "${digest[@]}" --signatures-dir "$(set_of one "$A")"
+    local dup=$sigs/duplicate
+    mkdir -p "$dup" && cp "$sigs/all/$A" "$dup/$A" && cp "$sigs/all/$A" "$dup/$B"
+    refused "the same key's signature twice (under the other key's name)" "threshold|required" "${digest[@]}" --signatures-dir "$dup"
     refused "a signature by a key that is not pinned" "threshold|required" "${digest[@]}" \
-      --signature "$sigs/a.sig" --signature "$sigs/wrong.sig"
-    refused "a signature by a revoked key" "revoked" "${digest[@]}" \
-      --signature "$sigs/a.sig" --signature "$sigs/revoked.sig"
+      --signatures-dir "$(set_of wrong "$A" "$W")"
+    refused "a signature by a revoked key" "revoked" "${digest[@]}" --signatures-dir "$(set_of revoked "$A" "$R")"
     refused "a revoked key's signature next to both keys" "revoked" "${digest[@]}" \
-      --signature "$sigs/a.sig" --signature "$sigs/b.sig" --signature "$sigs/revoked.sig"
+      --signatures-dir "$(set_of revoked-too "$A" "$B" "$R")"
+    local release
+    release=$(set_of release "$A" "$B")
     cp "$pkg" "$sigs/modified.dpplugin"
     printf 'x' >>"$sigs/modified.dpplugin"
     refused "modified bytes (claimed with their own sha256 and size)" "does not verify|0 valid" \
       --package "$sigs/modified.dpplugin" --sha256 "$(sha "$sigs/modified.dpplugin")" \
-      --size "$(size "$sigs/modified.dpplugin")" --signature "$sigs/a.sig" --signature "$sigs/b.sig"
+      --size "$(size "$sigs/modified.dpplugin")" --signatures-dir "$release"
     # The file naming of a release: a duplicate, a third key or a misnamed
-    # file is refused before anything is verified.
-    mkdir -p "$sigs/release"
-    cp "$sigs/all/$id-$version.dpplugin.$(keyid "$keys/a.key.pub").minisig" \
-      "$sigs/all/$id-$version.dpplugin.$(keyid "$keys/b.key.pub").minisig" "$sigs/release/"
-    (signature_set "$sigs/all" "$id-$version.dpplugin" >/dev/null 2>&1) && die "$id: four signature files accepted"
-    mkdir -p "$sigs/one" "$sigs/misnamed"
-    cp "$sigs/release/$id-$version.dpplugin.$(keyid "$keys/a.key.pub").minisig" "$sigs/one/"
-    (signature_set "$sigs/one" "$id-$version.dpplugin" >/dev/null 2>&1) && die "$id: one signature file accepted"
-    cp "$sigs/a.sig" "$sigs/misnamed/$id-$version.dpplugin.$(keyid "$keys/a.key.pub").minisig"
-    cp "$sigs/a.sig" "$sigs/misnamed/$id-$version.dpplugin.$(keyid "$keys/b.key.pub").minisig"
-    (signature_set "$sigs/misnamed" "$id-$version.dpplugin" >/dev/null 2>&1) && die "$id: a duplicated signature under another key's name accepted"
-    note "$id: one, three, a duplicated or a misnamed signature file refused"
+    # file is refused here before anything is verified.
+    (signature_set "$sigs/all" "$name" >/dev/null 2>&1) && die "$id: four signature files accepted"
+    (signature_set "$sigs/one" "$name" >/dev/null 2>&1) && die "$id: one signature file accepted"
+    (signature_set "$dup" "$name" >/dev/null 2>&1) && die "$id: a duplicated signature under another key's name accepted"
+    signature_set "$release" "$name" >/dev/null
+    note "$id: one, four, a duplicated or a misnamed signature file refused"
     # Two distinct keys: verified.
-    local set=()
-    while IFS= read -r k; do set+=("$k"); done < <(signature_args "$sigs/release" "$id-$version.dpplugin")
     rm -rf "$OUT/verified/$id"
-    "$CLI" release verify "${claim[@]}" "${test_keys[@]}" "${digest[@]}" "${set[@]}" --audit "$audit" --unpack "$OUT/verified/$id" >&2
+    "$CLI" release verify "${claim[@]}" "${test_keys[@]}" "${digest[@]}" --signatures-dir "$release" \
+      --audit "$audit" --unpack "$OUT/verified/$id" >&2
     [ "$(tail -1 "$audit" | jq '[.signers[]?] | unique | length')" = 2 ] || die "$id: the audit record does not name two signers"
     # The pins DeckPilot would record for these files must pass its guard.
     pins_of "$OUT/verified/$id" "$id" "$version" >"$OUT/verified/$id.pins.json"
     "$DECKPILOT_DIR/tools/release-pipeline/check-released-pins.sh" "$OUT/verified/$id.pins.json" \
       --platform macos >&2
     # No production key is pinned: the build's own keys refuse it.
-    if "$CLI" release verify "${claim[@]}" "${digest[@]}" "${set[@]}" >"$OUT/pinned.out" 2>&1; then
+    if "$CLI" release verify "${claim[@]}" "${digest[@]}" --signatures-dir "$release" >"$OUT/pinned.out" 2>&1; then
       grep -q "not the pinned keys" "$OUT/pinned.out" && die "unexpected output"
       note "$id: the pinned publisher keys accept it (production keys are pinned)"
     else
@@ -458,12 +457,16 @@ release_sign() {
   [ ! -e "$out" ] || [ -z "$(ls -A "$out")" ] || die "$out must be new or empty: it holds only this job's signature"
   require_cli
   mkdir -p "$out"
-  local scratch kid
+  local scratch kid file
   scratch=$(mktemp -d)
   "$CLI" release sign --package "$pkg" --id "$id" --version "$version" --key-env "$key" \
-    --password-env "$password" --out "$scratch/signature" >&2
-  kid=$(keyid "$scratch/signature") || die "the new signature carries no minisign key id"
-  mv "$scratch/signature" "$out/$name.$kid.minisig"
+    --password-env "$password" --out-dir "$scratch" >&2
+  set -- "$scratch"/*
+  [ $# = 1 ] && [ -f "$1" ] || die "release sign wrote $# file(s); exactly one signature is expected"
+  file=$(basename "$1")
+  kid=$(keyid "$1") || die "the new signature carries no minisign key id"
+  [ "$file" = "$name.$kid.minisig" ] || die "release sign wrote $file, not $name.$kid.minisig"
+  mv "$1" "$out/$file"
   rmdir "$scratch"
   note "signed $name with publisher key $slot, key id $kid"
   echo "keyid=$kid"
@@ -489,10 +492,10 @@ release_verify() {
   local pkg=$dir/$name
   [ -f "$pkg" ] && [ "$(sha "$pkg")" = "$sha256" ] && [ "$(size "$pkg")" = "$bytes" ] \
     || die "$pkg is not the package the build jobs produced"
-  local file got=() sigs=()
+  local file got=() files=()
   while IFS= read -r file; do
     got+=("$(keyid "$file")")
-    sigs+=(--signature "$file")
+    files+=("$file")
   done < <(signature_set "$dir" "$name")
   [ ${#got[@]} = 2 ] || die "no signature set"
   [ "$(printf '%s\n' "${got[@]}" | LC_ALL=C sort | tr '\n' ' ')" = "$(printf '%s\n' "$want_a" "$want_b" | LC_ALL=C sort | tr '\n' ' ')" ] \
@@ -508,16 +511,20 @@ release_verify() {
     --revocations "$DECKPILOT_DIR/plugins/first-party/artifacts.json")
   local audit=$dir/publisher-audit.jsonl platform
   for platform in macos linux windows; do
-    "$CLI" release verify "${claim[@]}" "${sigs[@]}" --platform "$platform" --audit "$audit"
+    "$CLI" release verify "${claim[@]}" --signatures-dir "$dir" --platform "$platform" --audit "$audit"
   done
   jq -se 'length >= 3 and all(.outcome == "verified" and ([.signers[]?] | unique | length) >= 2)' "$audit" >/dev/null \
     || die "the audit does not record a verification by two distinct signers: $(cat "$audit")"
   # The threshold, seen from outside: one signature alone is refused.
-  local i
-  for i in 1 3; do
-    if "$CLI" release verify "${claim[@]}" "${sigs[$i - 1]}" "${sigs[$i]}" --platform macos >/dev/null 2>&1; then
-      die "the pinned keys accept $(basename "${sigs[$i]}") alone: the threshold is not two"
+  local one
+  for file in "${files[@]}"; do
+    one=$(mktemp -d)
+    cp "$file" "$one/"
+    if "$CLI" release verify "${claim[@]}" --signatures-dir "$one" --platform macos >/dev/null 2>&1; then
+      rm -rf "$one"
+      die "the pinned keys accept $(basename "$file") alone: the threshold is not two"
     fi
+    rm -rf "$one"
   done
   note "$name: two distinct pinned publisher keys ($want_a, $want_b), every platform; one signature alone refused"
 }

@@ -75,7 +75,8 @@ bundle() {
   cp "$T/pkg/$pkg" "$b/assets/"
   for key in "$@"; do
     "$CLI" release sign --package "$b/assets/$pkg" --id "$id" --version "$version" --key "$T/keys/$key.key" \
-      --out "$b/assets/$pkg.$(keyid "$T/keys/$key.key.pub").minisig" >/dev/null
+      --out-dir "$b/assets" >/dev/null
+    [ -f "$b/assets/$pkg.$(keyid "$T/keys/$key.key.pub").minisig" ] || die "no signature file named by key $key's id"
   done
   jq -n --arg tag "$id--v$version" --argjson assets "$(assets_json "$b/assets")" \
     '{repository: "knittingcode/deckpilot-plugins", commit: "1111111111111111111111111111111111111111", onMain: true,

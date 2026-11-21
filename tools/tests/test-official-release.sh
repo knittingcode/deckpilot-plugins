@@ -99,17 +99,23 @@ expect fail "every check passed: only then the CLI is needed" "deckpilot-registr
 
 echo "== release-verify (verify)"
 # A stand-in deckpilot-registry: `release verify` accepts exactly two
-# signatures (or any number with STUB_ACCEPT_ONE=1) and writes the audit
+# signature files next to the package or in --signatures-dir (or any number with STUB_ACCEPT_ONE=1) and writes the audit
 # record a real verification writes.
 mkdir -p "$DECKPILOT_PLUGINS_WORK/bin"
 cat > "$DECKPILOT_PLUGINS_WORK/bin/deckpilot-registry" << 'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 [ "$1 $2" = "release verify" ] || { echo "stub: $*" >&2; exit 2; }
-n=0 audit=""
+audit="" dir="" pkg=""
 while [ $# -gt 0 ]; do
-  case "$1" in --signature) n=$((n + 1)); shift 2 ;; --audit) audit=$2; shift 2 ;; *) shift ;; esac
+  case "$1" in
+    --signatures-dir) dir=$2; shift 2 ;;
+    --package) pkg=$2; shift 2 ;;
+    --audit) audit=$2; shift 2 ;;
+    *) shift ;;
+  esac
 done
+n=$(find "${dir:-$(dirname "$pkg")}" -maxdepth 1 -name "$(basename "$pkg").*.minisig" | wc -l | tr -d ' ')
 if [ "$n" != 2 ] && [ -z "${STUB_ACCEPT_ONE:-}" ]; then
   echo "error: refused: $n valid signature(s) from distinct keys of the role, 2 required" >&2; exit 1
 fi

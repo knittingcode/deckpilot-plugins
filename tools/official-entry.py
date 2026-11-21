@@ -431,8 +431,12 @@ def verify(cli, package, signatures, pid, version, host, platforms, keys, deckpi
     claim = ["--package", str(package), "--id", pid, "--version", version,
              "--sha256", sha256(package), "--size", str(package.stat().st_size),
              "--app-version", host["version"], "--plugin-api", host["pluginApi"], "--audit", str(audit)]
+    # Exactly the checked signature files, in a directory of their own.
+    sigdir = scratch / "signatures"
+    sigdir.mkdir()
     for s in signatures:
-        claim += ["--signature", str(s)]
+        shutil.copyfile(s, sigdir / Path(s).name)
+    claim += ["--signatures-dir", str(sigdir)]
     if pins.is_file():
         claim += ["--released-pins", str(pins)]
     if lock.is_file():
