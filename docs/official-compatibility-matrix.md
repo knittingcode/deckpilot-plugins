@@ -14,7 +14,7 @@ The nine plugins DeckPilot bundles, as this repository builds, signs and
 | DeckPilot commit (`tools/deckpilot.env`) | `ce81ab4766143ded12e6cde15628b053b511c5c3` |
 | SDK pin (`official/Cargo.toml` rev) | `ce81ab4766143ded12e6cde15628b053b511c5c3` |
 | Publisher keys pinned in DeckPilot | 2 (threshold 2): `BDCDC80985EB60B5`, `8C3C4E42700FA702` |
-| Privileged-kinds gate | closed |
+| Privileged-kinds gate | open |
 | Registry serves bundled ids | no (not copied into registry/; DeckPilot accepts them only as releases signed by 2 distinct pinned publisher keys) |
 
 | Plugin | Source | Version | Shipped in DeckPilot | `engines.deckpilot` | `engines.pluginApi` | Permissions | Dependencies | Signature | Marketplace |
