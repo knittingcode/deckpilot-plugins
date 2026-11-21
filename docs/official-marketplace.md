@@ -40,14 +40,20 @@ Before anything is written:
 2. **Release**: tag `deckpilot.<name>--v<version>`, published (not a
    draft), of this repository, at a commit on `main`, pre-release exactly
    when the version is one.
-3. **Assets**: exactly `<id>-<v>.dpplugin` and its `.minisig`
-   signature(s); each downloaded file's size and sha256 equal to what
-   GitHub reports for the asset.
-4. **Signature and compatibility**: `deckpilot-registry release verify`
-   built from the pinned DeckPilot commit, with the publisher keys
-   compiled into it (never `--keys`), DeckPilot's `released-pins.json` as
-   rollback floor and `artifacts.json` revocations, for macOS, Windows and
-   Linux. The checkout must be exactly `DECKPILOT_COMMIT`.
+3. **Assets**: exactly `<id>-<v>.dpplugin` and its two signatures
+   `<id>-<v>.dpplugin.<KEYID>.minisig` (KEYID: the minisign key id, 16
+   uppercase hex), each file carrying the key id it is named by, from two
+   distinct keys; one signature, a third, a duplicate or the old single
+   `<id>-<v>.dpplugin.minisig` is refused; each downloaded file's size and
+   sha256 equal to what GitHub reports for the asset.
+4. **Signatures and compatibility**: `deckpilot-registry release verify`
+   built from the pinned DeckPilot commit, with both signatures and the
+   publisher keys compiled into it (never `--keys`), which must pin a
+   threshold of at least two; DeckPilot's `released-pins.json` as rollback
+   floor and `artifacts.json` revocations, for macOS, Windows and Linux;
+   the audit must name two distinct signers. The checkout must be exactly
+   `DECKPILOT_COMMIT`. The release record keeps both signature files and
+   both signer key ids (`verification.signerKeyIds`).
 5. **Manifest**: the claimed id and version; `engines` satisfied by the
    pinned DeckPilot (`DECKPILOT_VERSION`, `DECKPILOT_PLUGIN_API`); the
    permission kinds of `plugins.json`; no plugin API 1.9 privileged kind
@@ -64,13 +70,15 @@ Before anything is written:
 
 `tools/official-entry.py check` (in `official.yml`) re-checks every
 committed candidate: id, `keys: pinned` (a test-key record is refused),
-record against its release (asset URL, sha256, size, tag, commit, path),
+two signatures by distinct key ids and the same `signerKeyIds`, two
+signers, record against its release (asset URL, sha256, size, tag, commit, path),
 the gate, dependencies, and that the matrix is current.
 
 ## Procedure after an official release
 
 Once `official-release.yml` has published `deckpilot.<name>--v<version>`
-(package and `.minisig` on its GitHub Release):
+(the package and its two `.<KEYID>.minisig` signatures on its GitHub
+Release):
 
 ```sh
 git fetch origin && git switch -c feat/marketplace-<name>-<version> origin/main
@@ -106,8 +114,8 @@ done here.
 
 | What | Where | Runs |
 | --- | --- | --- |
-| Rules without artifacts: semver and ranges, ids, release state, manifest compatibility, permission policy and the privileged gate (each kind), dependency resolution (candidate, bundle, unmet, optional, community, built-in module, highest fitting), order (downgrade, pre-release), committed-candidate checks | `tools/tests/test_official_entry.py` | `official.yml`, no build |
-| End to end with fixture packages (`deckpilot.example-default` 0.0.9/0.1.0/0.1.1, a dependent fixture) signed with a **throwaway** publisher key made in the test: refusals (draft, unpublished, off main, other tag, pre-release flag, missing signature or package, extra asset, size and sha256 mismatch, tampered bytes, foreign key, incompatible host, unmet dependency, downgrade, rewrite, ids and flags outside test mode, writing into `official/marketplace/`); generation (record = release asset, sha256, size, source; provenance; idempotence); then the candidates in a registry signed with throwaway keys: `verify-site --require-packages` accepts it (**discovery**: listed with name and category; **update offer**: `latest` 0.1.1 over 0.1.0; **dependencies** in the signed detail) | `tools/tests/test-official-marketplace.sh` | `official.yml`, after `package` |
+| Rules without artifacts: semver and ranges, ids, release state, release assets (two signatures by distinct key ids; one, three, a duplicate, the single-key name, a lower-case key id, a non-minisign file refused), manifest compatibility, permission policy and the privileged gate (each kind), dependency resolution (candidate, bundle, unmet, optional, community, built-in module, highest fitting), order (downgrade, pre-release), committed-candidate checks | `tools/tests/test_official_entry.py` | `official.yml`, no build |
+| End to end with fixture packages (`deckpilot.example-default` 0.0.9/0.1.0/0.1.1, a dependent fixture) signed with **two throwaway** publisher keys made in the test (threshold 2): refusals (draft, unpublished, off main, other tag, pre-release flag, missing signature or package, one signature, a duplicated signature, the single-key name, test keys with threshold 1, extra asset, size and sha256 mismatch, tampered bytes, foreign key, incompatible host, unmet dependency, downgrade, rewrite, ids and flags outside test mode, writing into `official/marketplace/`); generation (record = release asset, sha256, size, source; provenance with both signer key ids; idempotence); then the candidates in a registry signed with throwaway keys: `verify-site --require-packages` accepts it (**discovery**: listed with name and category; **update offer**: `latest` 0.1.1 over 0.1.0; **dependencies** in the signed detail) | `tools/tests/test-official-marketplace.sh` | `official.yml`, after `package` |
 
 Fixture ids are used because a client may take them from a registry; the
 bundled ids it refuses (X12). Throwaway keys never leave the scratch

@@ -117,6 +117,54 @@ case("newer version", lambda: E.check_order("deckpilot.github", "0.2.1", ["0.2.0
 case("downgrade", lambda: E.check_order("deckpilot.github", "0.2.0", ["0.2.1"]), "downgrade")
 case("pre-release below a release", lambda: E.check_order("deckpilot.github", "0.3.0-rc.1", ["0.3.0"]), "downgrade")
 
+# Release assets: the package and exactly two signatures named by their key ids.
+import base64
+
+KA, KB = "0123456789ABCDEF", "FEDCBA9876543210"
+
+
+def signature_bytes(key_id):
+    raw = b"ED" + int(key_id, 16).to_bytes(8, "little") + bytes(64)
+    text = ("untrusted comment: signature from deckpilot-registry\n" + base64.b64encode(raw).decode() +
+            "\ntrusted comment: x\n" + base64.b64encode(bytes(64)).decode() + "\n")
+    return base64.b64encode(text.encode()) + b"\n"
+
+
+PKG = "deckpilot.github-0.2.1.dpplugin"
+
+
+def assets(files):
+    """check_assets on a bundle of FILES {name: bytes}, as GitHub lists them."""
+    def run():
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            listed = []
+            for name, data in files.items():
+                (d / name).write_bytes(data)
+                listed.append({"name": name, "size": len(data), "digest": "sha256:" + E.sha256(d / name), "state": "uploaded"})
+            _, signed = E.check_assets({"release": {"assets": listed}}, d, "deckpilot.github", "0.2.1")
+            if sorted(k for _, k in signed) != sorted({KA, KB}):
+                raise E.Refused(f"key ids {signed}")
+    return run
+
+
+case("assets: the package and two signatures by distinct keys",
+     assets({PKG: b"p", f"{PKG}.{KA}.minisig": signature_bytes(KA), f"{PKG}.{KB}.minisig": signature_bytes(KB)}))
+case("assets: one signature (one key missing)",
+     assets({PKG: b"p", f"{PKG}.{KA}.minisig": signature_bytes(KA)}), "1 signature(s)")
+case("assets: no signature", assets({PKG: b"p"}), "no signature")
+case("assets: the single-key name <package>.minisig",
+     assets({PKG: b"p", f"{PKG}.minisig": signature_bytes(KA), f"{PKG}.{KB}.minisig": signature_bytes(KB)}), "other than the package")
+case("assets: a third signature",
+     assets({PKG: b"p", f"{PKG}.{KA}.minisig": signature_bytes(KA), f"{PKG}.{KB}.minisig": signature_bytes(KB),
+             f"{PKG}.1111111111111111.minisig": signature_bytes("1111111111111111")}), "3 signature(s)")
+case("assets: a duplicated signature under the other key's name",
+     assets({PKG: b"p", f"{PKG}.{KA}.minisig": signature_bytes(KA), f"{PKG}.{KB}.minisig": signature_bytes(KA)}), f"carries key id {KA}, not {KB}")
+case("assets: a key id in lower case",
+     assets({PKG: b"p", f"{PKG}.{KA.lower()}.minisig": signature_bytes(KA), f"{PKG}.{KB}.minisig": signature_bytes(KB)}), "other than the package")
+case("assets: a signature file that is not minisign",
+     assets({PKG: b"p", f"{PKG}.{KA}.minisig": b"junk", f"{PKG}.{KB}.minisig": signature_bytes(KB)}), "not a minisign signature")
+
 # check: committed candidates.
 def committed(change, signed_change=None, pin=True):
     """A committed candidate; `signed_change` edits only the manifest that
@@ -135,8 +183,10 @@ def committed(change, signed_change=None, pin=True):
                       "permissions": [{"kind": "network"}, {"kind": "credentials"}, {"kind": "openUrl"}],
                       "source": {"repository": "knittingcode/deckpilot-plugins", "tag": tag, "commit": "a" * 40, "path": "official/github"},
                       "package": {"url": url, "sha256": "b" * 64, "size": 10}}
+            pkg = "deckpilot.github-0.2.1.dpplugin"
             release = {"tag": tag, "commit": "a" * 40, "package": {"sha256": "b" * 64, "size": 10},
-                       "verification": {"keys": "pinned", "signers": ["k"]}}
+                       "signatures": [{"name": f"{pkg}.{k}.minisig", "keyId": k, "sha256": "c" * 64} for k in (KA, KB)],
+                       "verification": {"keys": "pinned", "signers": ["k1", "k2"], "signerKeyIds": [KA, KB]}}
             (mp / "deckpilot.github/plugin.json").write_text(json.dumps({"id": "deckpilot.github"}))
             change(record, release, mp)
             signed = {"id": "deckpilot.github", "version": "0.2.1", "publisher": {"id": "deckpilot"},
@@ -161,6 +211,16 @@ def committed(change, signed_change=None, pin=True):
     return run
 
 case("committed candidate", committed(lambda r, rel, mp: None))
+case("committed: one signature",
+     committed(lambda r, rel, mp: rel.update(signatures=rel["signatures"][:1])), "1 signature(s)")
+case("committed: two signatures by the same key",
+     committed(lambda r, rel, mp: rel.update(signatures=[rel["signatures"][0]] * 2)), "by distinct keys")
+case("committed: a signature named otherwise than its key id",
+     committed(lambda r, rel, mp: rel["signatures"][0].update(name=f"{PKG}.minisig")), "is not")
+case("committed: signer key ids differ from the signatures'",
+     committed(lambda r, rel, mp: rel["verification"].update(signerKeyIds=[KA])), "signerKeyIds")
+case("committed: one signer verified",
+     committed(lambda r, rel, mp: rel["verification"].update(signers=["k1"])), "1 signer(s)")
 case("committed: test keys", committed(lambda r, rel, mp: rel["verification"].update(keys="test")), "test keys")
 case("committed: sha differs from the release", committed(lambda r, rel, mp: r["package"].update(sha256="c" * 64)), "differ from the verified release")
 case("committed: url not the release asset", committed(lambda r, rel, mp: r["package"].update(url="https://example.com/x.dpplugin")), "not the release asset")

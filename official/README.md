@@ -50,7 +50,7 @@ request with no secret:
 | `repro` | two clean builds in fresh target directories whose modules or packages differ (local use; CI's reproducibility check is the two independent jobs below) |
 | `fresh-build` (jobs *Independent build A* and *B*, then *Two independent builds are byte-identical*) | two builds on separate fresh runners, with nothing of `official/` run before them (no tests, no other build scripts), whose module or package sha256 differ |
 | `compare` | nothing: it reports whether each module equals DeckPilot's `plugins/first-party/build.sh` output at the pin (see below) |
-| `sign-test` | `release sign` with a throwaway publisher key, `release verify` (claim, signature, compatibility, rollback floor from DeckPilot's `released-pins.json`, audit log), DeckPilot's released-pins guard on the verified files, and the keys pinned in DeckPilot not refusing for the expected reason (none provisioned) |
+| `sign-test` | two throwaway publisher keys made in the test, threshold 2: `release sign` with each, `release verify` with both (claim, signatures, compatibility, rollback floor from DeckPilot's `released-pins.json`, audit log naming two signers); refusing one signature, the same signature twice, a key that is not in the set, a revoked key (also next to both keys), modified bytes, and a signature set other than two `<package>.<KEYID>.minisig` files by distinct keys; DeckPilot's released-pins guard on the verified files; and the keys pinned in DeckPilot not refusing for the expected reason (none provisioned) |
 
 The build is the one of DeckPilot's `build.sh`: the `guest` profile, no
 flags from the environment, and the paths remapped (`official/` to
@@ -80,22 +80,39 @@ owner creates (tags are admin-only), only when the owner has set it up:
 4. `build-a` and `build-b` (no secret): two independent builds of the tagged
    commit, each on its own fresh runner, with nothing run before them;
    module sha256, package sha256 and size.
-5. `cli` (no secret) builds the pinned `deckpilot-registry` (DeckPilot code
+5. `compare` (no secret): both builds agree on module and package; it
+   hands on build-a's package sha256 and size.
+6. `cli` (no secret) builds the pinned `deckpilot-registry` (DeckPilot code
    only) and hands it on as an artifact with its sha256.
-6. `sign` (environment `official-release`) compiles nothing: it installs
-   the `cli` job's binaries only if their sha256 match
-   (`tools/cli-artifact.sh`), and fetches the pinned DeckPilot checkout with
-   git for its `released-pins.json` and `artifacts.json`. Both builds must
-   agree on module and package; build-a's package is re-checked against
-   its sha256 and size. One step, the only one with the key, runs `release sign --id
-   --version` with the tag's id and version (the package must say the same;
-   every check that parses the package runs before the key is loaded, and
-   the key never touches the disk). The next step, without the key, runs
-   `release verify` with the keys pinned in the DeckPilot build (never
-   `--keys`), DeckPilot's rollback floor (`released-pins.json`) and
-   revocations (`artifacts.json`), for each platform, with the audit log.
-7. `release`: package and `.minisig` on the GitHub Release of the tag
-   (draft, both assets, then published; never a tag).
+7. `sign-a` and `sign-b` (environment `official-release`, each a
+   deployment its reviewers approve): **two publisher keys, one per
+   job**. `sign-a` holds only `DECKPILOT_PUBLISHER_KEY_A` and its password, `sign-b` only
+   `DECKPILOT_PUBLISHER_KEY_B` and its password; no runner ever has both.
+   Each compiles nothing: it installs the `cli` job's binaries only if
+   their sha256 match (`tools/cli-artifact.sh`) and re-checks build-a's
+   package against `compare`'s sha256 and size. One step, the only one with
+   the key, runs `release sign --id --version` with the tag's id and
+   version (the package must say the same; every check that parses the
+   package runs before the key is loaded, and the key never touches the
+   disk); it refuses without its key and password, and with any other
+   publisher secret in its environment. Each job uploads exactly one file,
+   `<id>-<version>.dpplugin.<KEYID>.minisig` (KEYID: the minisign key id,
+   16 uppercase hex, as minisign prints it), and reports its key id.
+8. `verify` (no environment, no secret) gathers both files and requires
+   exactly those two (the key ids `sign-a` and `sign-b` reported, distinct,
+   each file named by the key id it carries), DeckPilot pinning a threshold
+   of at least two distinct keys, and `release verify` with both
+   signatures and the keys pinned in the DeckPilot build (never `--keys`),
+   DeckPilot's rollback floor (`released-pins.json`) and revocations
+   (`artifacts.json`), for each platform, with the audit log (two
+   signers). Each signature alone must be refused.
+9. `release`: the package and both signature files on the GitHub Release
+   of the tag (a draft, all three assets, exactly those, then published;
+   never a tag).
+
+One key missing means no release: a signing job that fails or is skipped
+stops `verify`, `verify` refuses one signature, and `release` needs
+`verify`.
 
 Every job that builds or runs `deckpilot-registry` builds it from
 `DECKPILOT_COMMIT` only after checking that the commit is on DeckPilot's
@@ -107,10 +124,23 @@ the verifier that runs next to the key.
 No job that holds a signing key compiles anything: `publish.yml`'s and
 `_site.yml`'s registry signing jobs install the tools from a `cli` job the
 same way, and `tools/check-workflows.py` refuses `build-cli.sh`, `cargo`,
-`rustup`, `rustc`, `build-plugin.sh` and `official.sh` build steps in a job
-of `registry-release`, `registry-timestamp` or `official-release`, so no
-build script of a locked dependency can run in, or linger into, a step
-that gets a key.
+`rustup`, `rustc`, `build-plugin.sh` and any `official.sh` step but
+`release-sign` in a job of `registry-release`, `registry-timestamp` or
+`official-release`, so no build script of a locked dependency can run in,
+or linger into, a step that gets a key.
+
+`tools/check-workflows.py` also holds `official-release.yml` to the
+two-key layout: each publisher secret only in its own signing job (names
+compared case-insensitively), no job with both keys, no other
+`DECKPILOT_PUBLISHER_KEY*` secret anywhere; a job holding a key names
+`official-release`, needs `gate`, has the exact condition
+`github.repository == 'knittingcode/deckpilot-plugins' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/deckpilot.') && contains(github.ref, '--v')`,
+gives the key to one `run` step's env only (as the variable of the same
+name), and compiles nothing; the workflow is triggered only by a push of
+`deckpilot.<name>--v*` tags and an input-less `workflow_dispatch` (no
+`pull_request`, `pull_request_target`, `workflow_run`, `workflow_call`,
+schedule, inputs or event payloads); `verify` has no secret and needs both
+signing jobs, and `release` needs `verify`.
 
 `publish.yml` (the registry) excludes these tags.
 
@@ -118,21 +148,30 @@ that gets a key.
 
 Not done by anyone yet; creating or rotating these secrets is the owner's:
 
-1. Create the publisher key offline:
-   `deckpilot-registry keys generate --role publisher --out publisher.key`
-   (with a password); keep an encrypted offline backup.
-2. Create the environment `official-release`: deployment tags
-   `deckpilot.*--v*` only, a required reviewer, administrators cannot
-   bypass. Add the secrets `DECKPILOT_PUBLISHER_KEY` (the secret key file's
-   text) and `DECKPILOT_PUBLISHER_KEY_PASSWORD`.
-3. Pin the public key (`publisher.key.pub`) in DeckPilot's
+1. Create the **two** publisher keys offline, each by its own holder, on
+   separate machines, each with its own strong password:
+   `deckpilot-registry keys generate --role publisher --out publisher-a.key`
+   (and `publisher-b.key`), or `minisign -G`; keep encrypted offline
+   backups. Note each key id (`untrusted comment: minisign public key:
+   <KEYID>` of the `.pub` file).
+2. In the environment `official-release` (already created: deployment
+   tags `deckpilot.*--v*` only, required reviewers, prevent self-review,
+   administrators cannot bypass) add the secrets
+   `DECKPILOT_PUBLISHER_KEY_A` (key A's secret key file text) and
+   `DECKPILOT_PUBLISHER_KEY_A_PASSWORD`, `DECKPILOT_PUBLISHER_KEY_B` and
+   `DECKPILOT_PUBLISHER_KEY_B_PASSWORD`. Nothing else holds them.
+3. Add the second required reviewer, so the gate's
+   `OFFICIAL_RELEASE_REQUIRE_REVIEWERS=2` is met (it fails closed until
+   then).
+4. Pin both public keys with `threshold: 2` in DeckPilot's
    `crates/deckpilot-plugin-registry/publisher/first-party.json` in a
    reviewed pull request, then move `tools/deckpilot.env` here to that
-   commit.
-4. Have the security review of DeckPilot's
+   commit (`verify` refuses a DeckPilot pinning fewer than two keys or a
+   lower threshold).
+5. Have the security review of DeckPilot's
    `docs/marketplace/publisher-review-request.md` done (it also decides
    whether the privileged-kinds gate may open for Wave C).
-5. Set the repository variable `OFFICIAL_RELEASE_ENABLED` to `true`.
+6. Set the repository variable `OFFICIAL_RELEASE_ENABLED` to `true`.
 
 Decisions only the owner can make (nothing here changes live settings):
 

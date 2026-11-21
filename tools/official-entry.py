@@ -24,13 +24,16 @@ refuses, before writing anything:
   releases (test mode: a fixture of the given official/ only);
 * a release that is a draft, not published, of another tag, of a commit not
   on main, or whose pre-release flag contradicts the version;
-* assets other than exactly the package and its `.minisig` signature(s);
-  an asset whose downloaded size or sha256 differs from what GitHub
-  reports for it;
+* assets other than exactly the package and its two signatures,
+  `<id>-<version>.dpplugin.<KEYID>.minisig` (KEYID: the minisign key id
+  the file carries, 16 uppercase hex) by two distinct keys; an asset whose
+  downloaded size or sha256 differs from what GitHub reports for it;
 * anything `deckpilot-registry release verify` refuses, run for every
-  platform with the publisher keys pinned in the pinned DeckPilot (never
-  `--keys` outside test mode), DeckPilot's released-pins.json as rollback
-  floor and its artifacts.json revocations;
+  platform with both signatures and the publisher keys pinned in the
+  pinned DeckPilot (never `--keys` outside test mode), which must pin a
+  threshold of at least two, DeckPilot's released-pins.json as rollback
+  floor and its artifacts.json revocations; a verification not by two
+  distinct signers;
 * a manifest that is not the claimed id/version, an engines range the
   pinned DeckPilot (tools/deckpilot.env) does not satisfy, permission kinds
   other than the policy of plugins.json, any plugin API 1.9 privileged kind
@@ -45,8 +48,12 @@ Test mode (--test-keys): the keys are a throwaway publisher key set, the
 id must be a fixture, and --out must lie outside official/marketplace/;
 the release record says `"keys": "test"`. `check` refuses such a record.
 
+The release record names both signature files and both signer key ids
+(`verification.signerKeyIds`).
+
 `check` re-checks every committed candidate (ids, gate, records against
-their release, dependencies, append-only order) and that
+their release, both signatures and signer key ids, dependencies,
+append-only order) and that
 docs/official-compatibility-matrix.md is current. `matrix` writes it.
 
 No command signs, tags, uploads, publishes or touches registry/: the
@@ -103,6 +110,19 @@ def _official_rules():
 
 
 RULES = _official_rules()
+
+
+def _keyid_module():
+    spec = importlib.util.spec_from_file_location("minisign_keyid", ROOT / "tools/lib/minisign_keyid.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+KEYID = _keyid_module()
+# An official release is signed by two distinct publisher keys (threshold 2).
+SIGNATURES = 2
+KEY_ID = re.compile(r"[0-9A-F]{16}")
 BUNDLED_PLUGIN_IDS = RULES.BUNDLED_PLUGIN_IDS
 
 
@@ -216,18 +236,22 @@ def check_release(bundle, tag):
 
 
 def check_assets(bundle, assets_dir, pid, version):
-    """Exactly the package and its signature(s), each as GitHub reports it."""
+    """Exactly the package and its two signatures, each as GitHub reports it;
+    returns the package path and [(signature path, key id)]."""
     package = f"{pid}-{version}.dpplugin"
-    signature = re.compile(re.escape(package) + r"(?:\.[1-9][0-9]?)?\.minisig")
+    signature = re.compile(re.escape(package) + r"\.([0-9A-F]{16})\.minisig")
     listed = {a.get("name"): a for a in (bundle.get("release") or {}).get("assets", [])}
     if package not in listed:
         raise Refused(f"the release has no asset {package}")
     sigs = sorted(n for n in listed if signature.fullmatch(n or ""))
     if not sigs:
-        raise Refused(f"the release has no signature {package}.minisig")
-    extra = sorted(set(listed) - {package, *sigs})
+        raise Refused(f"the release has no signature {package}.<KEYID>.minisig")
+    extra = sorted(set(listed) - {package, *sigs}, key=str)
     if extra:
-        raise Refused(f"the release has assets other than the package and its signature: {extra}")
+        raise Refused(f"the release has assets other than the package and its signatures {package}.<KEYID>.minisig: {extra}")
+    if len(sigs) != SIGNATURES:
+        raise Refused(f"the release has {len(sigs)} signature(s); an official release has exactly {SIGNATURES}, "
+                      "by two distinct publisher keys")
     on_disk = sorted(p.name for p in Path(assets_dir).iterdir()) if Path(assets_dir).is_dir() else []
     if on_disk != sorted(listed):
         raise Refused(f"the downloaded assets {on_disk} are not the release's {sorted(listed)}")
@@ -241,8 +265,19 @@ def check_assets(bundle, assets_dir, pid, version):
         digest = asset.get("digest")
         if digest is not None and digest != "sha256:" + sha256(path):
             raise Refused(f"{name}: sha256 {sha256(path)} differs from the release's {digest}")
-    path = Path(assets_dir) / package
-    return path, [Path(assets_dir) / s for s in sigs]
+    signatures = []
+    for name in sigs:
+        named = signature.fullmatch(name).group(1)
+        try:
+            carried = KEYID.key_id((Path(assets_dir) / name).read_bytes())
+        except KEYID.NotMinisign as e:
+            raise Refused(f"{name}: not a minisign signature ({e})") from None
+        if carried != named:
+            raise Refused(f"{name} carries key id {carried}, not {named}")
+        signatures.append((Path(assets_dir) / name, named))
+    if len({k for _, k in signatures}) != SIGNATURES:
+        raise Refused("the two signatures are by the same key; two distinct publisher keys sign an official release")
+    return Path(assets_dir) / package, signatures
 
 
 def localized(manifest, files, key, locale):
@@ -402,6 +437,14 @@ def verify(cli, package, signatures, pid, version, host, platforms, keys, deckpi
         claim += ["--released-pins", str(pins)]
     if lock.is_file():
         claim += ["--revocations", str(lock)]
+    keyset = Path(keys) if keys else Path(deckpilot) / "crates/deckpilot-plugin-registry/publisher/first-party.json"
+    try:
+        threshold = load(keyset).get("threshold")
+    except Refused:
+        threshold = None
+    if not isinstance(threshold, int) or threshold < SIGNATURES:
+        raise Refused(f"the publisher keys of {keyset} have threshold {threshold!r}; an official release needs "
+                      f"a threshold of at least {SIGNATURES} distinct keys")
     if keys:
         claim += ["--keys", str(keys)]
     unpacked = scratch / "unpacked"
@@ -418,6 +461,9 @@ def verify(cli, package, signatures, pid, version, host, platforms, keys, deckpi
         if record.get("outcome") != "verified":
             raise Refused(f"audit: {record}")
         signers.update(record.get("signers", []))
+    if len(signers) < SIGNATURES:
+        raise Refused(f"release verify names {len(signers)} signer(s) ({', '.join(sorted(signers))}); "
+                      f"an official release is signed by {SIGNATURES} distinct keys")
     return unpacked, sorted(signers)
 
 
@@ -493,7 +539,8 @@ def cmd_generate(args):
     pid, version = check_release(bundle, tag)
     policy = official_policy(official)
     entry = check_id(pid, policy, test)
-    package, signatures = check_assets(bundle, bundle_dir / "assets", pid, version)
+    package, signed = check_assets(bundle, bundle_dir / "assets", pid, version)
+    signatures = [path for path, _ in signed]
     cli = Path(args.cli or CLI)
     if not cli.is_file():
         raise Refused(f"{cli} is missing; run tools/build-cli.sh")
@@ -523,10 +570,11 @@ def cmd_generate(args):
         "commit": bundle["commit"],
         "publishedAt": bundle["release"]["published_at"],
         "package": {"name": package.name, "sha256": sha256(package), "size": package.stat().st_size},
-        "signatures": [{"name": s.name, "sha256": sha256(s)} for s in signatures],
+        "signatures": [{"name": s.name, "keyId": k, "sha256": sha256(s)} for s, k in signed],
         "verification": {
             "keys": "test" if test else "pinned",
             "signers": signers,
+            "signerKeyIds": sorted(k for _, k in signed),
             "deckpilot": host["version"],
             "pluginApi": host["pluginApi"],
             "deckpilotCommit": host["commit"],
@@ -579,6 +627,25 @@ def git_manifest(commit, path):
 SIGNED_MANIFEST = git_manifest
 
 
+def check_signatures(release, pid, version):
+    """A committed release record: two signature files named by two distinct
+    key ids, the signer key ids recorded, two signers."""
+    package = f"{pid}-{version}.dpplugin"
+    sigs = release.get("signatures") or []
+    ids = [s.get("keyId") for s in sigs]
+    if len(sigs) != SIGNATURES or len(set(ids)) != SIGNATURES or not all(KEY_ID.fullmatch(k or "") for k in ids):
+        raise Refused(f"the release record names {len(sigs)} signature(s) with key ids {ids}; "
+                      f"an official release has {SIGNATURES}, by distinct keys")
+    for s in sigs:
+        if s.get("name") != f"{package}.{s['keyId']}.minisig" or not SHA.fullmatch(s.get("sha256") or ""):
+            raise Refused(f"signature {s.get('name')} is not {package}.{s['keyId']}.minisig with its sha256")
+    verification = release.get("verification", {})
+    if verification.get("signerKeyIds") != sorted(ids):
+        raise Refused(f"verification.signerKeyIds {verification.get('signerKeyIds')} are not the signatures' {sorted(ids)}")
+    if len(set(verification.get("signers") or [])) != SIGNATURES:
+        raise Refused(f"the verification names {len(set(verification.get('signers') or []))} signer(s), not {SIGNATURES}")
+
+
 def check_candidates(official, marketplace, deckpilot, host):
     problems = []
     policy = official_policy(official)
@@ -604,6 +671,7 @@ def check_candidates(official, marketplace, deckpilot, host):
                     raise Refused("record, release and file name disagree")
                 if release.get("verification", {}).get("keys") != "pinned":
                     raise Refused("verified with test keys; only pinned-key verifications are committed")
+                check_signatures(release, pid, version)
                 pkg = record.get("package", {})
                 if pkg.get("url") != f"{DOWNLOAD}/{tag}/{pid}-{version}.dpplugin":
                     raise Refused(f"package.url {pkg.get('url')} is not the release asset")

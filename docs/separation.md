@@ -45,10 +45,14 @@ needs an application release.
   `REGISTRY_INDEX_KEY_PASSWORD`, `REGISTRY_TIMESTAMP_KEY` and
   `REGISTRY_TIMESTAMP_KEY_PASSWORD`, and only the environments
   `registry-release`, `registry-timestamp` and `github-pages`; the
-  publisher key (`DECKPILOT_PUBLISHER_KEY`,
-  `DECKPILOT_PUBLISHER_KEY_PASSWORD`) and its environment
+  two publisher keys (`DECKPILOT_PUBLISHER_KEY_A` with
+  `DECKPILOT_PUBLISHER_KEY_A_PASSWORD`, `DECKPILOT_PUBLISHER_KEY_B` with
+  `DECKPILOT_PUBLISHER_KEY_B_PASSWORD`) and their environment
   `official-release` only in `official-release.yml`, which reads no
-  registry secret;
+  registry secret: key A only in job `sign-a`, key B only in `sign-b`, no
+  job with both, each such job in `official-release`, on a
+  `deckpilot.*--v*` tag of this repository, compiling nothing, and a
+  keyless `verify` (threshold 2 of the pinned keys) before `release`;
   `production-release`, `TAURI_SIGNING*` and `APPLE_*` are refused, as are
   `pull_request_target`, `workflow_run`, caches, unpinned actions and
   checkouts that keep credentials.
@@ -69,7 +73,8 @@ needs an application release.
   its URL. `publish.yml`'s tag filter excludes the official
   plugins' tags, which only `official-release.yml` takes.
 
-The first-party publisher key is DeckPilot's (its public key is pinned in
+The two first-party publisher keys are DeckPilot's (their public keys are
+pinned, threshold 2, in
 `crates/deckpilot-plugin-registry/publisher/first-party.json` of
-`knittingcode/deckpilot`), but it signs here and only here: DeckPilot only
-verifies. It is not created yet; see [official/README.md](../official/README.md).
+`knittingcode/deckpilot`), but they sign here and only here: DeckPilot only
+verifies. They are not created yet; see [official/README.md](../official/README.md).
