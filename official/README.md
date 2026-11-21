@@ -14,7 +14,9 @@ the same.
 > CI. No publisher key exists, nothing is released, and the release
 > workflow stops at its first step. Unlike `first-party/` these plugins are
 > never registry entries: the agent never takes a bundled id from a
-> registry.
+> registry. A verified release can still be turned into a checked
+> *candidate* entry under `marketplace/`
+> ([docs/official-marketplace.md](../docs/official-marketplace.md)).
 
 ## Layout
 
@@ -27,6 +29,8 @@ official/
   plugins.json     which members are released (`plugins`) and which are
                    fixtures, and the permission kinds each may declare
   test-fixtures/   fixtures, never released
+  marketplace/     candidate Marketplace entries, made only from verified releases
+                   (tools/official-entry.py); never in the signed index
   <name>/          one plugin, id deckpilot.<name> (from Wave B on)
 ```
 
