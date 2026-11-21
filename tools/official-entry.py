@@ -606,7 +606,12 @@ def cmd_check(args):
     problems = check_candidates(official, Path(args.marketplace or MARKETPLACE), Path(args.deckpilot or DECKPILOT_DIR), host)
     if not args.marketplace:
         try:
-            if MATRIX.read_text(encoding="utf-8") != matrix(Path(args.deckpilot or DECKPILOT_DIR)):
+            want = matrix(Path(args.deckpilot or DECKPILOT_DIR))
+            have = MATRIX.read_text(encoding="utf-8") if MATRIX.is_file() else ""
+            if have != want:
+                import difflib
+                sys.stderr.writelines(difflib.unified_diff(have.splitlines(True), want.splitlines(True),
+                                                           "committed", "generated"))
                 problems.append(f"{MATRIX.relative_to(ROOT)} is out of date: run tools/official-entry.py matrix")
         except (OSError, Refused) as err:
             problems.append(f"matrix: {err}")
