@@ -1,8 +1,16 @@
 # Security policy
 
-This repository is the DeckPilot plugin registry. It is a foundation under
-construction: no production keys exist and no plugin is published yet. It
-has not had an independent security review.
+This repository is the DeckPilot plugin registry. The signed production
+registry is live at <https://knittingcode.github.io/deckpilot-plugins/v1/>:
+its root-signed public key set is committed under [`keys/`](keys/), and
+DeckPilot's first-party plugins (`deckpilot.*`) are released from it and
+installed by DeckPilot clients from the Marketplace. The registry is not
+open to other publishers yet. It has not had an independent security
+review.
+
+The keys, signing environments, freshness bounds, revocation and recovery
+can change independently of this policy; their current state is in
+[docs/trust-model.md](docs/trust-model.md) (see "Current status").
 
 ## What to report here
 
@@ -14,18 +22,23 @@ has not had an independent security review.
 | **Key exposure** | any private key, password or secret of this repository seen anywhere |
 
 Out of scope here, report to [DeckPilot](https://github.com/knittingcode/deckpilot/security/advisories/new)
-instead: vulnerabilities in the DeckPilot app or agent, the plugin sandbox
-and host, the plugin SDK, or the client-side registry verification code.
-These live in the DeckPilot repository. For a non-security problem with a
-plugin (a crash, a misleading description), use the *Plugin report* issue
-form.
+instead (see [How to report](#how-to-report)): vulnerabilities in the
+DeckPilot app or agent, the plugin sandbox and host, the plugin SDK, or the
+client-side registry verification code. These live in the DeckPilot
+repository. For a non-security problem with a plugin (a crash, a misleading
+description), use the *Plugin report* issue form.
 
 ## How to report
 
-Report **privately** through GitHub's private vulnerability reporting:
-open this repository's **Security** tab and choose **Report a
-vulnerability**
-(<https://github.com/knittingcode/deckpilot-plugins/security/advisories/new>).
+Report **privately** through GitHub's private vulnerability reporting, in
+the repository the problem belongs to: open its **Security** tab and choose
+**Report a vulnerability**.
+
+| Problem in | Private report |
+| --- | --- |
+| This registry: a plugin listed in or submitted to it, the signed registry documents, keys, workflows and `tools/` | <https://github.com/knittingcode/deckpilot-plugins/security/advisories/new> |
+| The DeckPilot host: the app or agent, the plugin sandbox and host, the plugin SDK, client-side registry verification | <https://github.com/knittingcode/deckpilot/security/advisories/new> |
+
 There is no separate email address or other channel.
 
 Do not open a public issue or pull request for a suspected malicious plugin
