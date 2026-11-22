@@ -99,6 +99,10 @@ class PathError(StudioError):
     status = 403
 
 
+class TimeoutStudioError(StudioError):
+    status = 408
+
+
 # --------------------------------------------------------------------------
 # Paths and files
 # --------------------------------------------------------------------------
@@ -1105,7 +1109,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def _body(self):
         """The request's JSON object; 400 for anything else (and the connection is closed)."""
-        raw = self.headers.get("Content-Length")
+        lengths = self.headers.get_all("Content-Length") or []
+        if len(lengths) > 1:
+            self.close_connection = True
+            raise StudioError("more than one Content-Length")
+        if self.headers.get("Transfer-Encoding") is not None:
+            self.close_connection = True
+            raise StudioError("Transfer-Encoding is not accepted; send a Content-Length")
+        raw = lengths[0] if lengths else None
         if raw is None or not re.fullmatch(r"[0-9]{1,10}", raw.strip()):
             self.close_connection = True
             raise StudioError("a Content-Length (a non-negative integer) is required")
@@ -1116,7 +1127,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if self.headers.get("Content-Type", "").split(";")[0].strip() != "application/json":
             self.close_connection = True
             raise StudioError("application/json expected")
-        data = self.rfile.read(length)  # bounded by the handler's socket timeout
+        try:
+            data = self.rfile.read(length)  # bounded by the handler's socket timeout
+        except (TimeoutError, OSError):
+            self.close_connection = True
+            raise TimeoutStudioError("the body did not arrive in time") from None
         if len(data) != length:
             self.close_connection = True
             raise StudioError("the body is shorter than its Content-Length")

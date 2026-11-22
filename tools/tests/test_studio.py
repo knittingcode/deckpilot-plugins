@@ -312,6 +312,9 @@ class Server(unittest.TestCase):
             "shorter than promised": head + b"Content-Length: 50\r\n\r\n{}",
             "not an object": head + b"Content-Length: 2\r\n\r\n[]",
             "not JSON": head + b"Content-Length: 3\r\n\r\n{x}",
+            "two lengths": head + b"Content-Length: 2\r\nContent-Length: 2\r\n\r\n{}",
+            "two different lengths": head + b"Content-Length: 2\r\nContent-Length: 40\r\n\r\n{}",
+            "chunked": head + b"Transfer-Encoding: chunked\r\n\r\n2\r\n{}\r\n0\r\n\r\n",
         }
         for name, request in cases.items():
             with self.subTest(case=name):
@@ -329,6 +332,20 @@ class Server(unittest.TestCase):
                 method = "PUT" if path == "/api/file" else "POST"
                 status, _, _ = self.request(method, path, body, headers=self.write_headers())
                 self.assertEqual(status, 400)
+
+    def test_a_body_that_never_arrives_times_out_with_408(self):
+        import socket
+        head = (f"POST /api/validate HTTP/1.1\r\nHost: 127.0.0.1:{self.port}\r\nOrigin: http://127.0.0.1:{self.port}\r\n"
+                f"X-Studio-Token: {self.token}\r\nContent-Type: application/json\r\nContent-Length: 50\r\n\r\n{{").encode()
+        old = studio.Handler.timeout
+        self.server.RequestHandlerClass.timeout = 1
+        try:
+            with socket.create_connection(("127.0.0.1", self.port), timeout=30) as s:
+                s.sendall(head)  # and keep the connection open without sending the rest
+                reply = s.recv(65536)
+        finally:
+            self.server.RequestHandlerClass.timeout = old
+        self.assertTrue(reply.startswith(b"HTTP/1.0 408") or reply.startswith(b"HTTP/1.1 408"), reply[:80])
 
     def test_preview_endpoint(self):
         status, _, payload = self.request("POST", "/api/preview", {"platform": "macos", "locale": "en"},
