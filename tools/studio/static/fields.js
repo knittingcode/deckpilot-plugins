@@ -134,7 +134,9 @@ export function platforms(obj, onChange) {
 function pluginLabel(plugins, id) {
   const p = plugins[id];
   if (!p) return `${id} (not in registry/)`;
-  const state = p.live ? 'live' : (p.versions.length ? 'recorded, not live yet' : 'not published');
+  const state = p.live === true ? 'live'
+    : p.live === null ? 'live state unknown (no mirror)'
+      : (p.versions.length ? 'recorded, not live yet' : 'not published');
   return `${p.name} · ${id} · ${state}`;
 }
 
