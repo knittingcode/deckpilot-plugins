@@ -47,6 +47,22 @@ def env_step(expr):
 
 
 case("a plain workflow", workflow(), True, "1 workflow")
+
+# The storefront switch (docs/storefront.md).
+SF_ENV = "      - env:\n          REGISTRY_STOREFRONT_ENABLED: ${{ vars.REGISTRY_STOREFRONT_ENABLED }}\n        run: tools/publish-site.sh index\n"
+case("storefront: the repository variable in publish.yml", workflow(step=SF_ENV), True, "1 workflow", file="publish.yml")
+case("storefront: the variable elsewhere (the timestamp refresh keeps any storefront)", workflow(step=SF_ENV), False,
+     "belongs to publish.yml alone", file="_site.yml")
+case("storefront: a literal true", workflow(step="      - env:\n          REGISTRY_STOREFRONT_ENABLED: true\n        run: x\n"),
+     False, "only as `REGISTRY_STOREFRONT_ENABLED", file="publish.yml")
+case("storefront: from an input", workflow(step="      - env:\n          REGISTRY_STOREFRONT_ENABLED: ${{ inputs.sf }}\n        run: x\n"),
+     False, "only as `REGISTRY_STOREFRONT_ENABLED", file="publish.yml")
+case("storefront: set in a run line", workflow(step="      - run: REGISTRY_STOREFRONT_ENABLED=true tools/publish-site.sh index\n"),
+     False, "only as `REGISTRY_STOREFRONT_ENABLED", file="publish.yml")
+case("storefront: a workflow that signs a storefront itself",
+     workflow(step="      - run: .work/bin/deckpilot-registry storefront sign --key k\n"), False, "only tools/publish-site.sh")
+case("storefront: prose in a comment is not a use", workflow(step="      # storefront sign, REGISTRY_STOREFRONT_ENABLED\n      - run: echo\n"),
+     True, "1 workflow", file="_site.yml")
 case("a registry secret", workflow(step=env_step("secrets.REGISTRY_INDEX_KEY")), True)
 case("a registry secret, index syntax", workflow(step=env_step("secrets['REGISTRY_INDEX_KEY']")), True)
 case("another secret", workflow(step=env_step("secrets.OTHER")), False, "secret OTHER is not a registry role key")

@@ -4,11 +4,13 @@ How a plugin gets screenshots, an icon and promo text in the DeckPilot
 Marketplace, and how the owner places plugins on the Discover page
 (banners, collection rows, spotlights). For authors and for the owner.
 
-> **Status: inputs only.** The files below are accepted and checked, but
-> nothing is signed or served yet: the publish pipeline does not build a
-> storefront until the rollout below reaches stage 4, and released DeckPilot
-> versions (up to v0.12) never request one. Until then a listing has no
-> effect on any client.
+> **Status: pipeline dark.** The files below are accepted and checked, and
+> the publish pipeline can sign a storefront, but it does so only once the
+> owner sets the repository variable `REGISTRY_STOREFRONT_ENABLED` to `true`
+> (rollout stage 4 below). Unset or `false`, publication signs exactly what
+> it signed before storefronts. Released DeckPilot versions (up to v0.12)
+> never request a storefront. Until stage 4 a listing has no effect on any
+> client.
 
 ## Who writes what
 
@@ -275,7 +277,27 @@ pull request, merges it after review, and publishes it with a
 `registry--v<date>.<n>` tag, which signs a new index and, from stage 4 on,
 a new storefront. To withdraw editorial content: revert the pull request,
 merge the revert, tag `registry--v…` again. The new, higher seq no longer
-carries the content; seq never goes down.
+carries the content; seq never goes down, and the branch `registry-state`
+is never touched by hand.
+
+What the pipeline does (`tools/publish-site.sh`, `tools/mirror-site.sh`;
+the throwaway-key tests are `tools/tests/test-storefront-site.sh` and
+`test-registry-freshness.sh --with-cli`):
+
+| Where | Variable unset or `false` | `REGISTRY_STOREFRONT_ENABLED=true` |
+| --- | --- | --- |
+| *Validate registry* (every pull request) | the pinned `deckpilot-registry storefront check`, then a throwaway-key `storefront build`, `storefront sign`, `verify-site --require-storefront` of the sources | the same |
+| *Publish* `sign` (a `registry--v…` or plugin tag) | build-index, sign-index, timestamp: no `storefront/` or `media/` on the new site (turning the variable off withdraws the storefront at the next publication) | `storefront check`; build-index, sign-index; `storefront build` and `storefront sign` (the index key, its own trusted comment `role:storefront`) for the new seq; timestamp; `verify-site --require-storefront`. The live storefronts of the indexes kept (the newest and 10 before it) and their files are carried over; `storefront build` prunes the rest |
+| *Publish* `verify-published` | as before | the live `storefront/` and `media/`, fetched anonymously, are the signed bytes; `verify-site --require-storefront` |
+| Daily refresh and every Pages deploy (`_site.yml`) | the mirror takes the storefront of every kept index, its documents and images (each against its pinned sha256 and length); a refresh changes `timestamp.json` only (checked: `index/`, `plugins/`, `storefront/`, `media/` byte for byte) and verifies the live seq's storefront as a client would | the same (the refresh never looks at the variable) |
+| Freshness monitor (`check-freshness.sh`) | when the live seq has a storefront: its signature, documents and images are all served as pinned | the same |
+
+Whenever `verify-site --require-storefront` runs with a client state
+(`--state`), that state must then record the storefront it accepted
+(`registry-storefront.json`, beside `registry-trust.json`): the live site's
+verification records the live seq's storefront, and the new site is
+verified against that state, so a refresh can never sign a different
+storefront for the same seq.
 
 ## Rollout
 

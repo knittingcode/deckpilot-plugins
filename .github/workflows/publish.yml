@@ -23,7 +23,11 @@
 #                     builds and compiles nothing (installs the cli job's
 #                     binaries, sha256 checked); takes the packages of `build` from this
 #                     run, re-checks every sha256 and size against the
-#                     reviewed pins, signs, verify-site as an existing client
+#                     reviewed pins, signs, verify-site as an existing client.
+#                     With the repository variable REGISTRY_STOREFRONT_ENABLED
+#                     'true' (unset: off), also the storefront: built and
+#                     signed with the index key after the index, before the
+#                     timestamp (tools/publish-site.sh, docs/storefront.md)
 #   release           contents: write: uploads the verified package to the
 #                     GitHub Release of the tag (never creates a tag)
 #   website           UNPRIVILEGED (no environment, no secret): builds the
@@ -219,8 +223,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: tools/registry-state.sh fetch "$RUNNER_TEMP/min-state.json"
-      - name: Verify the packages against the pins, sign index and timestamp, verify as an existing client
+      - name: Verify the packages against the pins, sign index (and storefront, if enabled) and timestamp, verify as an existing client
         env:
+          # 'true' enables the storefront; unset or 'false' signs exactly what was signed before it.
+          REGISTRY_STOREFRONT_ENABLED: ${{ vars.REGISTRY_STOREFRONT_ENABLED }}
           REGISTRY_INDEX_KEY: ${{ secrets.REGISTRY_INDEX_KEY }}
           REGISTRY_INDEX_KEY_PASSWORD: ${{ secrets.REGISTRY_INDEX_KEY_PASSWORD }}
           REGISTRY_TIMESTAMP_KEY: ${{ secrets.REGISTRY_TIMESTAMP_KEY }}
@@ -372,7 +378,9 @@ jobs:
         with:
           name: registry-v1
           path: ${{ runner.temp }}/expected
-      - name: Fetch the live site anonymously and verify it
+      - name: Fetch the live site (and its storefront, if signed) anonymously and verify it
+        env:
+          REGISTRY_STOREFRONT_ENABLED: ${{ vars.REGISTRY_STOREFRONT_ENABLED }}
         run: tools/verify-published.sh "$REGISTRY_URL" "$RUNNER_TEMP/expected/timestamp.json"
 
   # Only after the live site was proven to serve the signed registry: its

@@ -9,6 +9,10 @@
 #   - a live registry: the live /v1/ mirrored and verified with the
 #     committed roots (so a website change never removes the registry), or,
 #     with refresh-timestamp, the same registry with a newly signed timestamp.
+#     The mirror includes the storefront (storefront/, media/;
+#     docs/storefront.md) of every kept index, byte for byte; when the live
+#     seq has one it is verified too (verify-site --require-storefront), and
+#     the refresh keeps it unchanged (tools/publish-site.sh timestamp).
 # - the website (website/) is built by _website.yml, an unprivileged job
 #   that only reads the registry tree to generate the catalog.
 # `compose` joins them with tools/compose-site.py: the registry tree is
@@ -81,10 +85,13 @@ jobs:
       - name: Build the pinned deckpilot-registry
         if: steps.mirror.outputs.live == 'true'
         run: tools/build-cli.sh
-      - name: Verify the mirrored registry with the committed roots
+      - name: Verify the mirrored registry (and its storefront, if the live seq has one) with the committed roots
         if: steps.mirror.outputs.live == 'true'
         run: |
-          .work/bin/deckpilot-registry verify-site --dir "$RUNNER_TEMP/live" --roots keys/roots.json
+          seq=$(jq -er .seq "$RUNNER_TEMP/live/site/v1/timestamp.json")
+          storefront=()
+          [ ! -f "$RUNNER_TEMP/live/site/v1/storefront/$seq.json" ] || storefront=(--require-storefront)
+          .work/bin/deckpilot-registry verify-site --dir "$RUNNER_TEMP/live" --roots keys/roots.json "${storefront[@]}"
           rm -rf "$RUNNER_TEMP/site/v1"
           cp -R "$RUNNER_TEMP/live/site/v1" "$RUNNER_TEMP/site/v1"
       # Scheduled refreshes run several times a day so that a delayed or

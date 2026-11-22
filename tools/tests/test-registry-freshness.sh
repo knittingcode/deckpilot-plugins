@@ -8,17 +8,33 @@
 #     branch, record (first and appended), refusal to record an older state,
 #     API failures;
 #   - tools/check-freshness.sh: enough validity, too little, expired, a
-#     published release missing from the index, drafts ignored.
+#     published release missing from the index, drafts ignored; a storefront
+#     whose images or documents are not all served as pinned.
+#   - the storefront in the mirror (docs/storefront.md): the storefront of
+#     every kept index, its documents and images, byte for byte; the path
+#     grammar refuses media/../x, uppercase hex and .svg, and a pinned file
+#     that is missing or has other bytes fails the mirror.
 # Regression tests of the launch failures: a redeploy that could replace
 # the signed registry with a stale CDN copy, or with no registry at all.
 #
-#   tools/tests/test-registry-freshness.sh
+# --with-cli (needs tools/build-cli.sh; validate.yml's registry job): also a
+# real timestamp-only refresh (tools/publish-site.sh timestamp, throwaway
+# keys) of a signed site with a storefront keeps storefront/ and media/
+# byte for byte, and its mirror (what the refresh deploys) too.
+#
+#   tools/tests/test-registry-freshness.sh [--with-cli]
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/../.." && pwd)
 work=$(mktemp -d "${TMPDIR:-/tmp}/registry-freshness.XXXXXX")
+with_cli=0
+case ${1:-} in --with-cli) with_cli=1 ;; "") ;; *) echo "usage: test-registry-freshness.sh [--with-cli]" >&2; exit 2 ;; esac
 server_pid=""
-cleanup() { if [ -n "$server_pid" ]; then kill "$server_pid" 2>/dev/null || true; wait "$server_pid" 2>/dev/null || true; fi; rm -rf "$work"; }
+cleanup() {
+  if [ -n "$server_pid" ]; then kill "$server_pid" 2>/dev/null || true; wait "$server_pid" 2>/dev/null || true; fi
+  if declare -F site_stop > /dev/null; then site_stop; fi
+  rm -rf "$work"
+}
 trap cleanup EXIT
 export DECKPILOT_PLUGINS_WORK=$work/dot-work
 passed=0 failed=0
@@ -97,6 +113,63 @@ stamp 4 2026-11-18T09:00:00Z
 if REGISTRY_MIN_STATE=$work/absent.json "$root/tools/mirror-site.sh" "$base" "$work/m" > /dev/null 2> "$work/err"; then
   bad "a missing REGISTRY_MIN_STATE file is accepted"
 else ok "a missing REGISTRY_MIN_STATE file fails"; fi
+
+# --- the storefront in the mirror ------------------------------------------
+sha() { shasum -a 256 "$1" | cut -d' ' -f1; }
+len() { wc -c < "$1" | tr -d ' '; }
+printf 'icon bytes' > "$work/icon"; icon_sha=$(sha "$work/icon")
+printf 'banner bytes' > "$work/banner"; banner_sha=$(sha "$work/banner")
+# sf [ICON_SHA] [ICON_FORMAT] [EDITORIAL_PATH]: a live storefront of seq 4
+# and of seq 3 (unsigned: the mirror verifies hashes, verify-site the rest),
+# a listing whose icon is ICON_SHA.ICON_FORMAT and an editorial document
+# whose banner is a WebP image.
+sf() {
+  local isha=${1:-$icon_sha} ifmt=${2:-png} epath=${3:-} lsha esha
+  rm -rf "$www/v1/storefront" "$www/v1/media"
+  mkdir -p "$www/v1/media" "$www/v1/storefront/editorial" "$www/v1/storefront/listings/deckpilot.memory"
+  cp "$work/icon" "$www/v1/media/$isha.$ifmt"
+  cp "$work/banner" "$www/v1/media/$banner_sha.webp"
+  jq -n --arg s "$isha" --arg f "$ifmt" --argjson n "$(len "$work/icon")" \
+    '{_type: "deckpilot-registry-listing", listing_version: 1, id: "deckpilot.memory",
+      icon: {sha256: $s, length: $n, format: $f, width: 512, height: 512}}' > "$work/l.json"
+  lsha=$(sha "$work/l.json")
+  cp "$work/l.json" "$www/v1/storefront/listings/deckpilot.memory/$lsha.json"
+  jq -n --arg s "$banner_sha" --argjson n "$(len "$work/banner")" \
+    '{_type: "deckpilot-registry-editorial", editorial_version: 1, sections: [{kind: "banner_carousel",
+      items: [{artwork: {asset: {sha256: $s, length: $n, format: "webp", width: 1800, height: 600}}}]}]}' > "$work/e.json"
+  esha=$(sha "$work/e.json")
+  cp "$work/e.json" "$www/v1/storefront/editorial/$esha.json"
+  for s in 3 4; do
+    jq -n --argjson seq "$s" --arg l "storefront/listings/deckpilot.memory/$lsha.json" --arg lsha "$lsha" \
+      --argjson ln "$(len "$work/l.json")" --arg e "${epath:-storefront/editorial/$esha.json}" --arg esha "$esha" \
+      --argjson en "$(len "$work/e.json")" \
+      '{_type: "deckpilot-registry-storefront", seq: $seq, listings: [{id: "deckpilot.memory", ref: {path: $l, sha256: $lsha, length: $ln}}],
+        editorial: {path: $e, sha256: $esha, length: $en}}' > "$www/v1/storefront/$s.json"
+    echo sig > "$www/v1/storefront/$s.json.minisig"
+  done
+}
+same_storefront() { # the mirror holds exactly the live storefront/ and media/
+  diff -r "$www/v1/storefront" "$work/m/site/v1/storefront" > /dev/null && diff -r "$www/v1/media" "$work/m/site/v1/media" > /dev/null
+}
+sf
+expect_mirror "a live storefront is mirrored" live
+if same_storefront; then ok "... storefront/ and media/ byte for byte (both kept indexes' storefronts, documents, images)"
+else bad "the mirrored storefront differs from the live one"; fi
+sf "" "" "media/../x"
+expect_mirror "the grammar refuses media/../x" fail "" "refusing to mirror media/../x"
+sf "$(tr 'a-f' 'A-F' <<< "$icon_sha")"
+expect_mirror "the grammar refuses uppercase hex" fail "" "refusing to mirror media/$(tr 'a-f' 'A-F' <<< "$icon_sha").png"
+sf "" svg
+expect_mirror "the grammar refuses .svg" fail "" "refusing to mirror media/$icon_sha.svg"
+sf; printf 'other bytes' > "$www/v1/media/$icon_sha.png"
+expect_mirror "an image with other bytes than pinned fails" fail "" "is not the file its storefront pins"
+sf; rm "$www/v1/media/$banner_sha.webp"
+expect_mirror "a pinned image missing on the live site fails" fail "" "media/$banner_sha.webp is missing on the live site"
+sf; rm "$www/v1/storefront/4.json.minisig"
+expect_mirror "a storefront without its signature fails" fail "" "storefront/4.json.minisig is missing"
+sf; rm "$www/v1/storefront/3.json" "$www/v1/storefront/3.json.minisig"
+expect_mirror "an index without a storefront is mirrored without one" live
+sf
 
 # --- tools/registry-state.sh with a gh stand-in ----------------------------
 mkdir -p "$work/bin"
@@ -195,6 +268,55 @@ if monitor 2026-11-18T10:00:00Z; then bad "monitor misses an unpublished release
 elif grep -q "deckpilot.memory--v0.3.0 is not in the live index" "$work/err"; then ok "monitor: a release missing from the index fails"; else bad "monitor missing release: $(tail -1 "$work/err")"; fi
 releases '[{tag_name: "deckpilot.memory--v0.3.0", draft: true}, {tag_name: "deckpilot.memory--v0.2.0", draft: false}]'
 if monitor 2026-11-18T10:00:00Z; then ok "monitor: a draft release is not expected in the index"; else bad "monitor draft ($(tail -1 "$work/err"))"; fi
+
+# The storefront of the live seq (seq 4, from the mirror tests above).
+releases '[{tag_name: "deckpilot.memory--v0.2.0", draft: false}]'
+if monitor 2026-11-18T10:00:00Z && grep -q "storefront, if any, is served as pinned" "$work/err"; then
+  ok "monitor: the storefront and every file it pins served as pinned"
+else bad "monitor with a storefront ($(tail -1 "$work/err"))"; fi
+mv "$www/v1/media/$banner_sha.webp" "$work/banner.moved"
+if monitor 2026-11-18T10:00:00Z; then bad "monitor misses a dropped image"
+elif grep -q "media/$banner_sha.webp, which is not served: a deployment dropped it" "$work/err"; then ok "monitor: a dropped image fails"
+else bad "monitor dropped image: $(tail -1 "$work/err")"; fi
+mv "$work/banner.moved" "$www/v1/media/$banner_sha.webp"
+printf '\n' >> "$(ls "$www"/v1/storefront/listings/deckpilot.memory/*.json)"
+if monitor 2026-11-18T10:00:00Z; then bad "monitor misses a changed listing"
+elif grep -q "is not the file the storefront of seq 4 pins" "$work/err"; then ok "monitor: a changed listing fails"
+else bad "monitor changed listing: $(tail -1 "$work/err")"; fi
+rm -rf "$www/v1/storefront" "$www/v1/media"
+if monitor 2026-11-18T10:00:00Z; then ok "monitor: no storefront is not a problem"; else bad "monitor without a storefront ($(tail -1 "$work/err"))"; fi
+
+# --- --with-cli: a real timestamp refresh of a site with a storefront -------
+if [ "$with_cli" = 1 ]; then
+  # shellcheck source=lib/registry-site.sh
+  . "$root/tools/tests/lib/registry-site.sh"
+  site_www=$work/cli-www
+  site_start
+  repo=$work/cli-repo
+  site_repo "$repo"
+  site_storefront "$repo"
+  if site_publish "$repo" index "$work/cli-on" REGISTRY_STOREFRONT_ENABLED=true; then ok "cli: a signed site with a storefront (seq 1)"
+  else bad "cli: publication: $(tail -3 "$work/cli-on.log" | tr '\n' ' ')"; fi
+  site_serve "$work/cli-on"
+  if site_publish "$repo" timestamp "$work/cli-ts"; then ok "cli: the timestamp refresh (publish-site.sh timestamp)"
+  else bad "cli: refresh: $(tail -3 "$work/cli-ts.log" | tr '\n' ' ')"; fi
+  on=$work/cli-on/site/v1 ts=$work/cli-ts/site/v1
+  if [ -n "$(ls "$ts/media" 2> /dev/null)" ] && diff -r "$on/storefront" "$ts/storefront" > /dev/null && diff -r "$on/media" "$ts/media" > /dev/null; then
+    ok "cli: storefront/ and media/ byte for byte after the refresh"
+  else bad "cli: the refresh changed storefront/ or media/"; fi
+  if diff <(cd "$on" && find . -type f ! -name 'timestamp.json*' | sort | xargs shasum -a 256) \
+    <(cd "$ts" && find . -type f ! -name 'timestamp.json*' | sort | xargs shasum -a 256) > /dev/null &&
+    [ "$(jq .seq "$ts/timestamp.json")" = "$(jq .seq "$on/timestamp.json")" ] && ! cmp -s "$on/timestamp.json" "$ts/timestamp.json"; then
+    ok "cli: only timestamp.json changed (same seq, new signature)"
+  else bad "cli: more than the timestamp changed"; fi
+  # What _site.yml deploys after the refresh is the mirror of it.
+  site_serve "$work/cli-ts"
+  rm -rf "$work/cli-m"
+  if "$root/tools/mirror-site.sh" "$site_base" "$work/cli-m" > /dev/null 2> "$work/err" &&
+    diff -r "$ts" "$work/cli-m/site/v1" > /dev/null; then
+    ok "cli: the mirror of the refreshed site is all of it, byte for byte"
+  else bad "cli: the mirror of the refreshed site differs ($(tail -1 "$work/err"))"; fi
+fi
 
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]
