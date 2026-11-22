@@ -79,13 +79,18 @@ Rules (the schema plus `tools/check-storefront.py`):
 - All text is Unicode NFC, without control characters (line breaks only in
   the description and release notes) and without invisible or format
   characters: soft hyphen (U+00AD), CGJ (U+034F), Arabic letter mark
-  (U+061C), Hangul fillers (U+115F, U+1160, U+3164, U+FFA0), Mongolian
-  vowel separator (U+180E), zero-width and directional marks
-  (U+200B-200F), line and paragraph separators (U+2028, U+2029), bidi
-  embeddings, overrides and isolates (U+202A-202E, U+2066-2069), word
-  joiner and invisible operators (U+2060-2064), variation selectors
-  (U+FE00-FE0F, U+E0100-E01EF), BOM (U+FEFF), interlinear annotations
-  (U+FFF9-FFFB) and tag characters (U+E0000-E007F).
+  (U+061C), Hangul fillers (U+115F, U+1160, U+3164, U+FFA0), Khmer
+  inherent vowels (U+17B4, U+17B5), Mongolian vowel separator (U+180E),
+  zero-width and directional marks (U+200B-200F), line and paragraph
+  separators (U+2028, U+2029), bidi embeddings, overrides and isolates
+  (U+202A-202E, U+2066-2069), word joiner and invisible operators
+  (U+2060-2064), deprecated format characters (U+206A-206F), variation
+  selectors (U+FE00-FE0F, U+E0100-E01EF), BOM (U+FEFF), interlinear
+  annotations (U+FFF9-FFFB), shorthand format controls (U+1BCA0-1BCA3),
+  musical symbol format characters (U+1D173-1D17A) and tag characters
+  (U+E0000-E007F). The schemas refuse the ones in the Basic Multilingual
+  Plane (their patterns stay portable to every regex dialect);
+  `tools/check-storefront.py` refuses all of them.
 - `description_md` and release notes use a **safe markdown subset**:
   paragraphs, line breaks, `-` or `*` lists one level deep, `**bold**`,
   `_emphasis_`, `` `code` `` and links written exactly as
@@ -201,22 +206,42 @@ For every file:
   or WebP.
 - The format is sniffed from the bytes and must match the extension
   (`.png`, `.webp`, `.jpg`; not `.jpeg`).
-- At most 8,388,608 pixels; 8-bit channels (no 16-bit PNG); no animation
-  (APNG, animated WebP).
-- **No metadata**, for privacy: PNG `tEXt`, `zTXt`, `iTXt`, `eXIf` and
-  `tIME`, JPEG APP1 (Exif, XMP) and APP13 (IPTC), and WebP `EXIF` and `XMP`
-  are refused. ICC profiles up to 64 KiB are fine in PNG and WebP. Most export dialogs have
-  a "strip metadata" option; `exiftool -all= file` or `oxipng --strip safe`
+- At most 1 MiB per file, 8,388,608 pixels, no empty side; 8-bit channels
+  (no 16-bit PNG, no 12-bit JPEG); no animation (APNG, animated WebP).
+- **No metadata**, for privacy: PNG `tEXt`, `zTXt`, `iTXt` and `eXIf`, JPEG
+  APP1 (Exif, XMP), APP13 (IPTC) and comments, and WebP `EXIF` and `XMP`
+  chunks or their VP8X flags are refused. Most export dialogs have a
+  "strip metadata" option; `exiftool -all= file` or `oxipng --strip safe`
   also work.
-- PNG: only the chunks `IHDR`, `PLTE`, `tRNS`, `IDAT`, `IEND`, `sRGB`,
-  `gAMA`, `cHRM`, `iCCP`, `pHYs`; valid CRCs; nothing after `IEND`.
-- JPEG: baseline or progressive, 8-bit, grayscale or YCbCr (1 or 3
-  components; no CMYK). The only other segments are a plain JFIF APP0
-  (without a thumbnail) and the 12-byte Adobe APP14, besides the tables
-  and scans: no comment (COM), no other APPn (so no ICC profile in a JPEG;
-  use PNG or WebP for one), and nothing after the end marker (EOI).
-- WebP: the RIFF size equals the file length; one VP8 or VP8L image, with
-  an optional VP8X header, alpha and ICC profile.
+- **ICC profiles** are allowed: in JPEG as APP2 `ICC_PROFILE` segments of
+  at most 64 KiB + 1024 bytes together (any other APP2 is refused), in
+  WebP as one `ICCP` chunk of at most 64 KiB right after `VP8X`, with the
+  VP8X ICC flag set, and in PNG as an `iCCP` chunk of at most 16 KiB
+  compressed (its zlib data is not inflated by the header check), before
+  `PLTE` and `IDAT`.
+- PNG: only the chunks `IHDR` (first, once, 13 bytes; a defined colour
+  type with a valid bit depth: 1, 2, 4 or 8 for grayscale and palette, 8
+  otherwise; compression and filter method 0, interlace 0 or 1), `PLTE`
+  (not in grayscale images, once, before `IDAT`, 3-768 bytes in steps of 3;
+  required for palette images), `tRNS` (before `IDAT`), `IDAT`
+  (consecutive), `IEND` (empty, last), `sRGB`, `gAMA`, `cHRM`, `pHYs`
+  (before `IDAT`) and `iCCP`; valid CRCs; nothing after `IEND`.
+- JPEG: exactly one frame header, baseline (SOF0) or progressive (SOF2),
+  before the first scan, 8-bit, grayscale or YCbCr (1 or 3 components;
+  no CMYK), its length 6 + 3 × components, the height not deferred to a
+  DNL marker. Besides the tables (DHT, DAC, DQT, DRI, DNL) and the scans,
+  only one plain JFIF APP0 (14 bytes, without a thumbnail), the 12-byte
+  Adobe APP14 and APP2 ICC profiles; every other APPn, COM and marker is
+  refused, and nothing may follow the end marker (EOI).
+- WebP: the RIFF size equals the file length (chunks padded to even). A
+  simple file is exactly one `VP8 ` key frame or one `VP8L` image
+  (version 0). An extended file has a 10-byte `VP8X` without reserved
+  bits, then the optional `ICCP` (above), an optional `ALPH` before the
+  image, and exactly one image whose size equals the canvas.
+
+The header checks are the same in `tools/lib/storefront.py` and in
+DeckPilot's `crates/deckpilot-plugin-registry/src/media.rs`, which is
+authoritative.
 
 Where the rules are enforced:
 

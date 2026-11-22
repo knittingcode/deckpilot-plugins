@@ -23,6 +23,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import zlib
 from pathlib import Path
 
 sys.dont_write_bytecode = True
@@ -103,6 +104,8 @@ class Schemas(unittest.TestCase):
 
 
 class Media(unittest.TestCase):
+    """One case per rule of DeckPilot's media.rs `inspect` (see the PR's rules table)."""
+
     def ok(self, data, fmt, w, h):
         self.assertEqual(storefront.inspect_media(data), {"format": fmt, "width": w, "height": h})
 
@@ -110,6 +113,8 @@ class Media(unittest.TestCase):
         with self.assertRaises(storefront.MediaError) as cm:
             storefront.inspect_media(data)
         self.assertIn(text, str(cm.exception))
+
+    # -- all formats
 
     def test_formats_and_dimensions(self):
         self.ok(images.png(512, 512), "png", 512, 512)
@@ -120,68 +125,192 @@ class Media(unittest.TestCase):
         self.ok(images.jpeg(1920, 1200), "jpg", 1920, 1200)
         self.ok(images.jpeg(1920, 1080, sof=0xC2, components=1), "jpg", 1920, 1080)
 
-    def test_svg_is_refused(self):
-        self.refused(b'<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"/>', "SVG is refused")
-        self.refused(b"  <svg viewBox='0 0 1 1'></svg>", "SVG is refused")
+    def test_size_and_pixel_limits(self):
+        self.refused(images.png(8, 8) + b"\0" * (1024 * 1024), "at most 1048576")
+        self.refused(images.webp(4096, 4096), "pixels")
+        self.refused(images.jpeg(64, 0), "DNL")
+        self.refused(images.jpeg(0, 64), "no empty side")
 
-    def test_other_formats_are_refused(self):
+    def test_svg_and_other_formats_are_refused(self):
+        self.refused(b'<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"/>', "SVG is refused")
+        self.refused(b"\xef\xbb\xbf  <svg viewBox='0 0 1 1'></svg>", "SVG is refused")
         self.refused(b"GIF89a" + b"\0" * 20, "not a PNG, WebP or JPEG")
         self.refused(b"", "not a PNG, WebP or JPEG")
 
-    def test_png_rules(self):
+    # -- PNG
+
+    def ihdr(self, w=8, h=8, depth=8, color=2, comp=0, filt=0, interlace=0):
+        return struct.pack(">IIBBBBB", w, h, depth, color, comp, filt, interlace)
+
+    def raw_png(self, *chunks):
+        return b"\x89PNG\r\n\x1a\n" + b"".join(images.chunk(c, b) for c, b in chunks)
+
+    def test_png_ihdr(self):
+        idat = (b"IDAT", zlib.compress(b"\0" * 25))
         self.refused(images.png(8, 8, depth=16), "16-bit PNG is refused")
+        self.refused(self.raw_png((b"IHDR", self.ihdr(color=2, depth=4)), idat, (b"IEND", b"")), "not valid for color type")
+        self.refused(self.raw_png((b"IHDR", self.ihdr(color=5)), idat, (b"IEND", b"")), "color type 5")
+        self.refused(self.raw_png((b"IHDR", self.ihdr(comp=1)), idat, (b"IEND", b"")), "undefined method")
+        self.refused(self.raw_png((b"IHDR", self.ihdr(interlace=2)), idat, (b"IEND", b"")), "undefined method")
+        self.refused(self.raw_png((b"IHDR", self.ihdr(w=0)), idat, (b"IEND", b"")), "no empty side")
+        self.refused(self.raw_png((b"IHDR", self.ihdr() + b"\0"), idat, (b"IEND", b"")), "not 13 bytes")
+        self.refused(self.raw_png((b"IHDR", self.ihdr()), (b"IHDR", self.ihdr()), idat, (b"IEND", b"")), "second IHDR")
+        self.refused(self.raw_png((b"sRGB", b"\0"), (b"IHDR", self.ihdr()), idat, (b"IEND", b"")), "start with IHDR")
+        self.ok(self.raw_png((b"IHDR", self.ihdr(depth=1, color=0)), idat, (b"IEND", b"")), "png", 8, 8)
+
+    def test_png_chunks(self):
         self.refused(images.png(8, 8, extra=[(b"acTL", b"\0" * 8)]), "animated PNG")
         for meta in (b"tEXt", b"zTXt", b"iTXt", b"eXIf"):
             with self.subTest(chunk=meta):
                 self.refused(images.png(8, 8, extra=[(meta, b"Author\0me")]), "metadata chunk")
+        self.refused(images.png(8, 8, extra=[(b"tIME", b"\0" * 7)]), "is not allowed")
         self.refused(images.png(8, 8, extra=[(b"vpAg", b"\0" * 9)]), "is not allowed")
+        self.ok(images.png(8, 8, extra=[(b"sRGB", b"\0"), (b"gAMA", b"\0" * 4), (b"cHRM", b"\0" * 32),
+                                        (b"pHYs", b"\0" * 9)]), "png", 8, 8)
+
+    def test_png_iccp(self):
+        self.ok(images.png(8, 8, extra=[(b"iCCP", b"sRGB\0\0" + b"x" * 16000)]), "png", 8, 8)
+        self.refused(images.png(8, 8, extra=[(b"iCCP", b"x" * (16 * 1024 + 1))]), "at most 16384 (compressed)")
+        self.refused(images.png(8, 8, color=3, extra=[(b"PLTE", b"\0" * 3), (b"iCCP", b"x")]), "iCCP is misplaced")
+        png = images.png(8, 8)
+        self.refused(png[:-12] + images.chunk(b"iCCP", b"x") + png[-12:], "iCCP is misplaced")
+
+    def test_png_order(self):
+        png = images.png(8, 8)
+        idat_end, iend = png[:-12], png[-12:]
+        self.refused(idat_end + images.chunk(b"tRNS", b"\0" * 6) + iend, "tRNS follows the image data")
+        self.refused(idat_end + images.chunk(b"pHYs", b"\0" * 9) + iend, "pHYs follows the image data")
+        # IDAT must be consecutive: every chunk allowed between two IDATs is itself refused there first
+        # (as in media.rs).
+        self.refused(idat_end + images.chunk(b"sRGB", b"\0") + images.chunk(b"IDAT", zlib.compress(b"")) + iend,
+                     "follows the image data")
+        self.ok(idat_end + images.chunk(b"IDAT", b"") + iend, "png", 8, 8)
+        self.ok(images.png(8, 8, extra=[(b"tRNS", b"\0" * 6)]), "png", 8, 8)
+
+    def test_png_plte(self):
+        self.ok(images.png(8, 8, color=3, extra=[(b"PLTE", b"\0" * 3)]), "png", 8, 8)
+        self.refused(images.png(8, 8, color=3), "palette PNG without PLTE")
+        self.refused(images.png(8, 8, color=0, extra=[(b"PLTE", b"\0" * 3)]), "PLTE in a grayscale image")
+        self.refused(images.png(8, 8, color=4, extra=[(b"PLTE", b"\0" * 3)]), "PLTE in a grayscale image")
+        for bad in (b"", b"\0" * 4, b"\0" * 771):
+            with self.subTest(length=len(bad)):
+                self.refused(images.png(8, 8, color=3, extra=[(b"PLTE", bad)]), "PLTE has a bad length")
+        self.refused(images.png(8, 8, color=2, extra=[(b"PLTE", b"\0" * 3), (b"PLTE", b"\0" * 3)]), "PLTE is misplaced")
+        png = images.png(8, 8, color=2)
+        self.refused(png[:-12] + images.chunk(b"PLTE", b"\0" * 3) + png[-12:], "PLTE is misplaced")
+
+    def test_png_container(self):
         self.refused(images.png(8, 8, after_iend=b"trailing"), "data follows IEND")
-        self.refused(images.png(8, 8, extra=[(b"iCCP", b"x" * (64 * 1024 + 1))]), "ICC profile")
-        self.ok(images.png(8, 8, extra=[(b"sRGB", b"\0"), (b"pHYs", b"\0" * 9)]), "png", 8, 8)
+        self.refused(images.png(8, 8)[:-12] + images.chunk(b"IEND", b"x"), "IEND carries data")
+        self.refused(images.png(8, 8)[:-12], "no IEND")
+        self.refused(self.raw_png((b"IHDR", self.ihdr()), (b"IEND", b"")), "no image data")
         good = bytearray(images.png(8, 8))
         good[30] ^= 0xFF  # inside IHDR: its CRC no longer matches
         self.refused(bytes(good), "bad CRC")
         self.refused(images.png(8, 8)[:40], "truncated")
 
-    def test_webp_rules(self):
+    # -- WebP
+
+    def test_webp_simple(self):
         self.refused(images.webp(64, 64, size_delta=4), "RIFF size")
-        self.refused(images.webp(64, 64, extended=True, flags=0x02), "animated WebP")
+        self.refused(images.riff([(b"VP8L", images.vp8l(8, 8)), (b"ICCP", b"x")]), "'ICCP' is not allowed")
+        self.refused(images.riff([(b"VP8L", images.vp8l(8, 8)), (b"EXIF", b"x")]), "metadata chunk EXIF")
+        vp8l = bytearray(images.vp8l(8, 8))
+        vp8l[4] |= 0x20  # version bits
+        self.refused(images.riff([(b"VP8L", bytes(vp8l))]), "bad VP8L header")
+        vp8 = bytearray(images.vp8(8, 8))
+        vp8[0] |= 1  # not a key frame
+        self.refused(images.riff([(b"VP8 ", bytes(vp8))]), "bad VP8 header")
+        self.refused(images.riff([(b"ALPH", b"x")]), "'ALPH' is not allowed")
+        self.refused(images.riff([]), "no chunk")
+        self.refused(images.riff([(b"VP8L", images.vp8l(8, 8) + b"\0")])[:-1], "RIFF size")
+
+    def test_webp_extended(self):
+        self.refused(images.webp(64, 64, extended=True, flags=0x02), "animation flag")
         self.refused(images.webp(64, 64, extended=True, extra=[(b"ANIM", b"\0" * 6)]), "animated WebP")
         self.refused(images.webp(64, 64, extended=True, extra=[(b"EXIF", b"II*\0")]), "metadata chunk EXIF")
         self.refused(images.webp(64, 64, extended=True, extra=[(b"XMP ", b"<x/>")]), "metadata chunk XMP")
-        self.refused(images.webp(64, 64, extended=True, flags=0x08), "EXIF or XMP")
-        self.refused(images.riff([(b"VP8X", images.vp8x(8, 8))]), "exactly one image")
+        self.refused(images.webp(64, 64, extended=True, flags=0x08), "EXIF metadata")
+        self.refused(images.webp(64, 64, extended=True, flags=0x04), "XMP metadata")
+        for flags in (0x01, 0x40, 0x80):
+            self.refused(images.webp(64, 64, extended=True, flags=flags), "reserved bits")
+        self.refused(images.riff([(b"VP8X", images.vp8x(8, 8) + b"\0"), (b"VP8L", images.vp8l(8, 8))]),
+                     "not 10 bytes")
+        self.refused(images.riff([(b"VP8X", images.vp8x(8, 8))]), "no image chunk")
+        self.refused(images.riff([(b"VP8X", images.vp8x(8, 8)), (b"VP8L", images.vp8l(8, 8)),
+                                  (b"VP8L", images.vp8l(8, 8))]), "more than one image chunk")
+        self.refused(images.riff([(b"VP8X", images.vp8x(8, 8)), (b"VP8L", images.vp8l(9, 8))]), "differs")
+        self.ok(images.riff([(b"VP8X", images.vp8x(8, 8, 0x10)), (b"ALPH", b"\0"), (b"VP8 ", images.vp8(8, 8))]),
+                "webp", 8, 8)
+        self.refused(images.riff([(b"VP8X", images.vp8x(8, 8)), (b"VP8 ", images.vp8(8, 8)), (b"ALPH", b"\0")]),
+                     "ALPH is misplaced")
 
-    def test_jpeg_rules(self):
-        self.refused(images.jpeg(64, 64, app=[(0xE1, b"Exif\0\0II*\0")]), "APP1")
-        self.refused(images.jpeg(64, 64, app=[(0xE1, b"http://ns.adobe.com/xap/1.0/\0<x/>")]), "APP1")
+    def test_webp_icc(self):
+        ok = images.riff([(b"VP8X", images.vp8x(8, 8, 0x20)), (b"ICCP", b"x" * 1000), (b"VP8L", images.vp8l(8, 8))])
+        self.ok(ok, "webp", 8, 8)
+        self.refused(images.riff([(b"VP8X", images.vp8x(8, 8)), (b"ICCP", b"x"), (b"VP8L", images.vp8l(8, 8))]),
+                     "not flagged")
+        self.refused(images.riff([(b"VP8X", images.vp8x(8, 8, 0x30)), (b"ALPH", b"\0"), (b"ICCP", b"x"),
+                                  (b"VP8L", images.vp8l(8, 8))]), "misplaced")
+        self.refused(images.riff([(b"VP8X", images.vp8x(8, 8, 0x20)), (b"ICCP", b"x" * (64 * 1024 + 1)),
+                                  (b"VP8L", images.vp8l(8, 8))]), "at most 65536")
+
+    # -- JPEG
+
+    def test_jpeg_frame(self):
         self.refused(images.jpeg(64, 64, components=4), "4 components")
         self.refused(images.jpeg(64, 64, precision=12), "12-bit JPEG")
-        self.refused(images.jpeg(64, 64, sof=0xC3), "baseline or progressive")
-        self.refused(images.jpeg(64, 64)[:-2], "EOI")
-        self.refused(images.jpeg(64, 64)[:30], "truncated")
+        for sof in (0xC1, 0xC3, 0xC9):
+            self.refused(images.jpeg(64, 64, sof=sof), "only baseline or progressive")
+        bad_len = images.jpeg(64, 64).replace(b"\xff\xc0\x00\x11", b"\xff\xc0\x00\x12", 1)
+        bad_len = bad_len.replace(b"\x01\x11\x00\x02\x11\x00\x03\x11\x00", b"\x01\x11\x00\x02\x11\x00\x03\x11\x00\x00", 1)
+        self.refused(bad_len, "frame header has a bad length")
+        two = images.jpeg(64, 64)
+        sof = two[two.index(b"\xff\xc0"):two.index(b"\xff\xda")]
+        self.refused(two.replace(sof, sof + sof, 1), "second JPEG frame header")
+        scan_first = two.replace(sof, b"", 1)
+        self.refused(scan_first, "scan before its frame header")
 
-    def test_jpeg_segments_allow_list(self):
+    def test_jpeg_segments(self):
         self.ok(images.jpeg(64, 64, app=[(0xEE, b"Adobe\0\x64\0\0\0\0\x01")]), "jpg", 64, 64)
+        self.ok(images.jpeg(64, 64, app=[(0xE2, b"ICC_PROFILE\0\x01\x01" + b"x" * 1000)]), "jpg", 64, 64)
+        self.ok(images.jpeg(64, 64, app=[(0xE2, b"ICC_PROFILE\0\x01\x02" + b"x" * 60000),
+                                         (0xE2, b"ICC_PROFILE\0\x02\x02" + b"x" * 6000)]), "jpg", 64, 64)
         for app, text in [
             ([(0xFE, b"hello")], "COM"),
-            ([(0xE2, b"ICC_PROFILE\0\x01\x01" + b"x" * 64)], "APP2"),
+            ([(0xE1, b"Exif\0\0II*\0")], "APP1"),
+            ([(0xE1, b"http://ns.adobe.com/xap/1.0/\0<x/>")], "APP1"),
+            ([(0xED, b"Photoshop 3.0\0")], "APP13"),
+            ([(0xE2, b"MPF\0")], "APP2 other than ICC_PROFILE"),
+            ([(0xE2, b"ICC_PROFILE\0\x01\x02" + b"x" * 60000), (0xE2, b"ICC_PROFILE\0\x02\x02" + b"x" * 6600)],
+             "ICC profile of more than 65536"),
             ([(0xE0, b"JFXX\0\x10" + b"\0" * 8)], "APP0"),
+            ([(0xE0, b"JFIF\0\x01\x01\0\0\x01\0\x01\0\0")], "APP0"),  # a second APP0
             ([(0xEE, b"Adobe\0\x64\0\0\0\0\x01extra")], "APP14"),
             ([(0xEC, b"Ducky\0")], "APP12"),
+            ([(0xE3, b"x")], "APP3"),
+            ([(0xDE, b"x")], "FFDE"),
         ]:
             with self.subTest(text=text):
                 self.refused(images.jpeg(64, 64, app=app), text)
-        # A JFIF APP0 with a thumbnail.
         jfif_thumb = images.jpeg(64, 64).replace(
             b"\xff\xe0\x00\x10JFIF\0\x01\x01\0\0\x01\0\x01\0\0",
             b"\xff\xe0\x00\x16JFIF\0\x01\x01\0\0\x01\0\x01\x01\x02" + b"\0" * 6)
         self.refused(jfif_thumb, "APP0")
+        self.ok(images.jpeg(64, 64, app=[(0xDD, b"\0\x10"), (0xDB, b"\0" * 65)]), "jpg", 64, 64)
 
-    def test_nothing_after_eoi(self):
+    def test_jpeg_container(self):
         zip_tail = b"PK\x03\x04" + b"\0" * 26 + b"PK\x05\x06" + b"\0" * 18
         self.refused(images.jpeg(64, 64) + zip_tail, "after the JPEG EOI")
         self.refused(images.jpeg(64, 64) + b"\0", "after the JPEG EOI")
+        self.refused(images.jpeg(64, 64)[:-2], "no EOI")
+        self.refused(images.jpeg(64, 64)[:30], "truncated")
+        self.refused(b"\xff\xd8\xff\xd8" + images.jpeg(64, 64)[2:], "second JPEG start of image")
+        self.refused(b"\xff\xd8\xff\xd0" + images.jpeg(64, 64)[2:], "out of place")
+        self.refused(b"\xff\xd8\xff\x00" + images.jpeg(64, 64)[2:], "stuffed JPEG byte")
+        self.refused(b"\xff\xd8\xff\xd9", "no frame header")
+        no_scan = images.jpeg(64, 64)
+        self.refused(no_scan[:no_scan.index(b"\xff\xda")] + b"\xff\xd9", "no scan")
 
     def test_jpeg_scans(self):
         # Stuffed bytes, restart markers and a second (progressive) scan with tables between.
@@ -189,9 +318,6 @@ class Media(unittest.TestCase):
         scan2 = (images.segment(0xC4, b"\x00" + b"\x01" * 16 + b"\x00")
                  + images.segment(0xDA, b"\x01\x01\x00\x00\x3f\x00"))
         self.ok(body + b"\xff\x00\x12\xff\xd0\x34" + scan2 + b"\x56\xff\x00" + b"\xff\xd9", "jpg", 64, 64)
-
-    def test_pixel_budget(self):
-        self.refused(images.webp(4096, 4096), "pixels")
 
     def test_asset_rules(self):
         cases = [
@@ -227,7 +353,7 @@ class TextRules(unittest.TestCase):
     def test_text(self):
         self.assertEqual(storefront.check_text("Pogoda na Twoim decku"), [])
         self.assertEqual(storefront.check_text("Café"), ["is not Unicode NFC"])
-        for bad in ("a\u202eb", "a\u2066b", "a\u200bb", "a\x07b", "a\nb", "a\U000e0041b", "a\u00adb", "a\u2028b",
+        for bad in ("a\u17b4b", "a\u17b5b", "a\u206ab", "a\u206fb", "a\U0001d173b", "a\U0001bca0b", "a\u202eb", "a\u2066b", "a\u200bb", "a\x07b", "a\nb", "a\U000e0041b", "a\u00adb", "a\u2028b",
                     "a\u2029b", "a\u115fb", "a\u1160b", "a\u3164b", "a\uffa0b", "a\ufe00b", "a\ufe0fb", "a\U000e0100b",
                     "a\U000e01efb", "a\u200eb", "a\u200fb", "a\u061cb", "a\u180eb", "a\u034fb", "a\ufff9b", "a\ufffbb"):
             with self.subTest(text=repr(bad)):
@@ -236,20 +362,64 @@ class TextRules(unittest.TestCase):
         self.assertTrue(storefront.check_text("a\u2028b", multiline=True))
         self.assertEqual(storefront.check_text("Zażółć gęślą jaźń \U0001F642"), [])
 
-    def test_checker_and_schema_refuse_the_same_characters(self):
+    def test_checker_and_schema_refuse_the_same_bmp_characters(self):
+        # The schema patterns are BMP-only (portable); the checker refuses the same BMP set plus astral ones.
         schemas = storefront.SchemaSet(REPO / "schemas")
         line = {"listing_version": 1, "id": "acme.clock"}
-        points = (list(range(0x0, 0x250)) + list(range(0x2000, 0x2070)) + list(range(0xFE00, 0xFE10))
-                  + list(range(0xE0000, 0xE0080)) + [0x034F, 0x061C, 0x115F, 0x1160, 0x180E, 0x3164, 0xFFA0, 0xFEFF,
-                                                      0xFFF9, 0xFFFA, 0xFFFB, 0xFFFC, 0xE0100, 0xE01EF, 0xE01F0, 0x1F642])
-        for cp in points:
-            text = f"a{chr(cp)}b"
-            if cp == 0x0A or not storefront.unicodedata.is_normalized("NFC", text):
+        for cp in range(0x0, 0x10000):
+            if 0xD800 <= cp <= 0xDFFF or cp == 0x0A:
                 continue
+            text = f"a{chr(cp)}b"
+            if not storefront.unicodedata.is_normalized("NFC", text):
+                continue
+            by_checker = bool(storefront.check_text(text))
+            by_pattern = not storefront._pattern(schemas.docs[storefront.LISTING_SCHEMA]["$defs"]["line"]["pattern"]).search(text)
+            if by_checker != by_pattern:
+                self.fail(f"U+{cp:04X}: checker {'refuses' if by_checker else 'accepts'}, schema "
+                          f"{'refuses' if by_pattern else 'accepts'}")
+
+    def test_astral_refusals_are_the_checkers(self):
+        schemas = storefront.SchemaSet(REPO / "schemas")
+        for cp in (0x1BCA0, 0x1BCA3, 0x1D173, 0x1D17A, 0xE0000, 0xE0041, 0xE007F, 0xE0100, 0xE01EF):
             with self.subTest(cp=f"U+{cp:04X}"):
-                by_checker = bool(storefront.check_text(text))
-                by_schema = bool(schemas.validate(dict(line, promo={"en": text}), storefront.LISTING_SCHEMA))
-                self.assertEqual(by_checker, by_schema)
+                text = f"a{chr(cp)}b"
+                self.assertTrue(storefront.check_text(text))
+                self.assertEqual(schemas.validate({"listing_version": 1, "id": "acme.clock", "promo": {"en": text}},
+                                                  storefront.LISTING_SCHEMA), [])
+        for cp in (0x1BCA4, 0x1D17B, 0xE0080, 0xE01F0, 0x1F642):
+            self.assertEqual(storefront.check_text(f"a{chr(cp)}b"), [])
+        for path in sorted((FIXTURES / "listing/checker-invalid").glob("*.json")):
+            with self.subTest(fixture=path.name):
+                doc = json.loads(path.read_text())
+                self.assertEqual(schemas.validate(doc, storefront.LISTING_SCHEMA), [])
+                self.assertTrue(any(storefront.check_text(t) for _, _, t in storefront.localized_texts(doc)))
+
+    def test_schema_patterns_compile_as_ecmascript(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node is not installed")
+        patterns = []
+        for path in sorted((REPO / "schemas/inputs").glob("*.schema.json")):
+            def walk(v):
+                if isinstance(v, dict):
+                    for k, x in v.items():
+                        if k == "pattern" and isinstance(x, str):
+                            patterns.append(x)
+                        walk(x)
+                elif isinstance(v, list):
+                    for x in v:
+                        walk(x)
+            walk(json.loads(path.read_text()))
+        script = (
+            "const ps = JSON.parse(require('fs').readFileSync(0, 'utf8'));"
+            "for (const p of ps) { new RegExp(p); new RegExp(p, 'u'); }"
+            "const line = new RegExp(ps.find(p => p.includes('u00AD')));"
+            "if (line.test('a\\u00ADb') || line.test('a\\u206Ab') || !line.test('Za\\u017C\\u00F3\\u0142\\u0107'))"
+            " { throw new Error('line pattern behaves differently in ECMAScript'); }"
+            "console.log(ps.length);")
+        r = subprocess.run([node, "-e", script], input=json.dumps(patterns), capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(int(r.stdout.strip()), len(patterns))
 
     def test_urls(self):
         ok = "https://github.com/knittingcode/deckpilot-plugins/issues"

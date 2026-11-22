@@ -76,14 +76,14 @@
       "enum": ["en", "pl"]
     },
     "line": {
-      "description": "One line of plain text: no control characters (no line break) and no invisible or format characters (soft hyphen, CGJ, Hangul fillers, zero-width and directional marks, U+2028/2029, bidi embeddings, overrides and isolates, variation selectors, BOM, interlinear annotations, tag characters; the same set as tools/lib/storefront.py FORBIDDEN_CHARS). NFC is checked by tools/check-storefront.py.",
+      "description": "One line of plain text: no control characters (no line break) and no invisible or format character of the Basic Multilingual Plane (soft hyphen, CGJ, Arabic letter mark, Hangul fillers, Khmer inherent vowels, Mongolian vowel separator, zero-width and directional marks, U+2028/2029, bidi embeddings, overrides and isolates, word joiner, invisible operators, deprecated format characters, variation selectors, BOM, interlinear annotations). The pattern is BMP-only so it compiles in every regex dialect (ECMAScript without the u flag); tools/lib/storefront.py FORBIDDEN_CHARS refuses the same set plus the astral ones (tag characters, supplementary variation selectors, U+1BCA0-1BCA3, U+1D173-1D17A). NFC is checked there too.",
       "type": "string",
-      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\u00AD\\u034F\\u061C\\u115F\\u1160\\u180E\\u200B-\\u200F\\u2028\\u2029\\u202A-\\u202E\\u2060-\\u2064\\u2066-\\u2069\\u3164\\uFE00-\\uFE0F\\uFEFF\\uFFA0\\uFFF9-\\uFFFB\udb40\udc00-\udb40\udc7f\udb40\udd00-\udb40\uddef]*$"
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\u00AD\\u034F\\u061C\\u115F\\u1160\\u17B4\\u17B5\\u180E\\u200B-\\u200F\\u2028\\u2029\\u202A-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\u3164\\uFE00-\\uFE0F\\uFEFF\\uFFA0\\uFFF9-\\uFFFB]*$"
     },
     "multiline": {
       "description": "Text that may hold line breaks (\\n) but no other control character and none of the invisible or format characters of `line`.",
       "type": "string",
-      "pattern": "^[^\\u0000-\\u0009\\u000B-\\u001F\\u007F-\\u009F\\u00AD\\u034F\\u061C\\u115F\\u1160\\u180E\\u200B-\\u200F\\u2028\\u2029\\u202A-\\u202E\\u2060-\\u2064\\u2066-\\u2069\\u3164\\uFE00-\\uFE0F\\uFEFF\\uFFA0\\uFFF9-\\uFFFB\udb40\udc00-\udb40\udc7f\udb40\udd00-\udb40\uddef]*$"
+      "pattern": "^[^\\u0000-\\u0009\\u000B-\\u001F\\u007F-\\u009F\\u00AD\\u034F\\u061C\\u115F\\u1160\\u17B4\\u17B5\\u180E\\u200B-\\u200F\\u2028\\u2029\\u202A-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\u3164\\uFE00-\\uFE0F\\uFEFF\\uFFA0\\uFFF9-\\uFFFB]*$"
     },
     "promoText": {
       "type": "object", "required": ["en"], "propertyNames": { "$ref": "#/$defs/locale" },

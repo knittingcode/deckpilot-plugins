@@ -10,12 +10,15 @@ directory off it).
   (tools/schema-check) stays the reference implementation of JSON Schema;
   tools/tests/test_storefront.py runs the shared fixtures through both.
 * inspect_media / check_asset: a header and chunk walk of PNG, WebP and
-  JPEG files enforcing the asset rules of docs/storefront.md. It never
-  decompresses pixel data: a full decode is the pinned
-  `deckpilot-registry storefront check` (the authoritative check, DeckPilot
-  WP1), which CI runs as soon as the pinned CLI has it.
-* check_text / check_url / check_markdown: the text, URL and safe markdown
-  rules.
+  JPEG files, rule for rule DeckPilot's media.rs `inspect` (which is
+  authoritative; ICC profiles allowed within its limits: JPEG APP2 64 KiB +
+  1024, WebP ICCP 64 KiB, PNG iCCP 16 KiB compressed), plus the per-kind
+  asset rules of docs/storefront.md. It never decompresses pixel data: a
+  full decode is the pinned `deckpilot-registry storefront check`, which CI
+  runs as soon as the pinned CLI has it.
+* check_text: FORBIDDEN_CHARS (controls and invisible/format characters);
+  the schemas' patterns hold its BMP part only.
+* check_url / check_markdown: the URL and safe markdown rules.
 * check_tree: every rule above plus the cross-file rules over
   registry/plugins/*/listing.json, their media/ and editorial/.
 """
@@ -247,234 +250,331 @@ class MediaError(ValueError):
     pass
 
 
+# Rule for rule the walk of DeckPilot's crates/deckpilot-plugin-registry/
+# src/media.rs (`inspect`, knittingcode/deckpilot#399 at 0a267f4e), which
+# is authoritative; tools/tests/test_storefront.py has a case for every
+# rule. Neither decodes pixels: the full decode is the Rust publishing
+# tool's, in CI.
+MAX_MEDIA_BYTES = MIB
+MAX_PNG_ICCP = 16 * KIB          # a PNG iCCP chunk (zlib data, never inflated here)
+MAX_JPEG_ICC = MAX_ICC + 1024    # the APP2 ICC_PROFILE segments together (with their headers)
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 PNG_ALLOWED = {b"IHDR", b"PLTE", b"tRNS", b"IDAT", b"IEND", b"sRGB", b"gAMA", b"cHRM", b"iCCP", b"pHYs"}
-PNG_METADATA = {b"tEXt", b"zTXt", b"iTXt", b"eXIf", b"tIME"}
+PNG_METADATA = {b"tEXt", b"zTXt", b"iTXt", b"eXIf"}
 PNG_ANIMATION = {b"acTL", b"fcTL", b"fdAT"}
+PNG_ANCILLARY_BEFORE_IDAT = {b"sRGB", b"gAMA", b"cHRM", b"pHYs"}
 
 
 def sniff(data):
     """png, webp, jpg, or None. SVG and every other format is None."""
     if data.startswith(PNG_SIGNATURE):
         return "png"
-    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
-        return "webp"
     if data.startswith(b"\xff\xd8\xff"):
         return "jpg"
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "webp"
     return None
 
 
 def _looks_like_svg(data):
-    head = data[:512].lstrip(b"\xef\xbb\xbf \t\r\n").lower()
-    return head.startswith(b"<?xml") or head.startswith(b"<svg") or b"<svg" in head
+    head = data[:1024].decode("utf-8", "replace").lower().lstrip("﻿").lstrip()
+    return head.startswith("<?xml") or head.startswith("<svg") or "<svg" in head
 
 
 def _png(data):
-    pos, width, height, seen_idat, ended = 8, None, None, False, False
-    first = True
-    while pos < len(data):
-        if ended:
-            raise MediaError("data follows IEND")
-        if pos + 12 > len(data):
-            raise MediaError("truncated PNG chunk")
+    pos, header, seen_plte, seen_idat, idat_done, ended = 8, None, False, False, False, False
+    n = len(data)
+    while pos < n:
+        if pos + 8 > n:
+            raise MediaError("PNG chunk header is truncated")
         (length,) = struct.unpack(">I", data[pos:pos + 4])
+        if length > 0x7FFFFFFF:
+            raise MediaError("PNG chunk length is out of range")
         ctype = data[pos + 4:pos + 8]
-        end = pos + 12 + length
-        if length > 0x7FFFFFFF or end > len(data):
-            raise MediaError(f"truncated PNG chunk {ctype!r}")
-        body = data[pos + 8:pos + 8 + length]
-        (crc,) = struct.unpack(">I", data[pos + 8 + length:end])
-        if zlib.crc32(ctype + body) & 0xFFFFFFFF != crc:
-            raise MediaError(f"bad CRC in PNG chunk {ctype.decode('latin-1')}")
+        end = pos + 8 + length
+        if end + 4 > n:
+            raise MediaError(f"truncated PNG chunk {ctype.decode('latin-1')}")
+        body = data[pos + 8:end]
+        (crc,) = struct.unpack(">I", data[end:end + 4])
         name = ctype.decode("latin-1")
-        if first:
-            if ctype != b"IHDR" or length != 13:
-                raise MediaError("PNG does not start with IHDR")
-            width, height, depth, color = struct.unpack(">IIBB", body[:10])
-            if depth == 16:
-                raise MediaError("16-bit PNG is refused (8-bit channels only)")
-            if depth not in (1, 2, 4, 8) or color not in (0, 2, 3, 4, 6):
-                raise MediaError(f"unsupported PNG bit depth {depth} / color type {color}")
-            first = False
-        elif ctype == b"IHDR":
-            raise MediaError("second IHDR")
+        if zlib.crc32(ctype + body) & 0xFFFFFFFF != crc:
+            raise MediaError(f"bad CRC in PNG chunk {name}")
+        pos = end + 4
+        if header is None and ctype != b"IHDR":
+            raise MediaError("PNG does not start with IHDR")
         if ctype in PNG_ANIMATION:
             raise MediaError(f"animated PNG (APNG {name}) is refused")
         if ctype in PNG_METADATA:
             raise MediaError(f"PNG metadata chunk {name} is refused (privacy); strip it before committing")
         if ctype not in PNG_ALLOWED:
             raise MediaError(f"PNG chunk {name} is not allowed")
-        if ctype == b"iCCP" and length > MAX_ICC:
-            raise MediaError("ICC profile larger than 64 KiB")
-        if ctype == b"IDAT":
+        if ctype != b"IDAT" and seen_idat:
+            idat_done = True
+        if ctype == b"IHDR":
+            if header is not None:
+                raise MediaError("second IHDR")
+            if length != 13:
+                raise MediaError("IHDR is not 13 bytes")
+            width, height, depth, color, compression, filt, interlace = struct.unpack(">IIBBBBB", body)
+            if color in (0, 3):
+                depth_ok = depth in (1, 2, 4, 8)
+            elif color in (2, 4, 6):
+                depth_ok = depth == 8
+            else:
+                raise MediaError(f"PNG color type {color} is not defined")
+            if depth == 16:
+                raise MediaError("16-bit PNG is refused (8-bit channels only)")
+            if not depth_ok:
+                raise MediaError(f"PNG bit depth {depth} is not valid for color type {color}")
+            if compression != 0 or filt != 0 or interlace > 1:
+                raise MediaError("PNG IHDR names an undefined method")
+            if width == 0 or height == 0 or width > 0x7FFFFFFF or height > 0x7FFFFFFF:
+                raise MediaError(f"{width}x{height}: no empty side and at most {MAX_PIXELS} pixels")
+            header = (width, height, color)
+        elif ctype == b"PLTE":
+            if header[2] in (0, 4):
+                raise MediaError("PNG PLTE in a grayscale image")
+            if seen_plte or seen_idat:
+                raise MediaError("PNG PLTE is misplaced")
+            if length == 0 or length % 3 or length > 768:
+                raise MediaError("PNG PLTE has a bad length")
+            seen_plte = True
+        elif ctype == b"iCCP":
+            if seen_idat or seen_plte:
+                raise MediaError("PNG iCCP is misplaced (it precedes PLTE and IDAT)")
+            if length > MAX_PNG_ICCP:
+                raise MediaError(f"PNG iCCP chunk of {length} bytes; at most {MAX_PNG_ICCP} (compressed)")
+        elif ctype == b"tRNS":
+            if seen_idat:
+                raise MediaError("PNG tRNS follows the image data")
+        elif ctype == b"IDAT":
+            if idat_done:
+                raise MediaError("PNG IDAT chunks are not consecutive")
             seen_idat = True
-        if ctype == b"IEND":
+        elif ctype == b"IEND":
+            if length:
+                raise MediaError("PNG IEND carries data")
             ended = True
-        pos = end
+            break
+        elif seen_idat and ctype in PNG_ANCILLARY_BEFORE_IDAT:
+            raise MediaError(f"PNG {name} follows the image data")
     if not ended:
         raise MediaError("PNG has no IEND")
+    if pos != n:
+        raise MediaError("data follows IEND")
     if not seen_idat:
         raise MediaError("PNG has no image data")
-    return width, height
+    if header[2] == 3 and not seen_plte:
+        raise MediaError("palette PNG without PLTE")
+    return header[0], header[1]
+
+
+def _vp8_size(body):
+    if len(body) < 10 or body[0] & 1 or body[3:6] != b"\x9d\x01\x2a":
+        return None
+    w, h = struct.unpack("<HH", body[6:10])
+    return w & 0x3FFF, h & 0x3FFF
+
+
+def _vp8l_size(body):
+    if len(body) < 5 or body[0] != 0x2F:
+        return None
+    (bits,) = struct.unpack("<I", body[1:5])
+    if bits >> 29:
+        return None  # version must be 0
+    return (bits & 0x3FFF) + 1, ((bits >> 14) & 0x3FFF) + 1
+
+
+def _webp_other(fourcc):
+    if fourcc in (b"ANIM", b"ANMF"):
+        raise MediaError(f"animated WebP ({fourcc.decode('latin-1')}) is refused")
+    if fourcc in (b"EXIF", b"XMP "):
+        raise MediaError(f"WebP metadata chunk {fourcc.decode('latin-1').strip()} is refused (privacy)")
+    raise MediaError(f"WebP chunk {fourcc.decode('latin-1')!r} is not allowed")
 
 
 def _webp(data):
     (riff_size,) = struct.unpack("<I", data[4:8])
     if riff_size + 8 != len(data):
         raise MediaError(f"WebP RIFF size {riff_size + 8} is not the file length {len(data)}")
-    pos, width, height, images, first = 12, None, None, 0, True
+    chunks, pos = [], 12
     while pos < len(data):
         if pos + 8 > len(data):
-            raise MediaError("truncated WebP chunk")
+            raise MediaError("truncated WebP chunk header")
         fourcc = data[pos:pos + 4]
         (size,) = struct.unpack("<I", data[pos + 4:pos + 8])
         body = data[pos + 8:pos + 8 + size]
         if len(body) != size:
             raise MediaError(f"truncated WebP chunk {fourcc!r}")
-        name = fourcc.decode("latin-1")
-        if fourcc in (b"ANIM", b"ANMF"):
-            raise MediaError(f"animated WebP ({name}) is refused")
-        if fourcc in (b"EXIF", b"XMP "):
-            raise MediaError(f"WebP metadata chunk {name.strip()} is refused (privacy)")
-        if fourcc == b"VP8X":
-            if not first or size < 10:
-                raise MediaError("misplaced or short VP8X chunk")
-            if body[0] & 0x02:
-                raise MediaError("animated WebP (VP8X animation flag) is refused")
-            if body[0] & 0x0C:
-                raise MediaError("WebP declares EXIF or XMP metadata (privacy)")
-            width = (body[4] | body[5] << 8 | body[6] << 16) + 1
-            height = (body[7] | body[8] << 8 | body[9] << 16) + 1
-        elif fourcc == b"VP8 ":
-            if size < 10 or body[3:6] != b"\x9d\x01\x2a":
-                raise MediaError("bad VP8 frame header")
-            w, h = struct.unpack("<HH", body[6:10])
-            w, h = w & 0x3FFF, h & 0x3FFF
-            images += 1
-            if width is None:
-                width, height = w, h
-            elif (w, h) != (width, height):
-                raise MediaError("VP8 frame size differs from the VP8X canvas")
-        elif fourcc == b"VP8L":
-            if size < 5 or body[0] != 0x2F:
-                raise MediaError("bad VP8L header")
-            (bits,) = struct.unpack("<I", body[1:5])
-            w, h = (bits & 0x3FFF) + 1, ((bits >> 14) & 0x3FFF) + 1
-            images += 1
-            if width is None:
-                width, height = w, h
-            elif (w, h) != (width, height):
-                raise MediaError("VP8L image size differs from the VP8X canvas")
-        elif fourcc == b"ICCP":
-            if size > MAX_ICC:
-                raise MediaError("ICC profile larger than 64 KiB")
-        elif fourcc == b"ALPH":
-            pass
-        else:
-            raise MediaError(f"WebP chunk {name!r} is not allowed")
-        if first and fourcc not in (b"VP8X", b"VP8 ", b"VP8L"):
-            raise MediaError("WebP does not start with VP8, VP8L or VP8X")
-        first = False
         pos += 8 + size + (size & 1)
-    if images != 1:
-        raise MediaError("WebP must hold exactly one image (VP8 or VP8L)")
+        if pos > len(data):
+            raise MediaError("WebP chunk padding is missing")
+        chunks.append((fourcc, body))
+    if not chunks:
+        raise MediaError("WebP has no chunk")
+    first, body = chunks[0]
+    if first in (b"VP8 ", b"VP8L"):
+        if len(chunks) > 1:
+            _webp_other(chunks[1][0])
+        size = (_vp8_size if first == b"VP8 " else _vp8l_size)(body)
+        if size is None:
+            raise MediaError(f"bad {first.decode('latin-1').strip()} header")
+        return size
+    if first != b"VP8X":
+        _webp_other(first)
+    if len(body) != 10:
+        raise MediaError("WebP VP8X is not 10 bytes")
+    flags = body[0]
+    if flags & 0x02:
+        raise MediaError("animated WebP (VP8X animation flag) is refused")
+    if flags & 0x08:
+        raise MediaError("WebP declares EXIF metadata (privacy)")
+    if flags & 0x04:
+        raise MediaError("WebP declares XMP metadata (privacy)")
+    if flags & 0xC1 or body[1:4] != b"\0\0\0":
+        raise MediaError("WebP VP8X sets reserved bits")
+    width = (body[4] | body[5] << 8 | body[6] << 16) + 1
+    height = (body[7] | body[8] << 8 | body[9] << 16) + 1
+    image, alpha = None, False
+    for index, (fourcc, chunk) in enumerate(chunks[1:], 1):
+        if fourcc == b"ICCP":
+            if not flags & 0x20 or index != 1:
+                raise MediaError("WebP ICCP is misplaced or not flagged")
+            if len(chunk) > MAX_ICC:
+                raise MediaError(f"WebP ICC profile of {len(chunk)} bytes; at most {MAX_ICC}")
+        elif fourcc == b"ALPH":
+            if image is not None or alpha:
+                raise MediaError("WebP ALPH is misplaced")
+            alpha = True
+        elif fourcc in (b"VP8 ", b"VP8L"):
+            if image is not None:
+                raise MediaError("WebP has more than one image chunk")
+            image = (_vp8_size if fourcc == b"VP8 " else _vp8l_size)(chunk)
+            if image is None:
+                raise MediaError("bad WebP image chunk header")
+        else:
+            _webp_other(fourcc)
+    if image is None:
+        raise MediaError("WebP has no image chunk")
+    if image != (width, height):
+        raise MediaError("WebP image size differs from the VP8X canvas")
     return width, height
 
 
-# The only JPEG segments besides the frame, tables and scans: a plain JFIF
-# APP0 (version, density, no thumbnail: 14 bytes) and Adobe's fixed-length
-# APP14 (12 bytes). Every other APPn (Exif, XMP, ICC, IPTC, JFXX
-# thumbnails, vendor data) and COM is refused, and nothing may follow EOI
-# (an EOI+ZIP polyglot fails). DeckPilot's media rules are the same.
-JPEG_TABLES = {0xC4, 0xDB, 0xDD, 0xCC}  # DHT, DQT, DRI, DAC
-
-
-def _jpeg_app(marker, body):
-    if marker == 0xE0:
-        if body.startswith(b"JFIF\0") and len(body) == 14 and body[12] == 0 and body[13] == 0:
-            return
-        raise MediaError("JPEG APP0 other than a plain JFIF header (no thumbnail) is refused")
-    if marker == 0xEE:
-        if body.startswith(b"Adobe") and len(body) == 12:
-            return
-        raise MediaError("JPEG APP14 other than the 12-byte Adobe segment is refused")
-    if marker == 0xE1:
-        raise MediaError("JPEG APP1 (Exif or XMP metadata) is refused (privacy)")
-    if marker == 0xED:
-        raise MediaError("JPEG APP13 (IPTC metadata) is refused (privacy)")
-    raise MediaError(f"JPEG APP{marker - 0xE0} is refused (only JFIF APP0 and Adobe APP14; no ICC, no metadata)")
+# JPEG: besides the frame (SOF0 baseline or SOF2 progressive, exactly one,
+# before any scan, 8-bit, 1 or 3 components, length 6 + 3 x components,
+# height not in a DNL), the tables (DHT, DAC, DQT, DRI, DNL) and the scans,
+# only: one plain JFIF APP0 (14 bytes, no thumbnail), the 12-byte Adobe
+# APP14, and APP2 ICC_PROFILE segments of at most 64 KiB + 1024 bytes
+# together. COM, APP1 (Exif, XMP), APP13 (IPTC), every other APPn and
+# marker are refused, and nothing may follow EOI (an EOI+ZIP polyglot fails).
+JPEG_TABLES = {0xC4, 0xCC, 0xDB, 0xDD, 0xDC}  # DHT, DAC, DQT, DRI, DNL
 
 
 def _jpeg(data):
-    pos, size, scans = 2, None, 0
+    pos, size, scans, icc, app0 = 2, None, 0, 0, False
     n = len(data)
     while True:
-        if pos + 2 > n:
-            raise MediaError("truncated JPEG (no EOI)")
-        if data[pos] != 0xFF:
+        if pos >= n or data[pos] != 0xFF:
             raise MediaError("JPEG marker expected")
         while pos < n and data[pos] == 0xFF:
             pos += 1
         if pos >= n:
-            raise MediaError("truncated JPEG")
+            raise MediaError("the JPEG ends inside a marker")
         marker = data[pos]
         pos += 1
         if marker == 0xD9:
-            if size is None or not scans:
-                raise MediaError("JPEG without a frame and a scan")
-            if pos != n:
-                raise MediaError(f"{n - pos} byte(s) after the JPEG EOI are refused")
-            return size
-        if marker == 0xD8 or 0xD0 <= marker <= 0xD7 or marker == 0x01:
-            raise MediaError(f"misplaced JPEG marker FF{marker:02X}")
+            break
+        if marker == 0xD8:
+            raise MediaError("second JPEG start of image")
+        if marker == 0x01 or 0xD0 <= marker <= 0xD7:
+            raise MediaError(f"stand-alone JPEG marker FF{marker:02X} out of place")
+        if marker == 0x00:
+            raise MediaError("stuffed JPEG byte outside the entropy data")
         if pos + 2 > n:
             raise MediaError("truncated JPEG segment")
         (length,) = struct.unpack(">H", data[pos:pos + 2])
+        if length < 2:
+            raise MediaError("JPEG segment length below 2")
         body = data[pos + 2:pos + length]
-        if length < 2 or len(body) != length - 2:
+        if len(body) != length - 2:
             raise MediaError("truncated JPEG segment")
         pos += length
-        if 0xE0 <= marker <= 0xEF:
-            _jpeg_app(marker, body)
-        elif marker == 0xFE:
-            raise MediaError("JPEG COM (comment) segments are refused")
-        elif marker in (0xC0, 0xC2):
+        if marker in (0xC0, 0xC2):
             if size is not None:
                 raise MediaError("second JPEG frame header")
+            if scans:
+                raise MediaError("JPEG frame header follows a scan")
+            if not body:
+                raise MediaError("truncated JPEG frame header")
+            if body[0] != 8:
+                raise MediaError(f"{body[0]}-bit JPEG is refused (8-bit only)")
             if len(body) < 6:
                 raise MediaError("truncated JPEG frame header")
-            precision, height, width, components = struct.unpack(">BHHB", body[:6])
-            if precision != 8:
-                raise MediaError(f"{precision}-bit JPEG is refused (8-bit only)")
+            height, width, components = struct.unpack(">HHB", body[1:6])
             if components not in (1, 3):
                 raise MediaError(f"JPEG with {components} components is refused (grayscale or YCbCr only)")
-            if width == 0 or height == 0:
-                raise MediaError("JPEG without dimensions in its frame header")
+            if len(body) != 6 + 3 * components:
+                raise MediaError("JPEG frame header has a bad length")
+            if height == 0:
+                raise MediaError("JPEG with its height in a DNL marker is refused")
             size = (width, height)
         elif 0xC0 <= marker <= 0xCF and marker not in JPEG_TABLES:
-            raise MediaError("JPEG must be baseline or progressive")
+            raise MediaError(f"JPEG coding process SOF{marker - 0xC0}: only baseline or progressive")
+        elif marker == 0xE1:
+            raise MediaError("JPEG APP1 (Exif or XMP metadata) is refused (privacy)")
+        elif marker == 0xED:
+            raise MediaError("JPEG APP13 (IPTC metadata) is refused (privacy)")
+        elif marker == 0xFE:
+            raise MediaError("JPEG COM (comment) segments are refused")
+        elif marker == 0xE2:
+            if not body.startswith(b"ICC_PROFILE\0"):
+                raise MediaError("JPEG APP2 other than ICC_PROFILE is refused")
+            icc += len(body)
+            if icc > MAX_JPEG_ICC:
+                raise MediaError(f"JPEG ICC profile of more than {MAX_ICC} bytes")
+        elif marker == 0xE0:
+            if app0 or not body.startswith(b"JFIF\0") or len(body) != 14 or body[12] or body[13]:
+                raise MediaError("JPEG APP0 other than one plain JFIF header (no thumbnail) is refused")
+            app0 = True
+        elif marker == 0xEE:
+            if not body.startswith(b"Adobe") or len(body) != 12:
+                raise MediaError("JPEG APP14 other than the 12-byte Adobe segment is refused")
+        elif 0xE3 <= marker <= 0xEF:
+            raise MediaError(f"JPEG APP{marker - 0xE0} is refused")
+        elif marker in JPEG_TABLES:
+            pass
         elif marker == 0xDA:
             if size is None:
                 raise MediaError("JPEG scan before its frame header")
             scans += 1
-            # Entropy-coded data: up to the next marker that is neither a
-            # stuffed 0xFF00 nor a restart marker.
-            while True:
+            while True:  # entropy-coded data, up to the next real marker
                 nxt = data.find(b"\xff", pos)
                 if nxt < 0 or nxt + 1 >= n:
-                    raise MediaError("truncated JPEG scan (no EOI)")
+                    raise MediaError("the JPEG ends inside a scan (no EOI)")
                 follow = data[nxt + 1]
-                if follow == 0x00 or 0xD0 <= follow <= 0xD7 or follow == 0xFF:
-                    pos = nxt + 2 if follow != 0xFF else nxt + 1
-                    continue
-                pos = nxt
-                break
-        elif marker not in JPEG_TABLES and marker != 0xDC:
-            raise MediaError(f"JPEG segment FF{marker:02X} is not allowed")
+                if follow == 0x00 or 0xD0 <= follow <= 0xD7:
+                    pos = nxt + 2
+                elif follow == 0xFF:
+                    pos = nxt + 1
+                else:
+                    pos = nxt
+                    break
+        else:
+            raise MediaError(f"JPEG marker FF{marker:02X} is not allowed")
+    if pos != n:
+        raise MediaError(f"{n - pos} byte(s) after the JPEG EOI are refused")
+    if size is None:
+        raise MediaError("JPEG has no frame header")
+    if not scans:
+        raise MediaError("JPEG has no scan")
+    return size
 
 
 def inspect_media(data):
     """{"format", "width", "height"} from the headers, or MediaError."""
+    if len(data) > MAX_MEDIA_BYTES:
+        raise MediaError(f"{len(data)} bytes; at most {MAX_MEDIA_BYTES}")
     fmt = sniff(data)
     if fmt is None:
         if _looks_like_svg(data):
@@ -482,12 +582,10 @@ def inspect_media(data):
         raise MediaError("not a PNG, WebP or JPEG file")
     try:
         width, height = {"png": _png, "webp": _webp, "jpg": _jpeg}[fmt](data)
-    except (struct.error, IndexError) as e:
-        raise MediaError(f"truncated or malformed {fmt.upper()} ({e})") from None
-    if not width or not height:
-        raise MediaError("no dimensions")
-    if width * height > MAX_PIXELS:
-        raise MediaError(f"{width}x{height} is more than {MAX_PIXELS} pixels")
+    except (struct.error, IndexError, TypeError) as e:
+        raise MediaError(f"truncated or malformed {FORMAT_NAMES[fmt]} ({e})") from None
+    if not width or not height or width * height > MAX_PIXELS:
+        raise MediaError(f"{width}x{height}: no empty side and at most {MAX_PIXELS} pixels")
     return {"format": fmt, "width": width, "height": height}
 
 
@@ -522,16 +620,22 @@ def check_asset(kind, data, extension):
 # Text, URL, markdown
 # --------------------------------------------------------------------------
 
-# Refused in every text (the schemas' `line` and `multiline` patterns are
-# the same set): controls (line break only in multiline text), soft
-# hyphen, CGJ, Arabic letter mark, Hangul fillers, Mongolian vowel
-# separator, zero-width and directional marks, line/paragraph separators,
-# bidi embeddings, overrides and isolates, word joiner and invisible
-# operators, variation selectors, BOM, interlinear annotations, tag
-# characters.
-INVISIBLE = ("\u00ad\u034f\u061c\u115f\u1160\u180e\u200b-\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064"
-             "\u2066-\u2069\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff9-\ufffb\U000e0000-\U000e007f\U000e0100-\U000e01ef")
-FORBIDDEN_CHARS = re.compile("[\u0000-\u0009\u000b-\u001f\u007f-\u009f" + INVISIBLE + "]")
+# Refused in every text: controls (line break only in multiline text) and
+# invisible or format characters: soft hyphen, CGJ, Arabic letter mark,
+# Hangul fillers, Khmer inherent vowels, Mongolian vowel separator,
+# zero-width and directional marks, line/paragraph separators, bidi
+# embeddings, overrides and isolates, word joiner, invisible operators,
+# deprecated format characters, variation selectors, BOM, interlinear
+# annotations; outside the BMP shorthand format controls, musical symbol
+# format characters, tag characters and supplementary variation
+# selectors. The schemas' `line` and `multiline` patterns hold exactly the
+# BMP part (portable regex without the `u` flag); the astral part is
+# refused here only (and by DeckPilot's check).
+INVISIBLE_BMP = ("\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180e\u200b-\u200f\u2028\u2029\u202a-\u202e"
+                 "\u2060-\u2064\u2066-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff9-\ufffb")
+INVISIBLE_ASTRAL = "\U0001bca0-\U0001bca3\U0001d173-\U0001d17a\U000e0000-\U000e007f\U000e0100-\U000e01ef"
+CONTROLS = "\u0000-\u0009\u000b-\u001f\u007f-\u009f"
+FORBIDDEN_CHARS = re.compile("[" + CONTROLS + INVISIBLE_BMP + INVISIBLE_ASTRAL + "]")
 MD_HTML = re.compile(r"<[A-Za-z/!?]")
 MD_HEADING = re.compile(r"^ {0,3}#{1,6}(\s|$)", re.M)
 MD_IMAGE = re.compile(r"!\[")
