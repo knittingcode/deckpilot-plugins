@@ -26,6 +26,13 @@ Reads both trees with git; never runs anything from the pull request.
   Symlinks (git mode 120000) are refused anywhere in a contributor's pull
   request and in registry/ and editorial/ for everyone; a media/ directory
   holds only regular <name>.(png|webp|jpg) files, for everyone.
+* Dependabot (DEPENDABOT, login and numeric id both checked) is not a
+  maintainer and not a contributor with a namespace. It may modify exactly
+  DEPENDABOT_PATHS, the website's npm manifest and lock file (the `npm`
+  update of .github/dependabot.yml), as regular files, never add or delete
+  them, and in package.json only the versions of existing dependencies may
+  change. Everything else it touches (GitHub Actions, Cargo, any other
+  path) stays maintainer-only. Every contributor rule still applies.
 * Publisher records: github_id and login must be the pull request author's;
   a contributor cannot set "verified": true or take an existing namespace.
 * Reserved publishers: a contributor can never use a publisher id DeckPilot
@@ -70,6 +77,15 @@ import storefront  # noqa: E402
 
 # login -> numeric GitHub id. Both must match the pull request author.
 MAINTAINERS = {"knittingcode": 109468044}
+# GitHub's Dependabot app account: both must match the pull request author.
+DEPENDABOT = ("dependabot[bot]", 49699333)
+# The only files a Dependabot pull request may change (modified, regular files).
+DEPENDABOT_PATHS = frozenset({"website/package.json", "website/package-lock.json"})
+# The parts of website/package.json whose versions Dependabot may change.
+DEPENDENCY_FIELDS = ("dependencies", "devDependencies", "optionalDependencies", "peerDependencies")
+# A GitHub user login: only such an author can have a publisher record (an
+# app's "name[bot]" never has one).
+USER_LOGIN = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$")
 # The only publisher record that may own the namespace `deckpilot`.
 FIRST_PARTY_OWNER = ("knittingcode", 109468044)
 # Documentation anyone may propose (still code-owner reviewed). The policy
@@ -167,6 +183,28 @@ def perm_key(p):
     return json.dumps(p, sort_keys=True)
 
 
+def dependency_bump_only(base, head, path):
+    """True when package.json at head differs from base only in the version
+    strings of dependencies that exist in both."""
+    try:
+        old = json.loads(git("show", f"{base}:{path}"))
+        new = json.loads(git("show", f"{head}:{path}"))
+    except (subprocess.CalledProcessError, ValueError):
+        return False
+    if not isinstance(old, dict) or not isinstance(new, dict):
+        return False
+    rest = lambda doc: {k: v for k, v in doc.items() if k not in DEPENDENCY_FIELDS}  # noqa: E731
+    if rest(old) != rest(new):
+        return False
+    for field in DEPENDENCY_FIELDS:
+        a, b = old.get(field, {}), new.get(field, {})
+        if not isinstance(a, dict) or not isinstance(b, dict) or a.keys() != b.keys():
+            return False
+        if not all(isinstance(v, str) for v in (*a.values(), *b.values())):
+            return False
+    return True
+
+
 def schemas_at(rev):
     """The schemas/ of a commit as a storefront.SchemaSet, or None."""
     docs = []
@@ -190,6 +228,7 @@ def main():
     args = parser.parse_args()
     base, head = args.base, args.head
     maintainer = MAINTAINERS.get(args.author) == args.author_id
+    dependabot = (args.author, args.author_id) == DEPENDABOT
 
     changes = []
     for line in git("diff", "--name-status", "--no-renames", f"{base}...{head}").decode().splitlines():
@@ -204,7 +243,7 @@ def main():
 
     # Namespaces the author owns: their publisher record at the base or head.
     own = set()
-    for rev in (base, head):
+    for rev in (base, head) if USER_LOGIN.match(args.author) else ():
         rec = show(rev, f"registry/publishers/{args.author}.json")
         if isinstance(rec, dict) and rec.get("github_id") == args.author_id:
             own.add(rec.get("namespace"))
@@ -222,6 +261,10 @@ def main():
                     "maintainer-only; a listing goes in registry/plugins/<id>/listing.json (docs/storefront.md)")
             continue
         if m and m.group(2) in own:
+            continue
+        if dependabot and path in DEPENDABOT_PATHS and status == "M" and modes.get(path) == "100644":
+            if path.endswith("/package.json") and not dependency_bump_only(base, head, path):
+                problem(f"{path}: Dependabot may change only the versions of existing dependencies here")
             continue
         problem(f"{path}: only a maintainer may change this (see CONTRIBUTING.md, 'What you may change')")
 
