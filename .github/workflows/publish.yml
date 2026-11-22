@@ -353,6 +353,10 @@ jobs:
   verify-published:
     name: Verify the published registry
     needs: [resolve, deploy]
+    # Explicit: for a registry--v* tag `release` is skipped, and a job
+    # without `if` is skipped whenever an upstream job was (the deploy ran,
+    # the live site went unverified and unrecorded; registry--v2026.11.21.1).
+    if: always() && needs.deploy.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -377,6 +381,7 @@ jobs:
   record:
     name: Record the verified registry state
     needs: [resolve, verify-published]
+    if: always() && needs.verify-published.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
