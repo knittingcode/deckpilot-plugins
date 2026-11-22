@@ -113,6 +113,11 @@ The *Submission rules* check enforces this on every pull request:
 | `docs/*.md`, `README.md`, `plugins/README.md`, `registry/README.md` | anyone |
 | `editorial/**` (storefront placements), `.github/**`, `tools/**`, `schemas/**`, `keys/**`, `website/**`, `registry/revocations.json`, other publishers' files, `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `LICENSE` | owner only |
 
+Dependabot (the `dependabot[bot]` account) may only modify
+`website/package.json` (the versions of existing dependencies) and
+`website/package-lock.json`. Its other updates are owner-only like
+everything else.
+
 Everything is reviewed by the owner (CODEOWNERS) before it is merged.
 
 ## What CI checks
