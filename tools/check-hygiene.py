@@ -9,6 +9,14 @@
   Python bytecode (__pycache__/, *.pyc).
 * keys/ may hold only public trust material: roots.json, <n>.json,
   <n>.json.minisig and README.md.
+* Storefront media (docs/storefront.md): in registry/ and editorial/, an
+  image file (any image extension) only as
+  registry/plugins/<id>/media/<name>.(png|webp|jpg) or
+  editorial/media/<name>.(png|webp|jpg), <name> [a-z0-9-]{1,48}; those
+  media/ directories hold nothing else, and SVG is refused there and
+  everywhere else in registry/ and editorial/. (The bytes are checked by
+  tools/check-storefront.py.) Images elsewhere (plugin sources, the
+  website) are not storefront media and are not affected.
 
 Checks every file tracked by git (or the paths given as arguments).
 """
@@ -25,6 +33,29 @@ SECRET_COMMENT = re.compile(rb"untrusted comment:[^\n]*" + rb"secret" + rb" key"
 PEM = re.compile(rb"-----BEGIN [A-Z ]*" + rb"PRIVATE KEY-----")
 B64_TOKEN = re.compile(rb"[A-Za-z0-9+/]{80,}={0,2}")
 KEYS_ALLOWED = re.compile(r"^keys/(roots\.json|[1-9][0-9]*\.json(\.minisig)?|README\.md)$")
+STOREFRONT_MEDIA = re.compile(r"^(registry/plugins/[^/]+|editorial)/media/[a-z0-9-]{1,48}\.(png|webp|jpg)$")
+MEDIA_DIR = re.compile(r"^(registry/plugins/[^/]+|editorial)/media/")
+# Every extension an image or vector file could have (tools/lib/storefront.py
+# IMAGE_SUFFIXES; kept here so this check imports nothing).
+IMAGE_SUFFIXES = frozenset({".png", ".webp", ".jpg", ".jpeg", ".jpe", ".gif", ".svg", ".svgz", ".avif",
+                            ".bmp", ".ico", ".tif", ".tiff", ".heic", ".heif", ".apng", ".jxl"})
+
+
+def storefront_problem(path):
+    """Why PATH breaks the storefront media rule, or None."""
+    p = Path(path)
+    parts = p.parts
+    if not parts or parts[0] not in {"registry", "editorial"}:
+        return None
+    suffix = p.suffix.lower()
+    if suffix in {".svg", ".svgz"}:
+        return "SVG is refused in the storefront; export PNG or WebP (docs/storefront.md)"
+    if MEDIA_DIR.match(path) and not STOREFRONT_MEDIA.match(path):
+        return "media/ holds only [a-z0-9-]{1,48}.png, .webp or .jpg files (docs/storefront.md)"
+    if suffix in IMAGE_SUFFIXES and not STOREFRONT_MEDIA.match(path):
+        return ("storefront images go only in registry/plugins/<id>/media/ or editorial/media/, as .png, .webp "
+                "or .jpg (docs/storefront.md)")
+    return None
 
 
 def secret_in(data):
@@ -58,6 +89,9 @@ def main():
             problems.append(f"{path}: packages are release assets, never committed")
         if parts and parts[0] == "keys" and not KEYS_ALLOWED.match(path):
             problems.append(f"{path}: keys/ holds only roots.json, <n>.json(.minisig) and README.md")
+        why = storefront_problem(path)
+        if why:
+            problems.append(f"{path}: {why}")
         if p.is_file():
             if secret_in(p.read_bytes()):
                 problems.append(f"{path}: looks like a private key")

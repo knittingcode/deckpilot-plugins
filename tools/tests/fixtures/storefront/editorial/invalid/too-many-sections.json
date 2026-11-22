@@ -1,0 +1,140 @@
+{
+  "$schema": "../schemas/inputs/editorial.schema.json",
+  "editorial_version": 1,
+  "sections": [
+    {
+      "id": "all0",
+      "status": "published",
+      "kind": "catalog",
+      "order": 100,
+      "title": {
+        "en": "All plugins"
+      }
+    },
+    {
+      "id": "all1",
+      "status": "published",
+      "kind": "catalog",
+      "order": 100,
+      "title": {
+        "en": "All plugins"
+      }
+    },
+    {
+      "id": "all2",
+      "status": "published",
+      "kind": "catalog",
+      "order": 100,
+      "title": {
+        "en": "All plugins"
+      }
+    },
+    {
+      "id": "all3",
+      "status": "published",
+      "kind": "catalog",
+      "order": 100,
+      "title": {
+        "en": "All plugins"
+      }
+    },
+    {
+      "id": "all4",
+      "status": "published",
+      "kind": "catalog",
+      "order": 100,
+      "title": {
+        "en": "All plugins"
+      }
+    },
+    {
+      "id": "all5",
+      "status": "published",
+      "kind": "catalog",
+      "order": 100,
+      "title": {
+        "en": "All plugins"
+      }
+    },
+    {
+      "id": "all6",
+      "status": "published",
+      "kind": "catalog",
+      "order": 100,
+      "title": {
+        "en": "All plugins"
+      }
+    },
+    {
+      "id": "all7",
+      "status": "published",
+      "kind": "catalog",
+      "order": 100,
+      "title": {
+        "en": "All plugins"
+      }
+    },
+    {
+      "id": "all8",
+      "status": "published",
+      "kind": "catalog",
+      "order": 100,
+      "title": {
+        "en": "All plugins"
+      }
+    },
+    {
+      "id": "all9",
+      "status": "published",
+      "kind": "catalog",
+      "order": 100,
+      "title": {
+        "en": "All plugins"
+      }
+    },
+    {
+      "id": "all10",
+      "status": "published",
+      "kind": "catalog",
+      "order": 100,
+      "title": {
+        "en": "All plugins"
+      }
+    },
+    {
+      "id": "all11",
+      "status": "published",
+      "kind": "catalog",
+      "order": 100,
+      "title": {
+        "en": "All plugins"
+      }
+    },
+    {
+      "id": "all12",
+      "status": "published",
+      "kind": "catalog",
+      "order": 100,
+      "title": {
+        "en": "All plugins"
+      }
+    }
+  ],
+  "collections": [
+    {
+      "id": "productivity",
+      "status": "published",
+      "order": 10,
+      "title": {
+        "en": "Productivity"
+      },
+      "description": {
+        "en": "Plugins for focused work."
+      },
+      "plugins": [
+        "deckpilot.pomodoro",
+        "deckpilot.memory"
+      ]
+    }
+  ]
+}

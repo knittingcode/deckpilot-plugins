@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/knittingcode/deckpilot-plugins/schemas/inputs/listing.schema.json",
+  "title": "registry/plugins/<id>/listing.json: the author's storefront listing (promo text, media, links, release notes)",
+  "description": "This repository's own input format (docs/storefront.md). CI turns it into the signed storefront listing; it holds no placement of any kind (featured, order, collection, badges): placements are editorial/editorial.json, maintainer-only. Rules the schema cannot express (id equals the directory, files exist and pass the media rules, release note versions are recorded, URL and text rules) are checked by tools/check-storefront.py and the pinned deckpilot-registry storefront check.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["listing_version", "id"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "listing_version": { "const": 1 },
+    "id": { "$ref": "https://knittingcode.github.io/deckpilot-plugins/v1/schemas/registry-plugin.schema.json#/$defs/pluginId" },
+    "promo": { "$ref": "#/$defs/promoText" },
+    "description_md": { "$ref": "#/$defs/descriptionText" },
+    "highlights": {
+      "type": "array",
+      "maxItems": 6,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "text"],
+        "properties": {
+          "title": { "$ref": "#/$defs/highlightTitle" },
+          "text": { "$ref": "#/$defs/highlightText" }
+        }
+      }
+    },
+    "icon": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file"],
+      "properties": { "file": { "$ref": "#/$defs/file" } }
+    },
+    "screenshots": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["file", "alt"],
+        "properties": {
+          "file": { "$ref": "#/$defs/file" },
+          "alt": { "$ref": "#/$defs/altText" },
+          "caption": { "$ref": "#/$defs/captionText" },
+          "platforms": { "$ref": "#/$defs/platforms" }
+        }
+      }
+    },
+    "promo_art": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "alt"],
+      "properties": {
+        "file": { "$ref": "#/$defs/file" },
+        "alt": { "$ref": "#/$defs/altText" }
+      }
+    },
+    "links": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "documentation": { "$ref": "#/$defs/url" },
+        "support": { "$ref": "#/$defs/url" },
+        "changelog": { "$ref": "#/$defs/url" }
+      }
+    },
+    "release_notes": {
+      "type": "object",
+      "propertyNames": { "$ref": "https://knittingcode.github.io/deckpilot-plugins/v1/schemas/plugin-manifest.schema.json#/$defs/semver" },
+      "additionalProperties": { "$ref": "#/$defs/releaseNoteText" }
+    }
+  },
+  "$defs": {
+    "locale": {
+      "description": "The closed set of BCP-47 language tags the storefront is written in. Extending it is a schema change (docs/storefront.md).",
+      "enum": ["en", "pl"]
+    },
+    "line": {
+      "description": "One line of plain text: no control characters (no line break) and no invisible or format character of the Basic Multilingual Plane (soft hyphen, CGJ, Arabic letter mark, Hangul fillers, Khmer inherent vowels, Mongolian vowel separator, zero-width and directional marks, U+2028/2029, bidi embeddings, overrides and isolates, word joiner, invisible operators, deprecated format characters, variation selectors, BOM, interlinear annotations). The pattern is BMP-only so it compiles in every regex dialect (ECMAScript without the u flag); tools/lib/storefront.py FORBIDDEN_CHARS refuses the same set plus the astral ones (tag characters, supplementary variation selectors, U+1BCA0-1BCA3, U+1D173-1D17A). NFC is checked there too.",
+      "type": "string",
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\u00AD\\u034F\\u061C\\u115F\\u1160\\u17B4\\u17B5\\u180E\\u200B-\\u200F\\u2028\\u2029\\u202A-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\u3164\\uFE00-\\uFE0F\\uFEFF\\uFFA0\\uFFF9-\\uFFFB]*$"
+    },
+    "multiline": {
+      "description": "Text that may hold line breaks (\\n) but no other control character and none of the invisible or format characters of `line`.",
+      "type": "string",
+      "pattern": "^[^\\u0000-\\u0009\\u000B-\\u001F\\u007F-\\u009F\\u00AD\\u034F\\u061C\\u115F\\u1160\\u17B4\\u17B5\\u180E\\u200B-\\u200F\\u2028\\u2029\\u202A-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\u3164\\uFE00-\\uFE0F\\uFEFF\\uFFA0\\uFFF9-\\uFFFB]*$"
+    },
+    "promoText": {
+      "type": "object", "required": ["en"], "propertyNames": { "$ref": "#/$defs/locale" },
+      "additionalProperties": { "$ref": "#/$defs/line", "minLength": 1, "maxLength": 80 }
+    },
+    "descriptionText": {
+      "description": "The safe markdown subset of docs/storefront.md.",
+      "type": "object", "required": ["en"], "propertyNames": { "$ref": "#/$defs/locale" },
+      "additionalProperties": { "$ref": "#/$defs/multiline", "minLength": 1, "maxLength": 6000 }
+    },
+    "highlightTitle": {
+      "type": "object", "required": ["en"], "propertyNames": { "$ref": "#/$defs/locale" },
+      "additionalProperties": { "$ref": "#/$defs/line", "minLength": 1, "maxLength": 40 }
+    },
+    "highlightText": {
+      "type": "object", "required": ["en"], "propertyNames": { "$ref": "#/$defs/locale" },
+      "additionalProperties": { "$ref": "#/$defs/line", "minLength": 1, "maxLength": 160 }
+    },
+    "altText": {
+      "type": "object", "required": ["en"], "propertyNames": { "$ref": "#/$defs/locale" },
+      "additionalProperties": { "$ref": "#/$defs/line", "minLength": 1, "maxLength": 250 }
+    },
+    "captionText": {
+      "type": "object", "required": ["en"], "propertyNames": { "$ref": "#/$defs/locale" },
+      "additionalProperties": { "$ref": "#/$defs/line", "minLength": 1, "maxLength": 120 }
+    },
+    "releaseNoteText": {
+      "description": "The safe markdown subset of docs/storefront.md.",
+      "type": "object", "required": ["en"], "propertyNames": { "$ref": "#/$defs/locale" },
+      "additionalProperties": { "$ref": "#/$defs/multiline", "minLength": 1, "maxLength": 2000 }
+    },
+    "file": {
+      "description": "A file in the plugin's media/ directory, beside listing.json. PNG, WebP or JPEG only (SVG is refused); the format is sniffed from the bytes and must match the extension.",
+      "type": "string",
+      "pattern": "^media/[a-z0-9-]{1,48}\\.(png|webp|jpg)$"
+    },
+    "platforms": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "enum": ["macos", "windows", "linux"] }
+    },
+    "url": {
+      "description": "https only, lowercase host, no userinfo or port, at most 512 characters. tools/check-storefront.py adds the rest of docs/storefront.md (no IP literal, no punycode, deckpilot.* only github.com/knittingcode/ or knittingcode.github.io).",
+      "type": "string",
+      "maxLength": 512,
+      "pattern": "^https://[a-z0-9.-]+(/[!#-~]*)?$"
+    }
+  }
+}

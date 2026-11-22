@@ -64,6 +64,11 @@ By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
      [docs/publishing.md](docs/publishing.md#1-submission-contributor). If
      your local build differs from CI's reference build, the
      *Validate registry* job prints the correct record to copy.
+   - Optional: `registry/plugins/<id>/listing.json` and
+     `registry/plugins/<id>/media/`, your storefront listing (promo text,
+     icon, screenshots, links, release notes). See
+     [docs/storefront.md](docs/storefront.md) for the format and the asset
+     rules (PNG, WebP or JPEG; no SVG; no metadata).
 3. **Run the checks** locally if you can: `tools/build-cli.sh && tools/validate.sh`.
 4. **Open a pull request** using the template, and fill in the plugin
    submission checklist.
@@ -77,6 +82,17 @@ must be greater than every recorded one), replace
 never edit or delete one. If an update adds permissions, say why in the pull
 request. Users are asked to approve added permissions before the update
 applies.
+
+## Storefront listing
+
+Your listing describes your plugin; it never places it. There is no
+"featured" flag, order or collection in `listing.json`, and the schema
+refuses any field it does not know. Where plugins appear on the Discover
+page (banners, collection rows, spotlights) is decided by the owner in
+`editorial/`, which contributors cannot change. Badges such as official or
+verified come from the client, never from listing text; text that claims
+one is flagged for review. Check your listing with
+`python3 -I tools/check-storefront.py` before you open the pull request.
 
 ## Docs and fixes
 
@@ -93,8 +109,9 @@ The *Submission rules* check enforces this on every pull request:
 | --- | --- |
 | `registry/publishers/<your-login>.json` | you (with your own `github_id` and `login`) |
 | `registry/plugins/<your-namespace>.*/**`, `plugins/<your-namespace>.*/**` | you |
+| images (`.png`, `.webp`, `.jpg`) | you, only in `registry/plugins/<your-namespace>.*/media/`; never SVG |
 | `docs/*.md`, `README.md`, `plugins/README.md`, `registry/README.md` | anyone |
-| `.github/**`, `tools/**`, `schemas/**`, `keys/**`, `website/**`, `registry/revocations.json`, other publishers' files, `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `LICENSE` | owner only |
+| `editorial/**` (storefront placements), `.github/**`, `tools/**`, `schemas/**`, `keys/**`, `website/**`, `registry/revocations.json`, other publishers' files, `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `LICENSE` | owner only |
 
 Everything is reviewed by the owner (CODEOWNERS) before it is merged.
 
@@ -104,10 +121,10 @@ All checks run without secrets and with a read-only token, also for forks:
 
 | Check | What |
 | --- | --- |
-| *Repository hygiene* | no private keys, key files, packages, Python bytecode or generated `site/` output |
-| *Submission rules* | the path guard above, publisher identity, no reserved publisher id, append-only versions; the permission diff and a source compare link go to the job summary |
+| *Repository hygiene* | no private keys, key files, packages, Python bytecode or generated `site/` output; storefront images only in `media/` directories, never SVG |
+| *Submission rules* | the path guard above, publisher identity, no reserved publisher id, append-only versions, your `listing.json` against its schema; the permission diff and a source compare link go to the job summary |
 | *Schemas match DeckPilot* | `schemas/` equal the pinned DeckPilot commit |
-| *Validate registry* | schemas of every input; your source fetched at the recorded commit (the tag must point at it); `cargo build --locked`; `deckpilot-registry package`; the version record re-derived and compared byte for byte; the registry signed with throwaway keys and accepted by DeckPilot's own client (`verify-site --require-packages`) |
+| *Validate registry* | schemas of every input; your source fetched at the recorded commit (the tag must point at it); `cargo build --locked`; `deckpilot-registry package`; the version record re-derived and compared byte for byte; the registry signed with throwaway keys and accepted by DeckPilot's own client (`verify-site --require-packages`); your listing and its media ([docs/storefront.md](docs/storefront.md#asset-rules)) |
 | *Build examples* | the same for the example plugins |
 | *actionlint and zizmor* | workflow lint |
 

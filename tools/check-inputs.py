@@ -6,6 +6,8 @@
 
 * Every JSON file under DIR/registry and every build recipe is validated
   against its schema with the pinned schema-check tool.
+* The storefront listing (listing.json and media/ beside plugin.json) is
+  allowed here and checked by tools/check-storefront.py.
 * Layout and cross-field rules the schemas cannot express: file names
   match their content, every plugin's namespace has a publisher, every
   plugin has a build recipe and vice versa, namespaces are unique, the
@@ -143,8 +145,10 @@ def check(args):
         pid = pdir.name
         plugin_ids.add(pid)
         for entry in sorted(pdir.iterdir()):
-            if entry.name not in {"plugin.json", "versions"}:
-                finding(f"{entry}: a plugin directory holds plugin.json and versions/ only")
+            # listing.json and media/ are the storefront listing
+            # (docs/storefront.md), checked by tools/check-storefront.py.
+            if entry.name not in {"plugin.json", "versions", "listing.json", "media"}:
+                finding(f"{entry}: a plugin directory holds plugin.json, versions/, listing.json and media/ only")
         info_path = pdir / "plugin.json"
         info = load(info_path) if info_path.is_file() else finding(f"{pdir}: plugin.json is missing")
         if isinstance(info, dict):
