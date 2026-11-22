@@ -412,14 +412,22 @@ def candidate_versions(marketplace):
 
 
 def bundled_versions(deckpilot):
-    """What the pinned DeckPilot bundles: id -> version of its source."""
+    """What the pinned DeckPilot bundles: id -> version. An entry of its
+    bundled.json is a signed release artifact (`"source": "artifact"`, with
+    its id and version; every bundled plugin since DeckPilot #391) or a
+    plugin built from its source (`path`, read from its manifest)."""
     out = {}
     base = Path(deckpilot) / "plugins/first-party"
     if not (base / "bundled.json").is_file():
         return out
     for entry in load(base / "bundled.json").get("plugins", []):
-        manifest = base / entry["path"] / "manifest.json"
-        if manifest.is_file():
+        if entry.get("source") == "artifact":
+            if not (isinstance(entry.get("id"), str) and isinstance(entry.get("version"), str)):
+                raise Refused(f"{base / 'bundled.json'}: an artifact entry without id and version: {entry}")
+            out[entry["id"]] = entry["version"]
+            continue
+        manifest = base / entry.get("path", "") / "manifest.json"
+        if entry.get("path") and manifest.is_file():
             m = load(manifest)
             out[m["id"]] = m["version"]
     return out

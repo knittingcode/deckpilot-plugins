@@ -14,8 +14,8 @@ neither cargo nor the manifest schema does:
   `deckpilot.*` and not one; the same version in Cargo.toml and
   manifest.json; publisher `deckpilot`.
 * Pinned SDK: every git dependency of official/Cargo.toml is
-  knittingcode/deckpilot at `rev` = the pinned commit (tools/deckpilot.env),
-  never a branch or tag; no path dependency leaves official/; Cargo.lock
+  knittingcode/deckpilot at `rev` = --commit, the SDK pin
+  (DECKPILOT_SDK_COMMIT of tools/deckpilot.env), never a branch or tag; no path dependency leaves official/; Cargo.lock
   exists and names no other DeckPilot revision.
 * Permission policy: the manifest's permission kinds equal the plugin's
   `permissions` in plugins.json (a new kind is a reviewed policy change).
@@ -47,9 +47,12 @@ neither cargo nor the manifest schema does:
   (--app-version), so `release verify` will accept the host.
 * With --deckpilot DIR (a checkout of the pinned commit): every fixture is
   byte-identical to DeckPilot's plugins/first-party/test-fixtures/<name>,
-  Cargo.toml excepted; and every plugin that DeckPilot still has in
-  plugins/first-party/<name> keeps its contract: the same manifest but for
-  `version` and `repository`, the same locales and assets.
+  Cargo.toml excepted; and every plugin keeps its contract, the files but
+  the module of the release DeckPilot bundles,
+  plugins/first-party/contracts/<id>/ (DeckPilot no longer has the
+  sources): the same manifest but for `version` (never older than the
+  contract's) and `repository`, the same locales and assets. A plugin
+  without a contract there fails: the comparison is never skipped.
 
 --list prints `<path> <id> <version> <package> <kind>` per member, kind
 `plugin`, `held` (a plugin marked held) or `fixture`. Without --list, each
@@ -512,7 +515,7 @@ def main():
             theirs = args.deckpilot / "plugins/first-party/test-fixtures" / Path(path).name
             compare_tree(where, directory, theirs)
         if kind != "fixture" and args.deckpilot:
-            compare_contract(where, directory, manifest, args.deckpilot / "plugins/first-party" / Path(path).name)
+            compare_contract(where, directory, manifest, args.deckpilot / CONTRACTS / mid)
         rows.append((path, mid, manifest.get("version", ""), package, kind))
 
     if args.release is not None:
@@ -532,18 +535,27 @@ def main():
     return 0
 
 
-# Fields a moved plugin's manifest may change: its version (a new patch
-# version, official/README.md) and where its source lives.
+# Fields a moved plugin's manifest may change: its version (the bundled
+# release's or a newer one, official/README.md) and where its source lives.
 MOVED_FIELDS = ("version", "repository")
+# Where the pinned DeckPilot keeps the contract of each bundled release:
+# its files but the module (DeckPilot #392).
+CONTRACTS = Path("plugins/first-party/contracts")
 
 
 def compare_contract(where, ours, manifest, theirs):
-    """A moved plugin keeps DeckPilot's contract while DeckPilot still has it."""
+    """A moved plugin keeps the contract of the release DeckPilot bundles."""
     if not (theirs / "manifest.json").is_file():
+        problem(f"{where}: the pinned DeckPilot has no contract {CONTRACTS}/{theirs.name}/manifest.json; "
+                "every official plugin is compared with the release DeckPilot bundles")
         return
     original = load(theirs / "manifest.json")
     if original is None:
         return
+    ours_v, theirs_v = version_key(manifest.get("version", "")), version_key(original.get("version", ""))
+    if ours_v is None or theirs_v is None or ours_v < theirs_v:
+        problem(f"{where}/manifest.json: version {manifest.get('version')} is older than DeckPilot's contract "
+                f"{original.get('version')} (the bundled release); a source here is that release or a newer one")
     for key in sorted(set(manifest) | set(original)):
         if key not in MOVED_FIELDS and manifest.get(key) != original.get(key):
             problem(f"{where}/manifest.json: `{key}` differs from DeckPilot's {theirs.name} at the pinned "
@@ -560,6 +572,9 @@ def compare_contract(where, ours, manifest, theirs):
         for rel in files(a):
             if not filecmp.cmp(a / rel, b / rel, shallow=False):
                 problem(f"{where}/{sub}/{rel} differs from DeckPilot's at the pinned commit")
+    if not (ours / "LICENSE").is_file() or not (theirs / "LICENSE").is_file() or \
+            not filecmp.cmp(ours / "LICENSE", theirs / "LICENSE", shallow=False):
+        problem(f"{where}/LICENSE differs from DeckPilot's contract at the pinned commit")
 
 
 def compare_tree(where, ours, theirs):

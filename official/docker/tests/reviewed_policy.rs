@@ -8,11 +8,18 @@
 //! time and output limits, consent on first use and the audit log. What
 //! the plugin controls is what its manifest declares, so this test freezes
 //! that declaration byte for byte as it was reviewed (DeckPilot's
-//! `plugins/first-party/docker/manifest.json` at the pinned commit), refuses
-//! any other executable or a shell anywhere in the manifest, refuses a
-//! process the plugin would start itself, and, where the pinned DeckPilot
-//! checkout exists (`tools/build-cli.sh`; always in CI), compares the whole
-//! plugin with DeckPilot's: only `version` and `repository` may differ.
+//! `plugins/first-party/docker/manifest.json`, now the contract of the release
+//! DeckPilot bundles, `plugins/first-party/contracts/deckpilot.docker/`),
+//! refuses any other executable or a shell anywhere in the manifest, refuses
+//! a process the plugin would start itself, and, where the pinned DeckPilot
+//! checkout exists (`tools/build-cli.sh`; always in CI), compares the
+//! plugin with that contract: the manifest (only `version`, never older,
+//! and `repository` may differ), the locales and the icon. A pinned
+//! DeckPilot without the contract fails. The module is not in the contract:
+//! the bundled release's module is pinned by DeckPilot (artifacts.json,
+//! released-pins.json), and `tools/official.sh sign-test` runs DeckPilot's
+//! released-pins guard on a build of this source, so a source that no longer
+//! builds the released module under its version fails there.
 //!
 //! Changing anything here is a change of a reviewed security policy: it
 //! needs the security review, here and in DeckPilot, never a test update.
@@ -302,12 +309,24 @@ fn ids_actions_settings_and_permissions_are_deckpilots() {
     let Some(checkout) = pinned_deckpilot() else {
         return;
     };
-    let theirs = checkout.join("plugins/first-party/docker");
+    let theirs = checkout.join("plugins/first-party/contracts/deckpilot.docker");
+    assert!(
+        theirs.join("manifest.json").is_file(),
+        "the pinned DeckPilot has no contract of deckpilot.docker at {}",
+        theirs.display()
+    );
     let read = |rel: &str| std::fs::read(theirs.join(rel)).unwrap();
     let mut ours = manifest();
     let mut deckpilot: Value = serde_json::from_slice(&read("manifest.json")).unwrap();
     assert_eq!(deckpilot["id"], "deckpilot.docker");
-    // A new patch version, from this repository: nothing else differs.
+    // The bundled release or a newer one, from this repository: nothing
+    // else differs.
+    assert!(
+        version_of(&ours) >= version_of(&deckpilot),
+        "{} is older than DeckPilot's contract {}",
+        ours["version"],
+        deckpilot["version"]
+    );
     for m in [&mut ours, &mut deckpilot] {
         let m = m.as_object_mut().unwrap();
         m.remove("version");
@@ -315,12 +334,12 @@ fn ids_actions_settings_and_permissions_are_deckpilots() {
     }
     assert_eq!(
         ours, deckpilot,
-        "manifest.json differs from DeckPilot's beyond version and repository"
+        "manifest.json differs from DeckPilot's contract beyond version and repository"
     );
     let text = String::from_utf8(read("manifest.json")).unwrap();
     assert!(
         text.contains(REVIEWED_PERMISSIONS),
-        "the reviewed permissions are not DeckPilot's at the pinned commit"
+        "the reviewed permissions are not those of DeckPilot's contract at the pinned commit"
     );
     assert_eq!(EN, read("locales/en.json").as_slice(), "locales/en.json");
     assert_eq!(PL, read("locales/pl.json").as_slice(), "locales/pl.json");
@@ -329,11 +348,12 @@ fn ids_actions_settings_and_permissions_are_deckpilots() {
         read("assets/icon-128.png").as_slice(),
         "assets/icon-128.png"
     );
-    for (name, text) in SOURCES {
-        assert_eq!(
-            text.as_bytes(),
-            read(&format!("src/{name}")).as_slice(),
-            "src/{name}"
-        );
-    }
+}
+
+/// `x.y.z` as numbers.
+fn version_of(manifest: &Value) -> (u64, u64, u64) {
+    let text = manifest["version"].as_str().unwrap();
+    let parts: Vec<u64> = text.split('.').map(|p| p.parse().unwrap()).collect();
+    assert_eq!(parts.len(), 3, "{text} is not x.y.z");
+    (parts[0], parts[1], parts[2])
 }

@@ -1,0 +1,655 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://knittingcode.github.io/deckpilot-plugins/v1/schemas/registry-editorial.schema.json",
+  "title": "DeckPilot plugin registry: storefront/editorial/<sha256>.json",
+  "description": "Storefront design §3.3. Built by CI from editorial/editorial.json: published entries only, without `status`, media resolved to sha256 references. Pinned by storefront/<seq>.json. At most 128 KiB. Clients ignore unknown fields and skip sections of an unknown kind.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["_type", "editorial_version", "sections"],
+  "properties": {
+    "_type": {
+      "const": "deckpilot-registry-editorial"
+    },
+    "editorial_version": {
+      "const": 1
+    },
+    "sections": {
+      "type": "array",
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "required": ["kind"],
+        "properties": {
+          "kind": {
+            "type": "string"
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "banner_carousel"
+                }
+              },
+              "required": ["kind"]
+            },
+            "then": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "kind", "order", "items"],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9-]{1,48}$"
+                },
+                "kind": {
+                  "const": "banner_carousel"
+                },
+                "order": {
+                  "type": "integer"
+                },
+                "window": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "starts_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "ends_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                },
+                "platforms": {
+                  "$ref": "#/$defs/platforms"
+                },
+                "items": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 6,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["id", "title", "artwork", "target"],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9-]{1,48}$"
+                      },
+                      "title": {
+                        "$ref": "#/$defs/text60"
+                      },
+                      "body": {
+                        "$ref": "#/$defs/text160"
+                      },
+                      "artwork": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["asset"],
+                        "properties": {
+                          "asset": {
+                            "$ref": "#/$defs/asset"
+                          },
+                          "alt": {
+                            "type": "object",
+                            "propertyNames": {
+                              "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$"
+                            },
+                            "additionalProperties": {
+                              "type": "string",
+                              "maxLength": 250
+                            }
+                          },
+                          "decorative": {
+                            "type": "boolean"
+                          }
+                        }
+                      },
+                      "target": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["type", "id"],
+                        "properties": {
+                          "type": {
+                            "enum": ["plugin", "collection", "category"]
+                          },
+                          "id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 104
+                          }
+                        }
+                      },
+                      "cta": {
+                        "$ref": "#/$defs/text24"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "collection_row"
+                }
+              },
+              "required": ["kind"]
+            },
+            "then": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "kind", "order", "title", "plugins"],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9-]{1,48}$"
+                },
+                "kind": {
+                  "const": "collection_row"
+                },
+                "order": {
+                  "type": "integer"
+                },
+                "window": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "starts_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "ends_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                },
+                "platforms": {
+                  "$ref": "#/$defs/platforms"
+                },
+                "layout": {
+                  "enum": ["cards", "compact"]
+                },
+                "title": {
+                  "$ref": "#/$defs/text40"
+                },
+                "description": {
+                  "$ref": "#/$defs/text300"
+                },
+                "plugins": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 24,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "minLength": 5,
+                    "maxLength": 57,
+                    "pattern": "^[a-z][a-z0-9]*(-[a-z][a-z0-9]*)*\\.[a-z][a-z0-9]*(-[a-z][a-z0-9]*)*$"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "spotlight"
+                }
+              },
+              "required": ["kind"]
+            },
+            "then": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "kind", "order", "plugin", "headline"],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9-]{1,48}$"
+                },
+                "kind": {
+                  "const": "spotlight"
+                },
+                "order": {
+                  "type": "integer"
+                },
+                "window": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "starts_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "ends_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                },
+                "platforms": {
+                  "$ref": "#/$defs/platforms"
+                },
+                "plugin": {
+                  "type": "string",
+                  "minLength": 5,
+                  "maxLength": 57,
+                  "pattern": "^[a-z][a-z0-9]*(-[a-z][a-z0-9]*)*\\.[a-z][a-z0-9]*(-[a-z][a-z0-9]*)*$"
+                },
+                "version": {
+                  "type": "string",
+                  "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+                },
+                "headline": {
+                  "$ref": "#/$defs/text60"
+                },
+                "body": {
+                  "$ref": "#/$defs/text300"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "recently_added"
+                }
+              },
+              "required": ["kind"]
+            },
+            "then": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "kind", "order", "limit"],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9-]{1,48}$"
+                },
+                "kind": {
+                  "const": "recently_added"
+                },
+                "order": {
+                  "type": "integer"
+                },
+                "window": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "starts_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "ends_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                },
+                "platforms": {
+                  "$ref": "#/$defs/platforms"
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 4,
+                  "maximum": 24
+                },
+                "title": {
+                  "$ref": "#/$defs/text40"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "category_highlights"
+                }
+              },
+              "required": ["kind"]
+            },
+            "then": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "kind", "order", "categories"],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9-]{1,48}$"
+                },
+                "kind": {
+                  "const": "category_highlights"
+                },
+                "order": {
+                  "type": "integer"
+                },
+                "window": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "starts_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "ends_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                },
+                "platforms": {
+                  "$ref": "#/$defs/platforms"
+                },
+                "title": {
+                  "$ref": "#/$defs/text40"
+                },
+                "categories": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 12,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["id"],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "pattern": "^[a-z-]{2,24}$"
+                      },
+                      "blurb": {
+                        "$ref": "#/$defs/text120"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "catalog"
+                }
+              },
+              "required": ["kind"]
+            },
+            "then": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "kind", "order"],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9-]{1,48}$"
+                },
+                "kind": {
+                  "const": "catalog"
+                },
+                "order": {
+                  "type": "integer"
+                },
+                "window": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "starts_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "ends_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                },
+                "platforms": {
+                  "$ref": "#/$defs/platforms"
+                },
+                "title": {
+                  "$ref": "#/$defs/text40"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "collections": {
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "order", "title", "plugins"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]{1,48}$"
+          },
+          "order": {
+            "type": "integer"
+          },
+          "title": {
+            "$ref": "#/$defs/text40"
+          },
+          "description": {
+            "$ref": "#/$defs/text300"
+          },
+          "plugins": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 24,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 5,
+              "maxLength": 57,
+              "pattern": "^[a-z][a-z0-9]*(-[a-z][a-z0-9]*)*\\.[a-z][a-z0-9]*(-[a-z][a-z0-9]*)*$"
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "text24": {
+      "type": "object",
+      "required": ["en"],
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 24
+      }
+    },
+    "text40": {
+      "type": "object",
+      "required": ["en"],
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 40
+      }
+    },
+    "text60": {
+      "type": "object",
+      "required": ["en"],
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 60
+      }
+    },
+    "text80": {
+      "type": "object",
+      "required": ["en"],
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 80
+      }
+    },
+    "text120": {
+      "type": "object",
+      "required": ["en"],
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 120
+      }
+    },
+    "text160": {
+      "type": "object",
+      "required": ["en"],
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 160
+      }
+    },
+    "text250": {
+      "type": "object",
+      "required": ["en"],
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 250
+      }
+    },
+    "text300": {
+      "type": "object",
+      "required": ["en"],
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 300
+      }
+    },
+    "text2000": {
+      "type": "object",
+      "required": ["en"],
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2000
+      }
+    },
+    "text6000": {
+      "type": "object",
+      "required": ["en"],
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 6000
+      }
+    },
+    "platforms": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": ["macos", "windows", "linux"]
+      }
+    },
+    "url": {
+      "type": "string",
+      "maxLength": 512,
+      "pattern": "^https://[a-z0-9.-]+(?:[/?#][\\x21-\\x7e]*)?$"
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "length", "format", "width", "height"],
+      "properties": {
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "length": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1048576
+        },
+        "format": {
+          "enum": ["png", "webp", "jpg"]
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8388608
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8388608
+        }
+      }
+    },
+    "art": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["asset"],
+      "properties": {
+        "asset": {
+          "$ref": "#/$defs/asset"
+        },
+        "alt": {
+          "$ref": "#/$defs/text250"
+        },
+        "decorative": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

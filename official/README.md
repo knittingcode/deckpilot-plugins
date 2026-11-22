@@ -20,16 +20,31 @@ the same.
 
 ## Moved plugins and the privileged-kinds gate
 
-A moved plugin is DeckPilot's `plugins/first-party/<name>` at the pinned
-commit with its version (a new patch: the bytes differ) and `repository`
-changed. Its `src/contract.rs` compares it with the pinned DeckPilot
-checkout while DeckPilot still has the source: the manifest (ids, action
-ids, parameter schemas, settings, permissions, dependencies) but those two
-fields, a higher version, and for Projects and Workspace also the files a
+A moved plugin was DeckPilot's `plugins/first-party/<name>`, with its
+version (a new patch: the bytes differ) and `repository` changed. DeckPilot
+no longer has the sources (knittingcode/deckpilot#392): it bundles the
+signed releases and keeps each bundled release's files but the module as
+its contract, `plugins/first-party/contracts/deckpilot.<name>/`. Every
+plugin here is compared with that contract at the pinned commit
+(`src/contract.rs`, `tests/reviewed_policy.rs` of Git and Docker, and
+`tools/check-official.py`): the manifest (ids, action ids, parameter
+schemas, settings, permissions, dependencies) but `version` (the bundled
+release's or a newer one, never older) and `repository`, and the files a
 bundle takes besides the module (`LICENSE`, `assets/`, `locales/`) byte for
-byte.
+byte. A plugin without a contract at the pin fails; the comparison is never
+skipped. The module of a bundled release is pinned by DeckPilot
+(`artifacts.json`, `released-pins.json`): `tools/official.sh sign-test`
+runs DeckPilot's released-pins guard on a build of the source, so a source
+that no longer builds the released module under its version fails.
 
-| Plugin | Version (DeckPilot's) | Permission kinds | Status |
+The SDK, the ABI crate and the support crate are pinned separately, to
+`DECKPILOT_SDK_COMMIT` (`tools/deckpilot.env`): Cargo hashes a git
+dependency's revision into the build, so the released modules are
+reproduced only at the commit they were built from. That pin moves only
+with a new version of every official plugin; the tooling pin
+(`DECKPILOT_COMMIT`) moves on its own.
+
+| Plugin | Version (DeckPilot's source before the move) | Permission kinds | Status |
 | --- | --- | --- | --- |
 | `deckpilot.docker` | 0.1.1 (0.1.0) | `device`, `profile`, `resources`, `tools` (docker) | released, exactly the reviewed policy |
 | `deckpilot.git` | 0.1.1 (0.1.0) | `device`, `profile`, `resources`, `tools` (git) | released, exactly the reviewed policy |
@@ -58,7 +73,7 @@ users only bundled in DeckPilot.
 official/
   Cargo.toml       one workspace; the SDK, the ABI crate and DeckPilot's
                    first-party support crate as git dependencies pinned to
-                   DECKPILOT_COMMIT (tools/deckpilot.env); the guest profile
+                   DECKPILOT_SDK_COMMIT (tools/deckpilot.env); the guest profile
   Cargo.lock       committed; a build depends on this repository's revision alone
   plugins.json     which members are released (`plugins`) and which are
                    fixtures, and the permission kinds each may declare
@@ -79,7 +94,7 @@ request with no secret:
 
 | Step | What fails it |
 | --- | --- |
-| `check` (`tools/check-official.py`) | a member not in `plugins.json`; a git dependency not on knittingcode/deckpilot at exactly `DECKPILOT_COMMIT` (no branch, no tag), a path dependency leaving `official/`, a missing or differently pinned `Cargo.lock`; a released id DeckPilot does not bundle; permission kinds other than the policy's; any plugin API 1.9 privileged usage while the gate is closed, except in the source of a `held` plugin (below) (an exact mirror of DeckPilot's `privileged.rs`: the four permission kinds, `openUrl.fromParams`, `node.changesContext`, `resource` parameters, variable host sources, host views, `statusItems`, `dashboardCards`; the package step's `package --first-party` runs the Rust validator itself); process execution (`tools`) other than git for `deckpilot.git` and docker for `deckpilot.docker`; `engines` the pinned DeckPilot (`DECKPILOT_VERSION`, `DECKPILOT_PLUGIN_API`) does not satisfy; a fixture that differs from DeckPilot's |
+| `check` (`tools/check-official.py`) | a member not in `plugins.json`; a git dependency not on knittingcode/deckpilot at exactly `DECKPILOT_SDK_COMMIT` (no branch, no tag), a path dependency leaving `official/`, a missing or differently pinned `Cargo.lock`; a released id DeckPilot does not bundle; permission kinds other than the policy's; any plugin API 1.9 privileged usage while the gate is closed, except in the source of a `held` plugin (below) (an exact mirror of DeckPilot's `privileged.rs`: the four permission kinds, `openUrl.fromParams`, `node.changesContext`, `resource` parameters, variable host sources, host views, `statusItems`, `dashboardCards`; the package step's `package --first-party` runs the Rust validator itself); process execution (`tools`) other than git for `deckpilot.git` and docker for `deckpilot.docker`; `engines` the pinned DeckPilot (`DECKPILOT_VERSION`, `DECKPILOT_PLUGIN_API`) does not satisfy; a fixture that differs from DeckPilot's; a plugin that differs from, or has no, contract at `plugins/first-party/contracts/<id>/` of the pin |
 | `test` | `cargo test --locked`, `cargo fmt --check`, `cargo clippy -D warnings` |
 | `package` | the manifest schema; the guest build; `deckpilot-registry package --first-party` (manifest rules, size limits, the module check) |
 | `repro` | two clean builds in fresh target directories whose modules or packages differ (local use; CI's reproducibility check is the two independent jobs below) |
@@ -115,7 +130,7 @@ keeping such a plugin's source on main as **held**: its entry in
 
 | Step | A held plugin |
 | --- | --- |
-| `check` | allowed in source with its privileged usages; its permission policy, process allow-list and contract against DeckPilot's `plugins/first-party/<name>` apply as to any plugin; `held` is refused on a fixture, without a reason, or with no privileged usage (it stays valid with the gate open); prints each held plugin with its reason |
+| `check` | allowed in source with its privileged usages; its permission policy, process allow-list and contract against DeckPilot's `plugins/first-party/contracts/<id>/` apply as to any plugin; `held` is refused on a fixture, without a reason, or with no privileged usage (it stays valid with the gate open); prints each held plugin with its reason |
 | `test`, `compare` | as any plugin |
 | `package`, `fresh-build`, `repro` | the module is built (and reproducible); while the gate is closed `deckpilot-registry package --first-party` must **refuse** it for its privileged usages, and the step fails if it is accepted or refused for another reason; once the gate is open in the pinned DeckPilot and here, an accepted package is discarded |
 | `sign-test` | skipped: there is no package |
@@ -219,7 +234,8 @@ stops `verify`, `verify` refuses one signature, and `release` needs
 `verify`.
 
 Every job that builds or runs `deckpilot-registry` builds it from
-`DECKPILOT_COMMIT` only after checking that the commit is on DeckPilot's
+`DECKPILOT_COMMIT` only after checking that the commit, and
+`DECKPILOT_SDK_COMMIT`, are on DeckPilot's
 `main` (`require_on_main` in `tools/lib/common.sh`, run by
 `tools/build-cli.sh` and `tools/check-schemas.sh`): GitHub serves a fork's
 commits under DeckPilot's URL, and such a commit would otherwise build as

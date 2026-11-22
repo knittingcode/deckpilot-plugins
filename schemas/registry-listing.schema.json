@@ -1,0 +1,299 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://knittingcode.github.io/deckpilot-plugins/v1/schemas/registry-listing.schema.json",
+  "title": "DeckPilot plugin registry: storefront/listings/<id>/<sha256>.json",
+  "description": "Storefront design §3.3. Built by CI from registry/plugins/<id>/listing.json, content-addressed and pinned by storefront/<seq>.json (not signed itself). Media files are referenced by sha256 and served at media/<sha256>.<format>. At most 64 KiB. Clients ignore unknown fields.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["_type", "listing_version", "id"],
+  "properties": {
+    "_type": {
+      "const": "deckpilot-registry-listing"
+    },
+    "listing_version": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 57,
+      "pattern": "^[a-z][a-z0-9]*(-[a-z][a-z0-9]*)*\\.[a-z][a-z0-9]*(-[a-z][a-z0-9]*)*$"
+    },
+    "promo": {
+      "$ref": "#/$defs/text80"
+    },
+    "description_md": {
+      "$ref": "#/$defs/text6000"
+    },
+    "highlights": {
+      "type": "array",
+      "maxItems": 6,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "text"],
+        "properties": {
+          "title": {
+            "$ref": "#/$defs/text40"
+          },
+          "text": {
+            "$ref": "#/$defs/text160"
+          }
+        }
+      }
+    },
+    "icon": {
+      "$ref": "#/$defs/asset"
+    },
+    "screenshots": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["asset", "alt"],
+        "properties": {
+          "alt": {
+            "$ref": "#/$defs/text250"
+          },
+          "caption": {
+            "$ref": "#/$defs/text120"
+          },
+          "platforms": {
+            "$ref": "#/$defs/platforms"
+          },
+          "asset": {
+            "$ref": "#/$defs/asset"
+          }
+        }
+      }
+    },
+    "promo_art": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["asset", "alt"],
+      "properties": {
+        "asset": {
+          "$ref": "#/$defs/asset"
+        },
+        "alt": {
+          "$ref": "#/$defs/text250"
+        }
+      }
+    },
+    "links": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "documentation": {
+          "$ref": "#/$defs/url"
+        },
+        "support": {
+          "$ref": "#/$defs/url"
+        },
+        "changelog": {
+          "$ref": "#/$defs/url"
+        }
+      }
+    },
+    "release_notes": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/text2000"
+      }
+    }
+  },
+  "$defs": {
+    "text24": {
+      "type": "object",
+      "required": ["en"],
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 24
+      }
+    },
+    "text40": {
+      "type": "object",
+      "required": ["en"],
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 40
+      }
+    },
+    "text60": {
+      "type": "object",
+      "required": ["en"],
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 60
+      }
+    },
+    "text80": {
+      "type": "object",
+      "required": ["en"],
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 80
+      }
+    },
+    "text120": {
+      "type": "object",
+      "required": ["en"],
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 120
+      }
+    },
+    "text160": {
+      "type": "object",
+      "required": ["en"],
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 160
+      }
+    },
+    "text250": {
+      "type": "object",
+      "required": ["en"],
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 250
+      }
+    },
+    "text300": {
+      "type": "object",
+      "required": ["en"],
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 300
+      }
+    },
+    "text2000": {
+      "type": "object",
+      "required": ["en"],
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2000
+      }
+    },
+    "text6000": {
+      "type": "object",
+      "required": ["en"],
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{1,8})*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 6000
+      }
+    },
+    "platforms": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": ["macos", "windows", "linux"]
+      }
+    },
+    "url": {
+      "type": "string",
+      "maxLength": 512,
+      "pattern": "^https://[a-z0-9.-]+(?:[/?#][\\x21-\\x7e]*)?$"
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "length", "format", "width", "height"],
+      "properties": {
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "length": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1048576
+        },
+        "format": {
+          "enum": ["png", "webp", "jpg"]
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8388608
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8388608
+        }
+      }
+    },
+    "art": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["asset"],
+      "properties": {
+        "asset": {
+          "$ref": "#/$defs/asset"
+        },
+        "alt": {
+          "$ref": "#/$defs/text250"
+        },
+        "decorative": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

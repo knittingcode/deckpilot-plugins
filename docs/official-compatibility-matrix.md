@@ -9,9 +9,9 @@ The nine plugins DeckPilot bundles, as this repository builds, signs and
 
 | Host | |
 | --- | --- |
-| DeckPilot version (pin) | 0.11.0 |
+| DeckPilot version (pin) | 0.12.0 |
 | Plugin API | 1.9 |
-| DeckPilot commit (`tools/deckpilot.env`) | `8dc27d5a52d0fd9407644fc9562840f458063373` |
+| DeckPilot commit (`tools/deckpilot.env`) | `d2745ac217815f7d120851e99d6e6a29661fa7bb` |
 | SDK pin (`official/Cargo.toml` rev) | `8dc27d5a52d0fd9407644fc9562840f458063373` |
 | Publisher keys pinned in DeckPilot | 2 (threshold 2): `BDCDC80985EB60B5`, `8C3C4E42700FA702` |
 | Privileged-kinds gate | open |
@@ -19,15 +19,15 @@ The nine plugins DeckPilot bundles, as this repository builds, signs and
 
 | Plugin | Source | Version | Shipped in DeckPilot | `engines.deckpilot` | `engines.pluginApi` | Permissions | Dependencies | Signature | Marketplace |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `deckpilot.docker` | `official/docker` | 0.1.1 | 0.1.0 | `>=0.9.0 <1.0.0` | `^1.9` | `tools(docker)*`, `resources*`, `profile`, `device` | `deckpilot.projects` `>=0.1.0 <1.0.0` (optional) | no signed release | no: privileged (bundled in DeckPilot only) |
-| `deckpilot.git` | `official/git` | 0.1.1 | 0.1.0 | `>=0.9.0 <1.0.0` | `^1.9` | `tools(git)*`, `resources*`, `profile`, `device` | `deckpilot.projects` `>=0.1.0 <1.0.0` (optional) | no signed release | no: privileged (bundled in DeckPilot only) |
-| `deckpilot.github` | `official/github` | 0.2.1 | 0.2.0 | `>=0.6.0 <1.0.0` | `^1.0` | `network`, `credentials`, `openUrl` | none | 0.2.1: verified, pinned keys (8f3f9b211a1f2bad, 98a1f76b2dddce87) | yes, 0.2.1 (DeckPilot >= 0.11.0) |
-| `deckpilot.gitlab` | `official/gitlab` | 0.1.2 | 0.1.1 | `>=0.6.0 <1.0.0` | `^1.0` | `network`, `credentials`, `openUrl` | none | 0.1.2: verified, pinned keys (8f3f9b211a1f2bad, 98a1f76b2dddce87) | yes, 0.1.2 (DeckPilot >= 0.11.0) |
-| `deckpilot.jira` | `official/jira` | 0.1.2 | 0.1.1 | `>=0.6.0 <1.0.0` | `^1.0` | `network`, `credentials`, `openUrl` | none | 0.1.2: verified, pinned keys (8f3f9b211a1f2bad, 98a1f76b2dddce87) | yes, 0.1.2 (DeckPilot >= 0.11.0) |
-| `deckpilot.notifications` | `official/notifications` | 0.1.2 | 0.1.1 | `>=0.6.0 <1.0.0` | `^1.0` | `notifications` | none | 0.1.2: verified, pinned keys (8f3f9b211a1f2bad, 98a1f76b2dddce87) | yes, 0.1.2 (DeckPilot >= 0.11.0) |
-| `deckpilot.projects` | `official/projects` | 0.1.1 | 0.1.0 | `>=0.10.0 <1.0.0` | `^1.9` | `projectContext*`, `resources*`, `profile`, `hostViews*` | none | no signed release | no: privileged (bundled in DeckPilot only) |
-| `deckpilot.workflows` | `official/workflows` | 0.1.1 | 0.1.0 | `>=0.10.0 <1.0.0` | `^1.9` | `hostViews*` | none | no signed release | no: privileged (bundled in DeckPilot only) |
-| `deckpilot.workspace` | `official/workspace` | 0.1.1 | 0.1.0 | `>=0.10.0 <1.0.0` | `^1.9` | `resources*`, `openUrl`, `profile` | `deckpilot.projects` `>=0.1.0 <1.0.0` (optional) | no signed release | no: privileged (bundled in DeckPilot only) |
+| `deckpilot.docker` | `official/docker` | 0.1.1 | 0.1.1 | `>=0.9.0 <1.0.0` | `^1.9` | `tools(docker)*`, `resources*`, `profile`, `device` | `deckpilot.projects` `>=0.1.0 <1.0.0` (optional) | no signed release | no: privileged (bundled in DeckPilot only) |
+| `deckpilot.git` | `official/git` | 0.1.1 | 0.1.1 | `>=0.9.0 <1.0.0` | `^1.9` | `tools(git)*`, `resources*`, `profile`, `device` | `deckpilot.projects` `>=0.1.0 <1.0.0` (optional) | no signed release | no: privileged (bundled in DeckPilot only) |
+| `deckpilot.github` | `official/github` | 0.2.1 | 0.2.1 | `>=0.6.0 <1.0.0` | `^1.0` | `network`, `credentials`, `openUrl` | none | 0.2.1: verified, pinned keys (8f3f9b211a1f2bad, 98a1f76b2dddce87) | yes, 0.2.1 (DeckPilot >= 0.11.0) |
+| `deckpilot.gitlab` | `official/gitlab` | 0.1.2 | 0.1.2 | `>=0.6.0 <1.0.0` | `^1.0` | `network`, `credentials`, `openUrl` | none | 0.1.2: verified, pinned keys (8f3f9b211a1f2bad, 98a1f76b2dddce87) | yes, 0.1.2 (DeckPilot >= 0.11.0) |
+| `deckpilot.jira` | `official/jira` | 0.1.2 | 0.1.2 | `>=0.6.0 <1.0.0` | `^1.0` | `network`, `credentials`, `openUrl` | none | 0.1.2: verified, pinned keys (8f3f9b211a1f2bad, 98a1f76b2dddce87) | yes, 0.1.2 (DeckPilot >= 0.11.0) |
+| `deckpilot.notifications` | `official/notifications` | 0.1.2 | 0.1.2 | `>=0.6.0 <1.0.0` | `^1.0` | `notifications` | none | 0.1.2: verified, pinned keys (8f3f9b211a1f2bad, 98a1f76b2dddce87) | yes, 0.1.2 (DeckPilot >= 0.11.0) |
+| `deckpilot.projects` | `official/projects` | 0.1.1 | 0.1.1 | `>=0.10.0 <1.0.0` | `^1.9` | `projectContext*`, `resources*`, `profile`, `hostViews*` | none | no signed release | no: privileged (bundled in DeckPilot only) |
+| `deckpilot.workflows` | `official/workflows` | 0.1.1 | 0.1.1 | `>=0.10.0 <1.0.0` | `^1.9` | `hostViews*` | none | no signed release | no: privileged (bundled in DeckPilot only) |
+| `deckpilot.workspace` | `official/workspace` | 0.1.1 | 0.1.1 | `>=0.10.0 <1.0.0` | `^1.9` | `resources*`, `openUrl`, `profile` | `deckpilot.projects` `>=0.1.0 <1.0.0` (optional) | no signed release | no: privileged (bundled in DeckPilot only) |
 
 `*` a plugin API 1.9 privileged kind: a signed artifact may carry it only exactly as the
 reviewed privileged policy lists it, with the gate open, and such a plugin never has a
