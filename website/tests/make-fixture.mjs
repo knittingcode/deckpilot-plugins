@@ -161,16 +161,13 @@ const plugins = [
       versions: [version('sample.media-keys', '1.0.0', '2026-04-01T00:00:00Z', { permissions: [{ kind: 'network', hosts: ['player.example.com'], methods: ['GET', 'POST'], justification: 'Sends playback commands to your media player service.' }] })],
     },
   },
-  {
-    listing: { id: 'sample.old-monitor', publisher: 'sample', name: 'Old Monitor', summary: 'Fixture plugin: a revoked plugin.', categories: ['monitoring'], latest: { stable: '0.1.0' } },
-    detail: {
-      description: 'An invented plugin for testing the website: every version is revoked.',
-      license: 'Apache-2.0',
-      source_repository: 'example/old-monitor',
-      versions: [version('sample.old-monitor', '0.1.0', '2026-01-05T00:00:00Z')],
-    },
-  },
 ];
+
+// Fully withdrawn plugins are not in `plugins` at all: DeckPilot's index
+// publisher omits a plugin with no installable version and keeps its
+// revocations (crates/deckpilot-plugin-registry/src/publish/index.rs).
+// sample.old-monitor has a wildcard revocation; sample.legacy-sync had
+// two versions, each revoked on its own.
 
 rmSync(join(out, 'v1'), { recursive: true, force: true });
 const listed = plugins.map(({ listing, detail }) => {
@@ -198,6 +195,8 @@ const index = `${JSON.stringify(
     revocations: [
       { id: 'sample.old-monitor', versions: '*', action: 'disable', reason: 'Sent data to a host unrelated to its purpose.', advisory: 'https://example.com/advisory', at: '2026-03-01T00:00:00Z' },
       { id: 'fixture.build-status', versions: ['1.0.0'], action: 'yank', reason: 'Showed the wrong branch.', at: '2026-01-20T00:00:00Z' },
+      { id: 'sample.legacy-sync', versions: ['1.0.0'], action: 'yank', reason: 'Lost settings on update.', at: '2026-02-01T00:00:00Z' },
+      { id: 'sample.legacy-sync', versions: ['1.1.0'], action: 'disable', reason: 'Uploaded the settings file to an unrelated host.', at: '2026-04-01T00:00:00Z' },
     ],
   },
   null,
