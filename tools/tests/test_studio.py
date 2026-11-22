@@ -264,6 +264,72 @@ class Server(unittest.TestCase):
         status, headers, body = self.request("GET", f"/api/file?path=editorial/media/ok-banner.png&token={self.token}")
         self.assertEqual((status, headers["Content-Type"]), (200, "image/png"))
 
+    def test_delete_removes_media_only(self):
+        root = self.scratch.root
+        write(root, "editorial/editorial.json", {"editorial_version": 1, "sections": []})
+        write(root, "registry/plugins/deckpilot.weather/listing.json", {"listing_version": 1, "id": "deckpilot.weather"})
+        write(root, "editorial/media/gone.png", images.png(8, 8))
+        write(root, "registry/plugins/deckpilot.weather/media/gone.png", images.png(8, 8))
+        for rel in ("editorial/editorial.json", "registry/plugins/deckpilot.weather/listing.json",
+                    "registry/plugins/deckpilot.weather/plugin.json", "editorial/media", "editorial/media/../editorial.json",
+                    "editorial/media/gone.png\n"):
+            with self.subTest(path=rel):
+                status, _, _ = self.request("DELETE", "/api/media", {"path": rel}, headers=self.write_headers())
+                self.assertEqual(status, 403)
+        self.assertTrue((root / "editorial/editorial.json").is_file())
+        self.assertTrue((root / "registry/plugins/deckpilot.weather/listing.json").is_file())
+        for rel in ("editorial/media/gone.png", "registry/plugins/deckpilot.weather/media/gone.png"):
+            status, _, _ = self.request("DELETE", "/api/media", {"path": rel}, headers=self.write_headers())
+            self.assertEqual(status, 200)
+            self.assertFalse((root / rel).exists())
+
+    def test_media_import_writes_media_paths_only(self):
+        data = base64.b64encode(images.png(1800, 600)).decode()
+        for rel in ("editorial/editorial.json", "registry/plugins/deckpilot.weather/listing.json"):
+            with self.subTest(path=rel):
+                status, _, _ = self.request("POST", "/api/media", {"path": rel, "kind": "banner", "data": data},
+                                            headers=self.write_headers())
+                self.assertEqual(status, 403)
+
+    def raw(self, request):
+        import socket
+        with socket.create_connection(("127.0.0.1", self.port), timeout=30) as s:
+            s.sendall(request)
+            s.shutdown(socket.SHUT_WR)
+            reply = b""
+            while chunk := s.recv(65536):
+                reply += chunk
+        return reply
+
+    def test_malformed_requests_get_400(self):
+        head = (f"POST /api/validate HTTP/1.1\r\nHost: 127.0.0.1:{self.port}\r\nOrigin: http://127.0.0.1:{self.port}\r\n"
+                f"X-Studio-Token: {self.token}\r\nContent-Type: application/json\r\n").encode()
+        cases = {
+            "missing length": head + b"\r\n{}",
+            "negative length": head + b"Content-Length: -5\r\n\r\n{}",
+            "not a number": head + b"Content-Length: 2x\r\n\r\n{}",
+            "too large": head + f"Content-Length: {studio.MAX_BODY + 1}\r\n\r\n".encode() + b"{}",
+            "shorter than promised": head + b"Content-Length: 50\r\n\r\n{}",
+            "not an object": head + b"Content-Length: 2\r\n\r\n[]",
+            "not JSON": head + b"Content-Length: 3\r\n\r\n{x}",
+        }
+        for name, request in cases.items():
+            with self.subTest(case=name):
+                reply = self.raw(request)
+                self.assertTrue(reply.startswith(b"HTTP/1.0 400") or reply.startswith(b"HTTP/1.1 400"), reply[:80])
+        for path, body in (("/api/media", {"path": "editorial/media/a.png", "kind": "poster", "data": ""}),
+                           ("/api/media", {"path": "editorial/media/a.png", "kind": ["banner"], "data": ""}),
+                           ("/api/check-media", {"kind": "poster", "data": ""}),
+                           ("/api/check-media", {"kind": {}, "data": ""}),
+                           ("/api/pr", {"step": ["status"]}),
+                           ("/api/preview", {"platform": "ios"}),
+                           ("/api/preview", {"locale": ["en"]}),
+                           ("/api/file", {"path": "editorial/editorial.json", "json": []})):
+            with self.subTest(path=path, body=body):
+                method = "PUT" if path == "/api/file" else "POST"
+                status, _, _ = self.request(method, path, body, headers=self.write_headers())
+                self.assertEqual(status, 400)
+
     def test_preview_endpoint(self):
         status, _, payload = self.request("POST", "/api/preview", {"platform": "macos", "locale": "en"},
                                           headers=self.write_headers())
@@ -291,9 +357,20 @@ class Confinement(unittest.TestCase):
                           ("editorial/./editorial.json", "'.'"), ("editorial//editorial.json", "empty"),
                           ("/tmp/editorial.json", "absolute"), ("C:/editorial.json", "absolute"),
                           ("~/editorial.json", "absolute"), ("editorial\\editorial.json", "bad path"),
-                          ("editorial/editorial.json\0", "bad path"), ("", "bad path")):
+                          ("editorial/editorial.json\0", "bad path"), ("", "bad path"),
+                          ("editorial/editorial.json\n", "control"), ("editorial/media/x.png\n", "control"),
+                          ("editorial/media/x.png\r", "control"), ("editorial/media/x\tpng", "control"),
+                          ("editorial/media/x.png\x85", "control"), ("editorial/media/x.png\u2028", "control")):
             with self.subTest(rel=rel):
                 self.refused(rel, text)
+
+    def test_allowed_paths_match_whole_strings(self):
+        for pattern in studio.WRITABLE:
+            self.assertFalse(pattern.pattern.startswith("^") or pattern.pattern.endswith("$"))
+        for rel in ("editorial/media/x.png\n", "editorial/editorial.json\n"):
+            self.assertFalse(any(k.fullmatch(rel) for k in studio.WRITABLE))
+        source = (REPO / "tools/studio/studio.py").read_text()
+        self.assertNotIn("k.match(", source)
 
     def test_only_the_allowed_files(self):
         for rel in ("editorial/editorial.json.bak", "editorial/notes.md", "editorial/media/a.svg",

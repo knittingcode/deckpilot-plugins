@@ -73,12 +73,17 @@ MAX_BODY = 4 * 1024 * 1024
 MAX_VIEW_BYTES = 48 * 1024
 ID = r"[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)*\.[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)*"
 NAME = r"[a-z0-9-]{1,48}\.(?:png|webp|jpg)"
+# Matched with fullmatch only (a trailing `$` would also match before a
+# final newline).
 WRITABLE = (
-    re.compile(r"^editorial/editorial\.json$"),
-    re.compile(rf"^editorial/media/{NAME}$"),
-    re.compile(rf"^registry/plugins/{ID}/listing\.json$"),
-    re.compile(rf"^registry/plugins/{ID}/media/{NAME}$"),
+    re.compile(r"editorial/editorial\.json"),
+    re.compile(rf"editorial/media/{NAME}"),
+    re.compile(rf"registry/plugins/{ID}/listing\.json"),
+    re.compile(rf"registry/plugins/{ID}/media/{NAME}"),
 )
+# What DELETE /api/media may remove: media files only, never a document.
+DELETABLE = (WRITABLE[1], WRITABLE[3])
+CONTROL = re.compile("[\x00-\x1f\x7f-\x9f\u2028\u2029]")
 MEDIA_TYPES = {"png": "image/png", "webp": "image/webp", "jpg": "image/jpeg"}
 STATIC_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
                 ".css": "text/css; charset=utf-8"}
@@ -106,14 +111,16 @@ def confine(root, rel, kinds=WRITABLE):
     `..`, empty or absolute parts, and no existing part of it (directory or
     file) is a symlink; the result is inside the real root."""
     root = Path(root).resolve()
-    if not isinstance(rel, str) or not rel or "\0" in rel or "\\" in rel:
+    if not isinstance(rel, str) or not rel or "\\" in rel:
         raise PathError("bad path")
+    if CONTROL.search(rel):
+        raise PathError("bad path: control characters are refused")
     if rel.startswith("/") or re.match(r"^[A-Za-z]:", rel) or rel.startswith("~"):
         raise PathError(f"{rel}: absolute paths are refused")
     parts = rel.split("/")
     if any(p in ("", ".", "..") for p in parts):
         raise PathError(f"{rel}: '.', '..' and empty parts are refused")
-    if not any(k.match(rel) for k in kinds):
+    if not any(k.fullmatch(rel) for k in kinds):
         raise PathError(f"{rel}: Studio writes only editorial/editorial.json, editorial/media/<name>, "
                         "registry/plugins/<id>/listing.json and registry/plugins/<id>/media/<name>")
     current = root
@@ -164,7 +171,8 @@ def write_bytes(root, rel, data):
 
 
 def delete_file(root, rel):
-    target = confine(root, rel)
+    """Deletes one media file (editorial/media/<name>, registry/plugins/<id>/media/<name>); nothing else."""
+    target = confine(root, rel, kinds=DELETABLE)
     if target.is_file():
         target.unlink()
 
@@ -246,7 +254,7 @@ class Canonical:
 
 
 def semver_key(text):
-    m = re.match(r"^(\d+)\.(\d+)\.(\d+)(?:-(alpha|beta|rc)\.(\d+))?$", text or "")
+    m = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:-(alpha|beta|rc)\.(\d+))?", text or "")
     if not m:
         return None
     core = tuple(int(x) for x in m.group(1, 2, 3))
@@ -275,7 +283,7 @@ def registry_at_head(root):
     except StudioError:
         return out
     for path in names:
-        m = re.match(rf"^registry/plugins/({ID})/(plugin\.json|versions/([^/]+)\.json)$", path)
+        m = re.fullmatch(rf"registry/plugins/({ID})/(plugin\.json|versions/([^/]+)\.json)", path)
         if not m:
             continue
         pid = m.group(1)
@@ -746,9 +754,9 @@ class Workspace:
 
     def import_media(self, rel, data, kind):
         """Checks one image and writes it; refuses it on any finding."""
-        if kind not in storefront.ASSETS:
+        if not isinstance(kind, str) or kind not in storefront.ASSETS:
             raise StudioError(f"unknown asset kind {kind!r}")
-        target = confine(self.root, rel)
+        target = confine(self.root, rel, kinds=DELETABLE)  # media files only
         ext = target.suffix[1:]
         info, problems = storefront.check_asset(kind, data, ext)
         if problems:
@@ -962,7 +970,7 @@ def changed_inputs(root):
     allowed, other = [], []
     for entry in [x for x in out.split("\0") if x]:
         path = entry[3:]
-        if any(k.match(path) for k in WRITABLE):
+        if any(k.fullmatch(path) for k in WRITABLE):
             allowed.append(path)
         elif not path.startswith(".work/"):
             other.append(path)
@@ -971,7 +979,7 @@ def changed_inputs(root):
 
 def pr_step(root, step, args, *, run=subprocess.run):
     """Runs one Prepare-PR step. Never tags, never pushes anything but HEAD."""
-    if step not in PR_STEPS:
+    if not isinstance(step, str) or step not in PR_STEPS:
         raise StudioError(f"unknown step {step!r}")
     allowed, other = changed_inputs(root)
     if step == "status":
@@ -1018,6 +1026,9 @@ def pr_step(root, step, args, *, run=subprocess.run):
 class Handler(http.server.BaseHTTPRequestHandler):
     server_version = "MarketplaceStudio"
     sys_version = ""
+    # A request that promises more body than it sends times out instead of
+    # blocking its thread for ever.
+    timeout = 15
 
     # Set on the class by make_server.
     ws = None
@@ -1093,15 +1104,29 @@ class Handler(http.server.BaseHTTPRequestHandler):
         return url.path, query
 
     def _body(self):
-        length = int(self.headers.get("Content-Length") or 0)
+        """The request's JSON object; 400 for anything else (and the connection is closed)."""
+        raw = self.headers.get("Content-Length")
+        if raw is None or not re.fullmatch(r"[0-9]{1,10}", raw.strip()):
+            self.close_connection = True
+            raise StudioError("a Content-Length (a non-negative integer) is required")
+        length = int(raw)
         if length > MAX_BODY:
+            self.close_connection = True
             raise StudioError(f"request larger than {MAX_BODY} bytes")
         if self.headers.get("Content-Type", "").split(";")[0].strip() != "application/json":
+            self.close_connection = True
             raise StudioError("application/json expected")
+        data = self.rfile.read(length)  # bounded by the handler's socket timeout
+        if len(data) != length:
+            self.close_connection = True
+            raise StudioError("the body is shorter than its Content-Length")
         try:
-            return json.loads(self.rfile.read(length) or b"{}")
+            body = json.loads(data or b"{}")
         except ValueError:
             raise StudioError("invalid JSON") from None
+        if not isinstance(body, dict):
+            raise StudioError("the body must be a JSON object")
+        return body
 
     # -- dispatch ---------------------------------------------------------
 
@@ -1130,6 +1155,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._send(200, getattr(self, f"_{method}")(path, query, body))
         except StudioError as e:
             self._error(e.status, str(e))
+        except (TypeError, AttributeError, KeyError) as e:
+            self._error(400, f"malformed request ({type(e).__name__})")
         except (OSError, ValueError) as e:
             self._error(500, str(e))
 
@@ -1241,10 +1268,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
             except ValueError:
                 raise StudioError("data must be base64") from None
             ext = body.get("ext") if body.get("ext") in MEDIA_TYPES else "png"
-            info, problems = storefront.check_asset(body.get("kind") or "screenshot", data, ext)
+            if not isinstance(body.get("kind"), str) or body["kind"] not in storefront.ASSETS:
+                raise StudioError(f"unknown asset kind {body.get('kind')!r}")
+            info, problems = storefront.check_asset(body["kind"], data, ext)
             return {"info": info, "problems": problems}
         if path == "/api/validate":
             return ws.validate()
+        if path in ("/api/preview", "/api/export-fixture"):
+            if (body.get("platform") or "macos") not in storefront.PLATFORMS:
+                raise StudioError("unknown platform")
+            if not isinstance(body.get("locale") or "en", str) or not re.fullmatch(
+                    r"[a-z]{2}(-[A-Za-z0-9]{2,8})?", body.get("locale") or "en"):
+                raise StudioError("bad locale")
         if path == "/api/preview":
             view, notes = ws.view(now=body.get("as_of") or None, platform=body.get("platform") or "macos",
                                   locale=body.get("locale") or "en", drafts=bool(body.get("drafts")))
