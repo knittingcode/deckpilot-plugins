@@ -60,14 +60,18 @@ Other commands:
   sections dropped, unknown section kinds skipped, and the 48 KiB cap. It
   cannot know the user's DeckPilot version, so `engines` is not applied.
   The dropped entries are listed under the preview.
-- **True preview**: *Export fixture* (or `export-fixture`) writes the
-  resolved view and the listings in the shape of the agent's answers; the
-  DeckPilot desktop dev build loads it through `storefront-mocks.ts` with
+- **True preview**: *Export fixture* (or `export-fixture`) writes
+  `.work/studio/storefront-fixture.json`, the `StorefrontFixture` that
+  DeckPilot's `fixtureFromJson()` loads (`storefront-mocks.ts`, frozen
+  contract `storefront-types.ts` at knittingcode/deckpilot `97bceac7`):
+  `storefront` is the `StorefrontView` the agent would answer, `listings`
+  the `ListingView`s, `media` each image as a `data:image/…;base64,` URL by
+  sha256. The desktop dev build loads it with
   `VITE_STOREFRONT_FIXTURE=<path>`, so the real components render it.
-  **Provisional:** the shape follows the design (§6: `StorefrontView`,
-  `ListingView`, `MediaRef`) until DeckPilot freezes
-  `apps/desktop/src/plugins/storefront-types.ts`; the fixture says so in
-  its `provisional` field.
+  The editorial source keeps its own names (`banner_carousel`, a spotlight's
+  `headline` and `body`); the view uses the contract's (`bannerCarousel`,
+  `title` and `description`). `recentlyAdded` and `catalog` carry no plugin
+  ids: the UI derives them, as it does from the agent.
 - **Prepare PR**: 1. show the changed storefront files (other changes are
   listed and never committed); 2. `git switch -c editorial/<yyyy-mm-dd>-<slug>`;
   3. `git add` of exactly those files; 4. `git commit` of exactly those

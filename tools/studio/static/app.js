@@ -455,7 +455,7 @@ function renderPreview() {
       h('button', { type: 'button', onclick: async () => {
         try {
           const r = await api('POST', '/api/export-fixture', preview);
-          out.textContent = `Wrote ${r.path} (${r.sections} section(s); provisional shape) for VITE_STOREFRONT_FIXTURE.`;
+          out.textContent = `Wrote ${r.path} (${r.sections} section(s)) for VITE_STOREFRONT_FIXTURE (fixtureFromJson).`;
         } catch (error) { out.textContent = error.message; }
       } }, 'Export fixture')),
     out, frame);

@@ -23,10 +23,10 @@ serve: a local web UI on 127.0.0.1 and a random port. Every request needs
 render-preview: a static HTML wireframe of Discover for each platform and
   locale (published entries as of now, or --as-of), with a summary.md for
   a CI job summary.
-export-fixture: .work/studio/storefront-fixture.json and media/ in the
-  design-level shape of DeckPilot's StorefrontView and ListingView
-  (provisional until DeckPilot's storefront-types.ts is frozen), for the
-  desktop dev build.
+export-fixture: .work/studio/storefront-fixture.json, the StorefrontFixture
+  that DeckPilot's fixtureFromJson() loads (storefront-mocks.ts; the views
+  of storefront-types.ts at CONTRACT_COMMIT, images as data: URLs), for
+  the desktop dev build.
 check: tools/check-storefront.py's checks plus `deckpilot-registry
   storefront check` when the pinned CLI has it.
 
@@ -476,10 +476,29 @@ class Media:
         return ref
 
 
-def resolve(editorial, plugins, *, now=None, platform="macos", locale="en", drafts=False, media=None):
-    """(StorefrontView, notes): the design-level view a client would show.
+# Editorial source kinds (snake_case) → the IPC SectionKind of DeckPilot's
+# storefront-types.ts (camelCase).
+SECTION_KINDS = {
+    "banner_carousel": "bannerCarousel",
+    "collection_row": "collectionRow",
+    "spotlight": "spotlight",
+    "recently_added": "recentlyAdded",
+    "category_highlights": "categoryHighlights",
+    "catalog": "catalog",
+}
+# The DeckPilot commit whose apps/desktop/src/plugins/storefront-types.ts
+# (frozen, WP2) the views below follow field for field.
+CONTRACT_COMMIT = "97bceac79b52932fc9c17891d68b25c853e2e72f"
 
-    `plugins` is plugin_catalog()'s; `media` a Media (artwork refs)."""
+
+def resolve(editorial, plugins, *, now=None, platform="macos", locale="en", drafts=False, media=None, seq=0):
+    """(StorefrontView, notes): what the agent would answer to getStorefront.
+
+    The view is exactly DeckPilot's StorefrontView (storefront-types.ts at
+    CONTRACT_COMMIT): camelCase kinds; a spotlight's headline is `title`,
+    its body `description`; `recentlyAdded` and `catalog` carry no plugins
+    (the UI derives them from AvailablePlugin). `plugins` is
+    plugin_catalog()'s; `media` a Media (artwork refs)."""
     now = parse_utc(now) if now is not None else utc_now()
     chain = locale_chain(locale)
     notes = []
@@ -506,7 +525,7 @@ def resolve(editorial, plugins, *, now=None, platform="macos", locale="en", draf
         if not ids:
             notes.append(f"collection {c.get('id')}: dropped (no plugin left)")
             continue
-        view = {"id": c.get("id"), "title": localize(c.get("title"), chain), "plugins": ids}
+        view = {"id": c.get("id"), "title": localize(c.get("title"), chain) or "", "plugins": ids}
         if localize(c.get("description"), chain):
             view["description"] = localize(c.get("description"), chain)
         collections.append(view)
@@ -523,7 +542,10 @@ def resolve(editorial, plugins, *, now=None, platform="macos", locale="en", draf
         if not shown:
             notes.append(f"section {sid}: hidden ({why})")
             continue
-        view = {"id": sid, "kind": kind}
+        if kind not in SECTION_KINDS:
+            notes.append(f"section {sid}: unknown kind {kind!r} skipped")
+            continue
+        view = {"id": sid, "kind": SECTION_KINDS[kind]}
         for field in ("title", "description"):
             text = localize(s.get(field), chain)
             if text is not None:
@@ -545,14 +567,17 @@ def resolve(editorial, plugins, *, now=None, platform="macos", locale="en", draf
                 if ref is None:
                     notes.append(f"section {sid}: banner {item.get('id')} dropped (artwork missing or invalid)")
                     continue
-                banner = {"id": item.get("id"), "title": localize(item.get("title"), chain),
-                          "artwork": dict(ref, alt=localize(art.get("alt"), chain) or "",
-                                          decorative=bool(art.get("decorative"))),
-                          "target": {"type": ttype, "id": tid}}
+                banner = {"id": item.get("id"), "title": localize(item.get("title"), chain) or ""}
                 for field in ("body", "cta"):
                     text = localize(item.get(field), chain)
                     if text is not None:
                         banner[field] = text
+                decorative = art.get("decorative") is True
+                banner["artwork"] = ref
+                banner["alt"] = "" if decorative else (localize(art.get("alt"), chain) or "")
+                if decorative:
+                    banner["decorative"] = True
+                banner["target"] = {"type": ttype, "id": tid}
                 view["items"].append(banner)
             if not view["items"]:
                 notes.append(f"section {sid}: dropped (no banner left)")
@@ -569,10 +594,11 @@ def resolve(editorial, plugins, *, now=None, platform="macos", locale="en", draf
                 notes.append(f"section {sid}: dropped (spotlight plugin {pid} not shown)")
                 continue
             view["plugins"] = [pid]
-            view["headline"] = localize(s.get("headline"), chain)
+            # The contract's spotlight: `title` is the headline, `description` the body.
+            view["title"] = localize(s.get("headline"), chain) or ""
             body = localize(s.get("body"), chain)
             if body is not None:
-                view["body"] = body
+                view["description"] = body
             version = s.get("version")
             recorded = {v["version"]: v for v in plugins[pid].get("versions") or []}
             if version and version in recorded and not recorded[version].get("yanked"):
@@ -581,13 +607,11 @@ def resolve(editorial, plugins, *, now=None, platform="macos", locale="en", draf
                 notes.append(f"section {sid}: version {version} not shown (not recorded or yanked)")
         elif kind == "recently_added":
             limit = s.get("limit") if isinstance(s.get("limit"), int) else 8
-            view["limit"] = limit
-            dated = sorted(ok, key=lambda p: (ok[p].get("published_at") or "", p), reverse=True)
-            view["plugins"] = dated[:limit]
+            view["limit"] = limit  # the UI picks the plugins from AvailablePlugin
         elif kind == "category_highlights":
             for c in s.get("categories") or []:
                 if isinstance(c, dict) and c.get("id") in categories:
-                    cat = {"id": c["id"], "plugins": sorted(categories[c["id"]])}
+                    cat = {"id": c["id"]}
                     blurb = localize(c.get("blurb"), chain)
                     if blurb is not None:
                         cat["blurb"] = blurb
@@ -597,14 +621,9 @@ def resolve(editorial, plugins, *, now=None, platform="macos", locale="en", draf
             if not view["categories"]:
                 notes.append(f"section {sid}: dropped (no category left)")
                 continue
-        elif kind == "catalog":
-            view["plugins"] = sorted(ok, key=lambda p: (plugins[p].get("name") or p).lower())
-        else:
-            notes.append(f"section {sid}: unknown kind {kind!r} skipped")
-            continue
-        sections.append(view)
+        sections.append(view)  # catalog: the UI shows the full catalog
 
-    result = {"seq": None, "sections": sections, "collections": collections}
+    result = {"seq": seq, "sections": sections, "collections": collections}
     while len(json.dumps(result, ensure_ascii=False).encode()) > MAX_VIEW_BYTES and result["sections"]:
         dropped = result["sections"].pop()
         notes.append(f"section {dropped['id']}: dropped (the view is capped at {MAX_VIEW_BYTES} bytes)")
@@ -612,7 +631,8 @@ def resolve(editorial, plugins, *, now=None, platform="macos", locale="en", draf
 
 
 def listing_view(listing, *, platform="macos", locale="en", media=None, pid=None):
-    """The design-level ListingView of one listing (provisional)."""
+    """The ListingView of one listing (storefront-types.ts at CONTRACT_COMMIT): highlights,
+    screenshots (filtered to `platform`), links and releaseNotes (newest first) always present."""
     if not isinstance(listing, dict):
         return None
     chain = locale_chain(locale)
@@ -631,7 +651,8 @@ def listing_view(listing, *, platform="macos", locale="en", media=None, pid=None
             view[key] = text
     for h in listing.get("highlights") or []:
         if isinstance(h, dict):
-            view["highlights"].append({"title": localize(h.get("title"), chain), "text": localize(h.get("text"), chain)})
+            view["highlights"].append({"title": localize(h.get("title"), chain) or "",
+                                       "text": localize(h.get("text"), chain) or ""})
     icon = ref(listing.get("icon"))
     if icon:
         view["icon"] = icon
@@ -760,21 +781,30 @@ class Workspace:
                        media=media)
 
     def export_fixture(self, out=None, *, now=None, platform="macos", locale="en", drafts=False):
+        """.work/studio/storefront-fixture.json: DeckPilot's StorefrontFixture
+        (storefront-mocks.ts fixtureFromJson at CONTRACT_COMMIT): `storefront`
+        (StorefrontView), `listings` ({id: ListingView}) and `media` ({sha256:
+        data:image/...;base64 URL}). The other top-level fields are metadata the
+        loader ignores."""
         out = Path(out) if out else self.root / ".work" / "studio"
+        out.mkdir(parents=True, exist_ok=True)
         media = Media(self.root)
-        view, notes = self.view(now=now, platform=platform, locale=locale, drafts=drafts, media=media)
-        listings = {pid: listing_view(doc, platform=platform, locale=locale, media=media, pid=pid)
-                    for pid, doc in self.listings().items()}
-        (out / "media").mkdir(parents=True, exist_ok=True)
+        status, _, _ = live_index(self.root)
+        seq = status.get("seq") if status and isinstance(status.get("seq"), int) else 0
+        _, plugins = self.catalog()
+        view, notes = resolve(self.editorial(), plugins, now=now, platform=platform, locale=locale, drafts=drafts,
+                              media=media, seq=seq)
+        listings = {}
+        for pid, doc in self.listings().items():
+            lv = listing_view(doc, platform=platform, locale=locale, media=media, pid=pid)
+            if lv is not None:
+                listings[pid] = lv
         files = {}
-        for sha, (path, fmt, length) in sorted(media.by_sha.items()):
-            name = f"{sha}.{fmt}"
-            shutil.copyfile(path, out / "media" / name)
-            files[sha] = {"file": f"media/{name}", "mediaType": MEDIA_TYPES[fmt], "length": length}
+        for sha, (path, fmt, _) in sorted(media.by_sha.items()):
+            files[sha] = f"data:{MEDIA_TYPES[fmt]};base64,{base64.b64encode(path.read_bytes()).decode('ascii')}"
         fixture = {
             "_type": "deckpilot-storefront-fixture",
-            "provisional": ("design-level shape (storefront design §6: StorefrontView, ListingView, MediaRef); "
-                            "it follows apps/desktop/src/plugins/storefront-types.ts once DeckPilot freezes it"),
+            "contract": f"knittingcode/deckpilot@{CONTRACT_COMMIT} apps/desktop/src/plugins/storefront-types.ts",
             "generatedAt": utc_now().strftime("%Y-%m-%dT%H:%M:%SZ"),
             "asOf": (parse_utc(now) if now else utc_now()).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "platform": platform, "locale": locale, "drafts": drafts,
@@ -790,9 +820,13 @@ class Workspace:
 # --------------------------------------------------------------------------
 
 
-def render_html(view, notes, plugins, *, title, media_url, css_href, listings=None):
+def render_html(view, notes, plugins, *, title, media_url, css_href, listings=None, platform="macos"):
+    """A StorefrontView as a wireframe. recentlyAdded, catalog and the category
+    counts are derived here from the catalog, as the UI derives them from
+    AvailablePlugin."""
     e = html.escape
     listings = listings or {}
+    ok = {pid: v for pid, v in ((pid, installable(p, platform)) for pid, p in plugins.items()) if v}
 
     def name(pid):
         return (plugins.get(pid) or {}).get("name") or pid
@@ -818,11 +852,11 @@ def render_html(view, notes, plugins, *, title, media_url, css_href, listings=No
             out.append(f"<h2>{e(s['title'])}</h2>")
         if s.get("description"):
             out.append(f"<p>{e(s['description'])}</p>")
-        if s["kind"] == "banner_carousel":
+        if s["kind"] == "bannerCarousel":
             out.append('<ol class="banners">')
             for i, b in enumerate(s["items"], 1):
                 a = b["artwork"]
-                alt = "" if a.get("decorative") else a.get("alt", "")
+                alt = "" if b.get("decorative") else b.get("alt", "")
                 ext = {"image/png": "png", "image/webp": "webp", "image/jpeg": "jpg"}[a["mediaType"]]
                 out.append(f'<li class="banner"><img src="{e(media_url(a["sha256"], ext))}" alt="{e(alt)}" '
                            f'width="{a["width"]}" height="{a["height"]}"><div class="copy">'
@@ -833,22 +867,26 @@ def render_html(view, notes, plugins, *, title, media_url, css_href, listings=No
             out.append("</ol>")
         elif s["kind"] == "spotlight":
             pid = s["plugins"][0]
-            out.append(f'<div class="spotlight"><h3>{e(s.get("headline") or "")}</h3>'
-                       + (f"<p>{e(s['body'])}</p>" if s.get("body") else "")
-                       + f'<ul class="cards">{card(pid)}</ul>'
+            out.append(f'<div class="spotlight"><ul class="cards">{card(pid)}</ul>'
                        + (f'<p class="meta">Release notes of {e(s["version"])}</p>' if s.get("version") else "")
                        + "</div>")
-        elif s["kind"] == "category_highlights":
+        elif s["kind"] == "categoryHighlights":
             out.append('<ul class="categories">')
             for c in s["categories"]:
+                count = sum(1 for pid in ok if c["id"] in (plugins[pid].get("categories") or []))
                 out.append(f'<li><h3>{e(c["id"])}</h3>' + (f"<p>{e(c['blurb'])}</p>" if c.get("blurb") else "")
-                           + f'<p class="meta">{len(c["plugins"])} plugin(s)</p></li>')
+                           + f'<p class="meta">{count} plugin(s)</p></li>')
             out.append("</ul>")
         else:
+            ids = s["plugins"]
+            if s["kind"] == "recentlyAdded":
+                ids = sorted(ok, key=lambda p: (ok[p].get("published_at") or "", p), reverse=True)[:s.get("limit") or 8]
+            elif s["kind"] == "catalog":
+                ids = sorted(ok, key=lambda p: (plugins[p].get("name") or p).lower())
             compact = s.get("layout") == "compact"
             label = s.get("title") or s["id"]
             out.append(f'<ul class="cards{" compact" if compact else ""}" aria-label="{e(label)}">'
-                       + "".join(card(p, compact) for p in s["plugins"]) + "</ul>")
+                       + "".join(card(p, compact) for p in ids) + "</ul>")
         out.append("</section>")
     if view["collections"]:
         out.append('<aside class="collections"><h2>Collections (sidebar)</h2><ul>')
@@ -881,7 +919,8 @@ def render_preview(ws, out, *, now=None, drafts=False):
             name = f"{platform}-{locale}.html"
             (out / name).write_text(render_html(
                 view, notes, plugins, title=f"Discover · {platform} · {locale} · as of {stamp}",
-                media_url=lambda sha, ext: f"media/{sha}.{ext}", css_href="preview.css", listings=listings),
+                media_url=lambda sha, ext: f"media/{sha}.{ext}", css_href="preview.css", listings=listings,
+                platform=platform),
                 encoding="utf-8")
             pages.append((platform, locale, name, view, notes))
     for sha, (path, fmt, _) in media.by_sha.items():
@@ -1165,7 +1204,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             view, notes = ws.view(now=now, platform=platform, locale=locale, drafts=drafts)
             page = render_html(view, notes, plugins, title=f"Discover · {platform} · {locale}",
                                media_url=lambda sha, ext: f"/media/{sha}.{ext}", css_href="/static/preview.css",
-                               listings=ws.listings())
+                               listings=ws.listings(), platform=platform)
             self._send(200, page.encode("utf-8"), STATIC_TYPES[".html"])
         else:
             raise StudioError("not found")
@@ -1246,7 +1285,7 @@ def main(argv=None):
     rp.add_argument("--out", required=True)
     rp.add_argument("--as-of")
     rp.add_argument("--drafts", action="store_true")
-    ef = sub.add_parser("export-fixture", help=".work/studio/storefront-fixture.json for the desktop dev build")
+    ef = sub.add_parser("export-fixture", help=".work/studio/storefront-fixture.json (fixtureFromJson) for the desktop dev build")
     ef.add_argument("--platform", default={"darwin": "macos", "win32": "windows"}.get(sys.platform, "linux"),
                     choices=storefront.PLATFORMS)
     ef.add_argument("--locale", default="en")
@@ -1263,8 +1302,7 @@ def main(argv=None):
     if command == "export-fixture":
         path, fixture = ws.export_fixture(now=args.as_of, platform=args.platform, locale=args.locale,
                                           drafts=args.drafts)
-        print(f"{path}: {len(fixture['storefront']['sections'])} section(s), {len(fixture['media'])} media file(s) "
-              "(provisional shape)")
+        print(f"{path}: {len(fixture['storefront']['sections'])} section(s), {len(fixture['media'])} image(s)")
         return 0
     if command == "check":
         result = ws.validate()

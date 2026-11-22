@@ -27,6 +27,7 @@ import importlib.util
 import json
 import os
 import random
+import re
 import shutil
 import subprocess
 import sys
@@ -40,6 +41,7 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 sys.path.insert(0, str(HERE))
 import images  # noqa: E402
+import storefront_contract as contract  # noqa: E402
 
 spec = importlib.util.spec_from_file_location("studio", REPO / "tools" / "studio" / "studio.py")
 studio = importlib.util.module_from_spec(spec)
@@ -527,13 +529,25 @@ class Resolver(unittest.TestCase):
         art = banner["artwork"]
         self.assertEqual((art["mediaType"], art["width"], art["height"]), ("image/webp", 1800, 600))
         self.assertRegex(art["sha256"], r"^[0-9a-f]{64}$")
-        self.assertEqual(art["alt"], "Rain clouds over a deck")
+        self.assertEqual(set(art), {"sha256", "mediaType", "width", "height"})  # MediaRef only
+        self.assertEqual(banner["alt"], "Rain clouds over a deck")
+        self.assertNotIn("decorative", banner)
+        doc = copy.deepcopy(EDITORIAL)
+        art = doc["sections"][0]["items"][0]["artwork"]
+        del art["alt"]
+        art["decorative"] = True
+        banner = self.resolve(doc)[0]["sections"][0]["items"][0]
+        self.assertEqual((banner["alt"], banner["decorative"]), ("", True))
 
     def test_spotlight_version(self):
         doc = copy.deepcopy(EDITORIAL)
         doc["sections"][2]["status"] = "published"
         spot = next(s for s in self.resolve(doc)[0]["sections"] if s["id"] == "spot-memory")
-        self.assertEqual((spot["plugins"], spot["version"], spot["headline"]), (["deckpilot.memory"], "0.1.0", "New: Memory"))
+        self.assertEqual((spot["kind"], spot["plugins"], spot["version"], spot["title"], spot["description"]),
+                         ("spotlight", ["deckpilot.memory"], "0.1.0", "New: Memory", "Notes on a key."))
+        self.assertNotIn("headline", spot)
+        self.assertNotIn("body", spot)
+        self.assertNotIn("plugin", spot)
         doc["sections"][2]["version"] = "9.9.9"
         spot = next(s for s in self.resolve(doc)[0]["sections"] if s["id"] == "spot-memory")
         self.assertNotIn("version", spot)
@@ -541,10 +555,18 @@ class Resolver(unittest.TestCase):
     def test_recently_added_and_categories(self):
         view, _ = self.resolve()
         new = next(s for s in view["sections"] if s["id"] == "new")
-        self.assertEqual(new["plugins"][:3], ["deckpilot.memory", "deckpilot.break-reminder", "deckpilot.pomodoro"])
+        self.assertEqual((new["kind"], new["limit"], new["plugins"]), ("recentlyAdded", 8, []))  # the UI picks them
         cats = next(s for s in view["sections"] if s["id"] == "cats")
-        self.assertEqual(cats["categories"][0]["id"], "monitoring")
-        self.assertEqual(cats["categories"][0]["plugins"], ["deckpilot.weather"])
+        self.assertEqual((cats["kind"], cats["categories"]),
+                         ("categoryHighlights", [{"id": "monitoring", "blurb": "Watch what matters."}]))
+        everything = next(s for s in view["sections"] if s["id"] == "all")
+        self.assertEqual((everything["kind"], everything["plugins"]), ("catalog", []))
+
+    def test_kinds_are_the_contracts(self):
+        view, _ = self.resolve(drafts=True)
+        self.assertEqual([s["kind"] for s in view["sections"]],
+                         ["bannerCarousel", "collectionRow", "spotlight", "recentlyAdded", "categoryHighlights",
+                          "catalog"])
 
     def test_unknown_kind_is_skipped(self):
         doc = copy.deepcopy(EDITORIAL)
@@ -555,15 +577,13 @@ class Resolver(unittest.TestCase):
 
     def test_view_is_capped(self):
         doc = copy.deepcopy(EDITORIAL)
-        many = [f"deckpilot.p{i:05d}" for i in range(3000)]  # the catalog section alone exceeds 48 KiB
-        catalog = plugins_catalog()
-        for pid in many:
-            catalog[pid] = {"id": pid, "name": pid, "categories": [], "revocations": [],
-                            "versions": [{"version": "1.0.0", "published_at": "2026-01-01T00:00:00Z"}]}
-        view, notes = studio.resolve(doc, catalog, now=self.NOW, media=self.media)
+        # Past the schema's text limits on purpose (the resolver does not rely on them).
+        for s in doc["sections"]:
+            s["description"] = {"en": "x" * 12000}
+        view, notes = studio.resolve(doc, plugins_catalog(), now=self.NOW, media=self.media)
         self.assertLessEqual(len(json.dumps(view, ensure_ascii=False).encode()), studio.MAX_VIEW_BYTES)
         self.assertIn("section all: dropped (the view is capped at 49152 bytes)", notes)
-        self.assertEqual(self.ids(view), ["launch", "focus", "new", "cats"])
+        self.assertEqual(self.ids(view), ["launch", "focus", "new"])
 
     def test_collections_follow_the_same_rules(self):
         doc = copy.deepcopy(EDITORIAL)
@@ -627,28 +647,102 @@ class Outputs(unittest.TestCase):
         self.assertIn("&lt;script&gt;", page)
 
     def test_export_fixture(self):
-        path, fixture = self.scratch.ws.export_fixture(now="2026-12-10T12:00:00Z", platform="macos", locale="en")
+        path, fixture = self.scratch.ws.export_fixture(now="2026-12-10T12:00:00Z", platform="macos", locale="en",
+                                                       drafts=True)
         self.assertEqual(path, self.root / ".work" / "studio" / "storefront-fixture.json")
         on_disk = json.loads(path.read_text())
         self.assertEqual(on_disk["_type"], "deckpilot-storefront-fixture")
-        self.assertIn("provisional", on_disk)
-        self.assertEqual([s["id"] for s in on_disk["storefront"]["sections"]], ["launch", "focus", "new", "cats", "all"])
+        self.assertNotIn("provisional", on_disk)
+        self.assertIn(studio.CONTRACT_COMMIT, on_disk["contract"])
+        self.assertEqual([s["id"] for s in on_disk["storefront"]["sections"]],
+                         ["launch", "focus", "spot-memory", "new", "cats", "all"])
         listing = on_disk["listings"]["deckpilot.weather"]
         self.assertEqual(listing["icon"]["mediaType"], "image/png")
         self.assertEqual(len(listing["screenshots"]), 1)  # macos
+        self.assertEqual(listing["promoArt"]["alt"], "Weather icons over a sky gradient")
         self.assertEqual(listing["releaseNotes"], [{"version": "0.2.1", "text": "Fixes the wind unit in Polish."}])
         self.assertEqual(len(on_disk["media"]), 4)
-        for sha, entry in on_disk["media"].items():
-            data = (path.parent / entry["file"]).read_bytes()
-            self.assertEqual(hashlib.sha256(data).hexdigest(), sha)
-            self.assertEqual(len(data), entry["length"])
+        for sha, url in on_disk["media"].items():
+            header, _, data = url.partition(",")
+            self.assertEqual(hashlib.sha256(base64.b64decode(data)).hexdigest(), sha)
         linux = self.scratch.ws.export_fixture(now="2026-12-10T12:00:00Z", platform="linux")[1]
         self.assertEqual(linux["listings"]["deckpilot.weather"]["screenshots"], [])
+        # A listing with nothing optional still has every array and links.
+        write(self.root, "registry/plugins/deckpilot.weather/listing.json", {"listing_version": 1, "id": "deckpilot.weather"})
+        bare = self.scratch.ws.export_fixture(now="2026-12-10T12:00:00Z")[1]["listings"]["deckpilot.weather"]
+        self.assertEqual(bare, {"highlights": [], "screenshots": [], "links": {}, "releaseNotes": []})
+
+    def test_export_round_trips_through_the_contract(self):
+        for platform in storefront.PLATFORMS:
+            for locale in ("en", "pl", "pl-PL"):
+                for drafts in (False, True):
+                    with self.subTest(platform=platform, locale=locale, drafts=drafts):
+                        path, _ = self.scratch.ws.export_fixture(now="2026-12-10T12:00:00Z", platform=platform,
+                                                                 locale=locale, drafts=drafts)
+                        raw = json.loads(path.read_text(encoding="utf-8"))
+                        loaded = contract.fixture_from_json(raw)
+                        self.assertEqual(contract.check_fixture(loaded), [])
+                        # Nothing is lost in the round trip: what fixtureFromJson returns is the export.
+                        self.assertEqual(loaded, {k: raw[k] for k in ("storefront", "listings", "media")})
+        bad = json.loads(path.read_text(encoding="utf-8"))
+        bad["storefront"]["sections"][0]["kind"] = "banner_carousel"
+        bad["storefront"]["sections"][0]["items"][0]["artwork"]["alt"] = "x"
+        bad["listings"]["deckpilot.weather"].pop("links")
+        problems = contract.check_fixture(contract.fixture_from_json(bad))
+        self.assertTrue(any("kind" in p for p in problems), problems)
+        self.assertTrue(any("artwork: unknown field alt" in p for p in problems), problems)
+        self.assertTrue(any("links: missing" in p for p in problems), problems)
 
     def test_catalog_marks_unpublished_plugins(self):
         _, plugins = self.scratch.ws.catalog()
         self.assertEqual(plugins["deckpilot.unpublished"]["versions"], [])
         self.assertFalse(plugins["deckpilot.weather"]["live"])  # no mirror in the scratch repository
+
+
+class Contract(unittest.TestCase):
+    """The Python mirror of DeckPilot's storefront-types.ts (storefront_contract.py)."""
+
+    def test_studio_and_mirror_name_the_same_contract(self):
+        self.assertEqual(studio.CONTRACT_COMMIT, contract.CONTRACT_COMMIT)
+        self.assertEqual(tuple(studio.SECTION_KINDS.values()), contract.SECTION_KINDS)
+        self.assertEqual(set(studio.SECTION_KINDS), set(storefront.SchemaSet(REPO / "schemas").docs[
+            storefront.EDITORIAL_SCHEMA]["$defs"]["section"]["properties"]["kind"]["enum"]))
+
+    def test_mirror_equals_the_typescript(self):
+        # STOREFRONT_TYPES_TS=<DeckPilot>/apps/desktop/src/plugins/storefront-types.ts at CONTRACT_COMMIT
+        path = os.environ.get("STOREFRONT_TYPES_TS")
+        if not path:
+            self.skipTest("STOREFRONT_TYPES_TS is not set (DeckPilot's storefront-types.ts)")
+        source = Path(path).read_text(encoding="utf-8")
+        ts = contract.interfaces_of(source)
+        ts.pop("AvailablePluginStorefrontFields", None)  # agent fields of AvailablePlugin, not in a fixture
+        mirror = {name: {f: opt for f, (opt, _) in fields.items()} for name, fields in contract.INTERFACES.items()}
+        self.assertEqual(ts, mirror)
+        kinds = re.search(r"SECTION_KINDS: readonly SectionKind\[\] = \[(.*?)\]", source, re.S).group(1)
+        self.assertEqual(tuple(re.findall(r'"(\w+)"', kinds)), contract.SECTION_KINDS)
+
+    def test_the_contracts_own_fixture_passes_the_mirror(self):
+        # The default fixture of storefront-mocks.ts, transcribed (media as data URLs).
+        ref = {"sha256": "0" * 63 + "1", "mediaType": "image/png", "width": 512, "height": 512}
+        fixture = {"storefront": {"seq": 42, "sections": [
+            {"id": "launch", "kind": "bannerCarousel", "items": [
+                {"id": "b", "title": "T", "artwork": ref, "alt": "", "decorative": True,
+                 "target": {"type": "collection", "id": "productivity"}}], "plugins": [], "categories": []},
+            {"id": "spot", "kind": "spotlight", "title": "New", "description": "D", "items": [],
+             "plugins": ["deckpilot.weather"], "categories": [], "version": "0.2.1"}],
+            "collections": [{"id": "dev", "title": "Development", "plugins": ["acme.github-prs"]}]},
+            "listings": {"acme.clock": {"promo": "A clock", "highlights": [], "screenshots": [], "links": {},
+                                        "releaseNotes": []}},
+            "media": {ref["sha256"]: "data:image/png;base64,iVBORw0KGgo="}}
+        self.assertEqual(contract.check_fixture(contract.fixture_from_json(fixture)), [])
+
+    def test_fixture_from_json_outer_shape(self):
+        for bad in ([], {"storefront": {"sections": {}}}, {"listings": []}, {"media": "x"}):
+            with self.subTest(bad=bad):
+                with self.assertRaises(ValueError):
+                    contract.fixture_from_json(bad)
+        self.assertEqual(contract.fixture_from_json({}), {"storefront": None, "listings": {}, "media": {}})
+        self.assertEqual(contract.fixture_from_json({"media": {"a": 1, "b": "x"}})["media"], {"b": "x"})
 
 
 class Preparepr(unittest.TestCase):
