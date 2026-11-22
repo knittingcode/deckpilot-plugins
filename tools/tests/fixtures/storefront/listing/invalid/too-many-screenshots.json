@@ -1,0 +1,159 @@
+{
+  "$schema": "../../../schemas/inputs/listing.schema.json",
+  "listing_version": 1,
+  "id": "deckpilot.weather",
+  "promo": {
+    "en": "Weather on your deck, at a glance",
+    "pl": "Pogoda na Twoim decku"
+  },
+  "description_md": {
+    "en": "Current conditions and a **7-day** forecast.\n\n- Per-key city\n- Variables for workflows"
+  },
+  "highlights": [
+    {
+      "title": {
+        "en": "7-day forecast"
+      },
+      "text": {
+        "en": "Daily highs, lows and rain chance."
+      }
+    }
+  ],
+  "icon": {
+    "file": "media/icon.png"
+  },
+  "screenshots": [
+    {
+      "file": "media/forecast.png",
+      "alt": {
+        "en": "A Stream Deck page with six weather keys showing temperatures"
+      },
+      "caption": {
+        "en": "The forecast page"
+      },
+      "platforms": [
+        "macos",
+        "windows"
+      ]
+    },
+    {
+      "file": "media/forecast.png",
+      "alt": {
+        "en": "A Stream Deck page with six weather keys showing temperatures"
+      },
+      "caption": {
+        "en": "The forecast page"
+      },
+      "platforms": [
+        "macos",
+        "windows"
+      ]
+    },
+    {
+      "file": "media/forecast.png",
+      "alt": {
+        "en": "A Stream Deck page with six weather keys showing temperatures"
+      },
+      "caption": {
+        "en": "The forecast page"
+      },
+      "platforms": [
+        "macos",
+        "windows"
+      ]
+    },
+    {
+      "file": "media/forecast.png",
+      "alt": {
+        "en": "A Stream Deck page with six weather keys showing temperatures"
+      },
+      "caption": {
+        "en": "The forecast page"
+      },
+      "platforms": [
+        "macos",
+        "windows"
+      ]
+    },
+    {
+      "file": "media/forecast.png",
+      "alt": {
+        "en": "A Stream Deck page with six weather keys showing temperatures"
+      },
+      "caption": {
+        "en": "The forecast page"
+      },
+      "platforms": [
+        "macos",
+        "windows"
+      ]
+    },
+    {
+      "file": "media/forecast.png",
+      "alt": {
+        "en": "A Stream Deck page with six weather keys showing temperatures"
+      },
+      "caption": {
+        "en": "The forecast page"
+      },
+      "platforms": [
+        "macos",
+        "windows"
+      ]
+    },
+    {
+      "file": "media/forecast.png",
+      "alt": {
+        "en": "A Stream Deck page with six weather keys showing temperatures"
+      },
+      "caption": {
+        "en": "The forecast page"
+      },
+      "platforms": [
+        "macos",
+        "windows"
+      ]
+    },
+    {
+      "file": "media/forecast.png",
+      "alt": {
+        "en": "A Stream Deck page with six weather keys showing temperatures"
+      },
+      "caption": {
+        "en": "The forecast page"
+      },
+      "platforms": [
+        "macos",
+        "windows"
+      ]
+    },
+    {
+      "file": "media/forecast.png",
+      "alt": {
+        "en": "A Stream Deck page with six weather keys showing temperatures"
+      },
+      "caption": {
+        "en": "The forecast page"
+      },
+      "platforms": [
+        "macos",
+        "windows"
+      ]
+    }
+  ],
+  "promo_art": {
+    "file": "media/promo.webp",
+    "alt": {
+      "en": "Weather icons over a sky gradient"
+    }
+  },
+  "links": {
+    "documentation": "https://github.com/knittingcode/deckpilot-plugins/tree/main/first-party/weather",
+    "support": "https://github.com/knittingcode/deckpilot-plugins/issues"
+  },
+  "release_notes": {
+    "0.2.1": {
+      "en": "Fixes the wind unit in Polish."
+    }
+  }
+}

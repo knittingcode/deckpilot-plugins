@@ -14,6 +14,15 @@ Reads both trees with git; never runs anything from the pull request.
   or added by this pull request), and documentation (docs/*.md, README
   files). Everything else (workflows, tools, schemas, keys/, revocations,
   other publishers, policy documents) is maintainer-only.
+* Storefront (docs/storefront.md): editorial/** (placements: banners,
+  collections, spotlights) is maintainer-only, said explicitly. An author's
+  listing is registry/plugins/<id>/listing.json; a contributor's media
+  files (any image extension) are allowed only as
+  registry/plugins/<own ns>.*/media/<name>.(png|webp|jpg), never SVG. Every
+  changed listing.json is checked against schemas/inputs/listing.schema.json
+  of the base (the head's while the base has none): it has no placement
+  field. Listing text of a non-deckpilot plugin that says "official",
+  "verified" or "DeckPilot team" is flagged in the job summary for review.
 * Publisher records: github_id and login must be the pull request author's;
   a contributor cannot set "verified": true or take an existing namespace.
 * Reserved publishers: a contributor can never use a publisher id DeckPilot
@@ -50,6 +59,11 @@ import os
 import re
 import subprocess
 import sys
+from pathlib import Path
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+import storefront  # noqa: E402
 
 # login -> numeric GitHub id. Both must match the pull request author.
 MAINTAINERS = {"knittingcode": 109468044}
@@ -87,6 +101,8 @@ BUNDLED_ONLY_IDS = BUNDLED_PLUGIN_IDS - OFFICIAL_MARKETPLACE_IDS
 PLUGIN_PATH = re.compile(r"^(?:registry/plugins|plugins)/([^/]+)/")
 SEMVER_CORE = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$")
 VERSION_PATH = re.compile(r"^registry/plugins/([^/]+)/versions/([^/]+)\.json$")
+LISTING_PATH = re.compile(r"^registry/plugins/([^/]+)/listing\.json$")
+MEDIA_PATH = re.compile(r"^registry/plugins/([a-z0-9-]+)\.[^/]+/media/[a-z0-9-]{1,48}\.(png|webp|jpg)$")
 
 problems = []
 
@@ -146,6 +162,20 @@ def perm_key(p):
     return json.dumps(p, sort_keys=True)
 
 
+def schemas_at(rev):
+    """The schemas/ of a commit as a storefront.SchemaSet, or None."""
+    docs = []
+    for path in ls(rev, "schemas/"):
+        if path.endswith(".schema.json"):
+            try:
+                docs.append(json.loads(git("show", f"{rev}:{path}")))
+            except (subprocess.CalledProcessError, ValueError):
+                return None
+    if not any(d.get("$id") == storefront.LISTING_SCHEMA for d in docs if isinstance(d, dict)):
+        return None
+    return storefront.SchemaSet.from_docs(docs)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--base", required=True)
@@ -176,9 +206,57 @@ def main():
             continue
         if path in DOC_PATHS or (path.startswith("docs/") and path.endswith(".md")):
             continue
+        if path.split("/", 1)[0] == "editorial":
+            problem(f"{path}: editorial/ (storefront placements: banners, collections, spotlights) is "
+                    "maintainer-only; a listing goes in registry/plugins/<id>/listing.json (docs/storefront.md)")
+            continue
         if m and m.group(2) in own:
             continue
         problem(f"{path}: only a maintainer may change this (see CONTRIBUTING.md, 'What you may change')")
+
+    # Storefront media: only in the contributor's own media/ directories.
+    if not maintainer:
+        for status, path in changes:
+            if status == "D":
+                continue
+            suffix = Path(path).suffix.lower()
+            if suffix not in storefront.IMAGE_SUFFIXES:
+                continue
+            m = MEDIA_PATH.match(path)
+            if suffix in (".svg", ".svgz"):
+                problem(f"{path}: SVG is refused in the storefront; export PNG or WebP (docs/storefront.md)")
+            elif not m or m.group(1) not in own:
+                problem(f"{path}: media files go only in registry/plugins/<your namespace>.*/media/, named "
+                        "[a-z0-9-]{1,48}.png, .webp or .jpg (docs/storefront.md)")
+
+    # Listings: the schema of the base (no placement field), and text that
+    # claims a badge, flagged for review.
+    listing_changes = [(s, p) for s, p in changes if s != "D" and LISTING_PATH.match(p)]
+    schemas = (schemas_at(base) or schemas_at(head)) if listing_changes else None
+    flagged = []
+    for status, path in listing_changes:
+        pid = LISTING_PATH.match(path).group(1)
+        try:
+            doc = json.loads(git("show", f"{head}:{path}"))
+        except ValueError:
+            problem(f"{path}: not valid JSON")
+            continue
+        if schemas is None:
+            problem(f"{path}: schemas/inputs/listing.schema.json is missing")
+            continue
+        for e in schemas.validate(doc, storefront.LISTING_SCHEMA):
+            problem(f"{path}: {e}")
+        if isinstance(doc, dict) and doc.get("id") != pid:
+            problem(f"{path}: id {doc.get('id')!r} is not the directory name {pid}")
+        if not pid.startswith(f"{FIRST_PARTY_PUBLISHER}."):
+            for pointer, _, text in storefront.localized_texts(doc):
+                if storefront.PROMOTIONAL.search(text):
+                    flagged.append(f"- `{path}{pointer}`: {json.dumps(text[:120], ensure_ascii=False)}")
+    if flagged:
+        summary("### Listing text for review", "",
+                "Mentions \"official\", \"verified\" or \"DeckPilot team\" in a community listing. Badges "
+                "come only from the client; reword unless the claim is accurate and the owner agrees.", "",
+                *flagged, "")
 
     # Publisher records.
     for status, path in changes:

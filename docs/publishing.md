@@ -16,6 +16,14 @@ A pull request adds or changes, for a plugin `<id>` = `<namespace>.<name>`:
 | `registry/plugins/<id>/versions/<version>.json` | yes | one new file per version |
 | `plugins/<id>/build.json` | yes | when the build changes |
 | `plugins/<id>/manifest.json` | yes | replaced by the new version's manifest |
+| `registry/plugins/<id>/listing.json` (optional) | storefront listing: promo, screenshots, links, release notes | whenever it changes; no new version needed |
+| `registry/plugins/<id>/media/*.png\|webp\|jpg` (optional) | the images `listing.json` names | with the listing |
+
+The storefront listing and its media are described in
+[storefront.md](storefront.md), with the asset rules. A listing never
+places a plugin (no featured flag, order or collection): placements are
+`editorial/`, which only the owner changes. Images go only in
+`registry/plugins/<id>/media/`, as PNG, WebP or JPEG; SVG is refused.
 
 The version record is the output of `deckpilot-registry add-version` for
 the package built from the tagged source. Produce it with the pinned tools:
@@ -77,7 +85,8 @@ the later `main` commit that holds the record. Use a name without `--v`
 Runs on the pull request with no secrets and a read-only token:
 
 - *Repository hygiene*: no private keys, key files, `site/`, `releases/`
-  or packages.
+  or packages; storefront images only in the `media/` directories, never
+  SVG.
 - *Submission rules*: the path guard, publisher identity (`github_id` and
   `login` equal to the pull request author's), no publisher id DeckPilot
   reserves for a contributor (`deckpilot` included), `deckpilot.*` records
@@ -100,6 +109,9 @@ Runs on the pull request with no secrets and a read-only token:
   the newest package's manifest; the committed key set chain walked; the
   whole registry signed with throwaway keys made in the job and accepted by
   `verify-site --require-packages --min-remaining 6d`.
+  Then the storefront inputs (`tools/validate.sh storefront`,
+  [storefront.md](storefront.md#asset-rules)): `listing.json`,
+  `editorial/` and every media file.
 - *Build examples*: the same for `plugins/examples/*` (never published).
 - *actionlint and zizmor* (workflow *Workflow lint*).
 
