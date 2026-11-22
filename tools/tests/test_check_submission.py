@@ -427,6 +427,83 @@ class Storefront(unittest.TestCase):
         self.assertIn("listing.json/promo/en", self.repo.stdout)
 
 
+class Dependabot(unittest.TestCase):
+    """Dependabot may bump the website's npm dependencies and nothing else."""
+    BOT, BOT_ID = "dependabot[bot]", 49699333
+    PACKAGE = {"name": "site", "private": True, "scripts": {"build": "astro build"},
+               "dependencies": {"astro": "7.4.12"}, "devDependencies": {"@playwright/test": "1.60.0"}}
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Repo(self.tmp.name)
+        self.repo.write("website/package.json", self.PACKAGE)
+        self.repo.write("website/package-lock.json", {"lockfileVersion": 3, "packages": {"node_modules/astro": {"version": "7.4.12"}}})
+        self.repo.write(".github/workflows/ci.yml", "on: push\n")
+        self.repo.write("tools/x.sh", "true\n")
+        self.repo.write("website/src/page.ts", "export {};\n")
+        self.repo.base = self.repo.commit("website")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def bump(self, **changes):
+        doc = json.loads(json.dumps(self.PACKAGE))
+        doc["dependencies"]["astro"] = "7.5.0"
+        doc.update(changes)
+        self.repo.write("website/package.json", doc)
+        self.repo.write("website/package-lock.json", {"lockfileVersion": 3, "packages": {"node_modules/astro": {"version": "7.5.0"}}})
+
+    def test_a_website_dependency_bump_passes(self):
+        self.bump()
+        status, err = self.repo.check(self.BOT, self.BOT_ID)
+        self.assertEqual(status, 0, err)
+        self.assertNotIn("not valid JSON", err)
+
+    def test_any_other_path_stays_maintainer_only(self):
+        for path, content in ((".github/workflows/ci.yml", "on: pull_request\n"), ("tools/x.sh", "false\n"),
+                              ("website/src/page.ts", "export const x = 1;\n"), ("website/.npmrc", "x\n"),
+                              ("first-party/Cargo.lock", "x\n"), ("registry/revocations.json", "[]\n")):
+            with self.subTest(path=path):
+                self.repo.git("reset", "-q", "--hard", self.repo.base)
+                self.bump()
+                self.repo.write(path, content)
+                status, err = self.repo.check(self.BOT, self.BOT_ID)
+                self.assertEqual(status, 1, err)
+                self.assertIn(f"{path}: only a maintainer may change this", err)
+
+    def test_package_json_may_change_only_dependency_versions(self):
+        for changes in ({"scripts": {"build": "astro build", "postinstall": "curl x | sh"}},
+                        {"dependencies": {"astro": "7.5.0", "left-pad": "1.0.0"}},
+                        {"dependencies": {"astro": {"version": "7.5.0"}}},
+                        {"overrides": {"astro": "7.5.0"}}):
+            with self.subTest(changes=changes):
+                self.repo.git("reset", "-q", "--hard", self.repo.base)
+                self.bump(**changes)
+                status, err = self.repo.check(self.BOT, self.BOT_ID)
+                self.assertEqual(status, 1, err)
+                self.assertIn("website/package.json: Dependabot may change only the versions", err)
+
+    def test_adding_or_deleting_the_files_is_refused(self):
+        self.repo.git("rm", "-q", "website/package-lock.json")
+        status, err = self.repo.check(self.BOT, self.BOT_ID)
+        self.assertEqual(status, 1, err)
+        self.assertIn("website/package-lock.json: only a maintainer may change this", err)
+
+    def test_a_symlinked_lock_file_is_refused(self):
+        (self.repo.root / "website/package-lock.json").unlink()
+        (self.repo.root / "website/package-lock.json").symlink_to("package.json")
+        status, err = self.repo.check(self.BOT, self.BOT_ID)
+        self.assertEqual(status, 1, err)
+
+    def test_only_the_real_dependabot_account(self):
+        self.bump()
+        for author, author_id in ((self.BOT, 1), ("dependabot", self.BOT_ID), (AUTHOR, AUTHOR_ID)):
+            with self.subTest(author=author, author_id=author_id):
+                status, err = self.repo.check(author, author_id)
+                self.assertEqual(status, 1, err)
+                self.assertIn("website/package.json: only a maintainer may change this", err)
+
+
 class MirrorsDeckPilot(unittest.TestCase):
     def test_first_party_publisher_is_reserved(self):
         module = load_script()
