@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="studio-token" content="__STUDIO_TOKEN__">
+  <title>Marketplace Studio</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script type="module" src="/static/app.js"></script>
+</head>
+<body>
+  <header class="top">
+    <h1>Marketplace Studio</h1>
+    <p id="status" class="meta">Loading…</p>
+  </header>
+  <nav class="tabs" role="tablist" aria-label="Studio">
+    <button role="tab" id="tab-editorial" aria-controls="panel-editorial" aria-selected="true">Editorial</button>
+    <button role="tab" id="tab-listings" aria-controls="panel-listings" aria-selected="false" tabindex="-1">Listings</button>
+    <button role="tab" id="tab-preview" aria-controls="panel-preview" aria-selected="false" tabindex="-1">Preview</button>
+    <button role="tab" id="tab-validate" aria-controls="panel-validate" aria-selected="false" tabindex="-1">Validate</button>
+    <button role="tab" id="tab-pr" aria-controls="panel-pr" aria-selected="false" tabindex="-1">Prepare PR</button>
+  </nav>
+  <main>
+    <section id="panel-editorial" role="tabpanel" aria-labelledby="tab-editorial"></section>
+    <section id="panel-listings" role="tabpanel" aria-labelledby="tab-listings" hidden></section>
+    <section id="panel-preview" role="tabpanel" aria-labelledby="tab-preview" hidden></section>
+    <section id="panel-validate" role="tabpanel" aria-labelledby="tab-validate" hidden></section>
+    <section id="panel-pr" role="tabpanel" aria-labelledby="tab-pr" hidden></section>
+  </main>
+  <div id="announce" class="visually-hidden" aria-live="polite"></div>
+</body>
+</html>

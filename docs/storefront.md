@@ -118,8 +118,8 @@ Rules (the schema plus `tools/check-storefront.py`):
 ## Editorial (`editorial/editorial.json`, owner only)
 
 Schema: [`schemas/inputs/editorial.schema.json`](../schemas/inputs/editorial.schema.json).
-Normally edited with Marketplace Studio (`tools/studio/`, docs/studio.md
-once it lands), but it is a plain JSON file.
+Normally edited with [Marketplace Studio](studio.md) (`tools/studio/`), but
+it is a plain JSON file.
 
 ```json
 {
