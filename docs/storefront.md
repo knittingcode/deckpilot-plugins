@@ -77,19 +77,31 @@ Rules (the schema plus `tools/check-storefront.py`):
   highlights (title 1-40, text 1-160), alt 1-250, caption 1-120, release
   note 1-2000 per version.
 - All text is Unicode NFC, without control characters (line breaks only in
-  the description and release notes), bidi overrides or isolates
-  (U+202A-202E, U+2066-2069) or zero-width characters.
+  the description and release notes) and without invisible or format
+  characters: soft hyphen (U+00AD), CGJ (U+034F), Arabic letter mark
+  (U+061C), Hangul fillers (U+115F, U+1160, U+3164, U+FFA0), Mongolian
+  vowel separator (U+180E), zero-width and directional marks
+  (U+200B-200F), line and paragraph separators (U+2028, U+2029), bidi
+  embeddings, overrides and isolates (U+202A-202E, U+2066-2069), word
+  joiner and invisible operators (U+2060-2064), variation selectors
+  (U+FE00-FE0F, U+E0100-E01EF), BOM (U+FEFF), interlinear annotations
+  (U+FFF9-FFFB) and tag characters (U+E0000-E007F).
 - `description_md` and release notes use a **safe markdown subset**:
   paragraphs, line breaks, `-` or `*` lists one level deep, `**bold**`,
-  `_emphasis_`, `` `code` `` and `[text](https://…)` links. No headings,
-  images, tables or raw HTML (`<` followed by a letter, `/`, `!` or `?` is
-  refused). Anything else is shown as literal text.
+  `_emphasis_`, `` `code` `` and links written exactly as
+  `[text](https://…)` (no title, no spaces or parentheses in the URL, the
+  URL rules below). No headings, images, tables, raw HTML (`<` followed by
+  a letter, `/`, `!` or `?`), autolinks (`<https://…>`), reference links or
+  definitions; any other `](` is refused. Anything else is shown as
+  literal text.
 - A `release_notes` key must be a recorded version
   (`registry/plugins/<id>/versions/<v>.json`). Release notes can be added
   after the version is published, without a new version.
 - `links` (`documentation`, `support`, `changelog`): `https:` only, at most
-  512 characters, no user information, no port, no IP address, a lowercase
-  ASCII host, no punycode (`xn--`). A `deckpilot.*` plugin links only to
+  512 characters, no user information, no port, no IP address in any
+  notation (dotted, integer, octal, hex, a numeric last label), a lowercase
+  ASCII host, no punycode (`xn--`), no dot segments in the path (`/./`,
+  `/../`, `%2e`). A `deckpilot.*` plugin links only to
   `github.com/knittingcode/…` or `knittingcode.github.io`. Clients show the
   full URL before opening it in the browser.
 - `file` is `media/<name>` with `<name>` matching `[a-z0-9-]{1,48}` and the
@@ -193,13 +205,16 @@ For every file:
   (APNG, animated WebP).
 - **No metadata**, for privacy: PNG `tEXt`, `zTXt`, `iTXt`, `eXIf` and
   `tIME`, JPEG APP1 (Exif, XMP) and APP13 (IPTC), and WebP `EXIF` and `XMP`
-  are refused. ICC profiles up to 64 KiB are fine. Most export dialogs have
+  are refused. ICC profiles up to 64 KiB are fine in PNG and WebP. Most export dialogs have
   a "strip metadata" option; `exiftool -all= file` or `oxipng --strip safe`
   also work.
 - PNG: only the chunks `IHDR`, `PLTE`, `tRNS`, `IDAT`, `IEND`, `sRGB`,
   `gAMA`, `cHRM`, `iCCP`, `pHYs`; valid CRCs; nothing after `IEND`.
 - JPEG: baseline or progressive, 8-bit, grayscale or YCbCr (1 or 3
-  components; no CMYK).
+  components; no CMYK). The only other segments are a plain JFIF APP0
+  (without a thumbnail) and the 12-byte Adobe APP14, besides the tables
+  and scans: no comment (COM), no other APPn (so no ICC profile in a JPEG;
+  use PNG or WebP for one), and nothing after the end marker (EOI).
 - WebP: the RIFF size equals the file length; one VP8 or VP8L image, with
   an optional VP8X header, alpha and ICC profile.
 
@@ -208,7 +223,7 @@ Where the rules are enforced:
 | Check | Where | Runs on |
 | --- | --- | --- |
 | Paths: images only in `registry/plugins/<id>/media/` and `editorial/media/`, `.png`/`.webp`/`.jpg` only, no SVG | `tools/check-hygiene.py` | every push and pull request (*Repository hygiene*) |
-| Contributor media only in their own namespace's `media/`; `editorial/` owner only; the listing schema of the base commit | `tools/check-submission.py` | pull requests (*Submission rules*) |
+| Contributor media only in their own namespace's `media/`; `media/` holds only regular image files; no symlinks; `editorial/` owner only; the listing schema of the base commit | `tools/check-submission.py` | pull requests (*Submission rules*) |
 | Schemas, cross-file rules, text, URL and markdown rules, header-level media checks (format, dimensions, aspect, bytes, chunks, metadata, animation) | `tools/check-storefront.py` (`tools/validate.sh storefront`) | *Validate registry* |
 | The same schemas with the pinned `schema-check` | `tools/validate.sh storefront` | *Validate registry* |
 | **Authoritative**: every rule, including a full decode of every image | `deckpilot-registry storefront check` (DeckPilot) | *Validate registry*, once `tools/deckpilot.env` pins a DeckPilot commit that has it; until then the step says that it was skipped |
@@ -216,6 +231,11 @@ Where the rules are enforced:
 The header-level check never decodes pixels, so a file with valid headers
 and corrupt image data passes it; the Rust check and the client's decoder
 refuse it.
+
+These checks run the pull request's own code (a pull request can change
+`tools/` and the workflow), so for a pull request from outside they are
+advisory; the gate is the owner's code-owner review that the ruleset on
+`main` requires.
 
 ## Workflow
 

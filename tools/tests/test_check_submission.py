@@ -384,6 +384,39 @@ class Storefront(unittest.TestCase):
         self.assertEqual(status, 1)
         self.assertIn("media/icon.svg: SVG is refused in the storefront", err)
 
+    def test_symlinks_are_refused(self):
+        os.symlink("../plugin.json", self.repo.root / "registry/plugins/octo-tools.clock/listing.json")
+        os.makedirs(self.repo.root / "plugins/octo-tools.clock", exist_ok=True)
+        os.symlink("/etc/passwd", self.repo.root / "plugins/octo-tools.clock/build.json")
+        status, err = self.repo.check()
+        self.assertEqual(status, 1)
+        self.assertIn("registry/plugins/octo-tools.clock/listing.json: symlinks are refused", err)
+        self.assertIn("plugins/octo-tools.clock/build.json: symlinks are refused", err)
+
+    def test_symlinked_media_is_refused_even_for_the_owner(self):
+        os.makedirs(self.repo.root / "editorial/media")
+        os.symlink("../../README.md", self.repo.root / "editorial/media/banner.png")
+        status, err = self.repo.check(author=OWNER, author_id=OWNER_ID)
+        self.assertEqual(status, 1)
+        self.assertIn("editorial/media/banner.png: symlinks are refused", err)
+        self.assertIn("editorial/media/banner.png: media/ holds only regular files", err)
+
+    def test_non_image_files_in_media_are_refused(self):
+        for path in ("registry/plugins/octo-tools.clock/media/notes.txt",
+                     "registry/plugins/octo-tools.clock/media/payload.zip",
+                     "registry/plugins/octo-tools.clock/media/icon.png.exe",
+                     "registry/plugins/octo-tools.clock/media/.hidden"):
+            with self.subTest(path=path):
+                self.repo.write(path, "x")
+                status, err = self.repo.check()
+                self.assertEqual(status, 1)
+                self.assertIn(f"{path}: media/ holds only regular files", err)
+                (self.repo.root / path).unlink()
+        self.repo.write("editorial/media/readme.md", "x")
+        status, err = self.repo.check(author=OWNER, author_id=OWNER_ID)
+        self.assertEqual(status, 1)
+        self.assertIn("editorial/media/readme.md: media/ holds only regular files", err)
+
     def test_promotional_listing_text_is_flagged_for_review(self):
         self.repo.write("registry/plugins/octo-tools.clock/listing.json",
                         self.listing(promo={"en": "The official clock, by the DeckPilot team"}))

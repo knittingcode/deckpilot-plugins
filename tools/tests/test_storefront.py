@@ -161,6 +161,35 @@ class Media(unittest.TestCase):
         self.refused(images.jpeg(64, 64)[:-2], "EOI")
         self.refused(images.jpeg(64, 64)[:30], "truncated")
 
+    def test_jpeg_segments_allow_list(self):
+        self.ok(images.jpeg(64, 64, app=[(0xEE, b"Adobe\0\x64\0\0\0\0\x01")]), "jpg", 64, 64)
+        for app, text in [
+            ([(0xFE, b"hello")], "COM"),
+            ([(0xE2, b"ICC_PROFILE\0\x01\x01" + b"x" * 64)], "APP2"),
+            ([(0xE0, b"JFXX\0\x10" + b"\0" * 8)], "APP0"),
+            ([(0xEE, b"Adobe\0\x64\0\0\0\0\x01extra")], "APP14"),
+            ([(0xEC, b"Ducky\0")], "APP12"),
+        ]:
+            with self.subTest(text=text):
+                self.refused(images.jpeg(64, 64, app=app), text)
+        # A JFIF APP0 with a thumbnail.
+        jfif_thumb = images.jpeg(64, 64).replace(
+            b"\xff\xe0\x00\x10JFIF\0\x01\x01\0\0\x01\0\x01\0\0",
+            b"\xff\xe0\x00\x16JFIF\0\x01\x01\0\0\x01\0\x01\x01\x02" + b"\0" * 6)
+        self.refused(jfif_thumb, "APP0")
+
+    def test_nothing_after_eoi(self):
+        zip_tail = b"PK\x03\x04" + b"\0" * 26 + b"PK\x05\x06" + b"\0" * 18
+        self.refused(images.jpeg(64, 64) + zip_tail, "after the JPEG EOI")
+        self.refused(images.jpeg(64, 64) + b"\0", "after the JPEG EOI")
+
+    def test_jpeg_scans(self):
+        # Stuffed bytes, restart markers and a second (progressive) scan with tables between.
+        body = images.jpeg(64, 64, sof=0xC2)[:-2]
+        scan2 = (images.segment(0xC4, b"\x00" + b"\x01" * 16 + b"\x00")
+                 + images.segment(0xDA, b"\x01\x01\x00\x00\x3f\x00"))
+        self.ok(body + b"\xff\x00\x12\xff\xd0\x34" + scan2 + b"\x56\xff\x00" + b"\xff\xd9", "jpg", 64, 64)
+
     def test_pixel_budget(self):
         self.refused(images.webp(4096, 4096), "pixels")
 
@@ -198,10 +227,29 @@ class TextRules(unittest.TestCase):
     def test_text(self):
         self.assertEqual(storefront.check_text("Pogoda na Twoim decku"), [])
         self.assertEqual(storefront.check_text("Café"), ["is not Unicode NFC"])
-        for bad in ("a‮b", "a⁦b", "a​b", "a\x07b", "a\nb"):
+        for bad in ("a\u202eb", "a\u2066b", "a\u200bb", "a\x07b", "a\nb", "a\U000e0041b", "a\u00adb", "a\u2028b",
+                    "a\u2029b", "a\u115fb", "a\u1160b", "a\u3164b", "a\uffa0b", "a\ufe00b", "a\ufe0fb", "a\U000e0100b",
+                    "a\U000e01efb", "a\u200eb", "a\u200fb", "a\u061cb", "a\u180eb", "a\u034fb", "a\ufff9b", "a\ufffbb"):
             with self.subTest(text=repr(bad)):
                 self.assertTrue(storefront.check_text(bad))
         self.assertEqual(storefront.check_text("a\nb", multiline=True), [])
+        self.assertTrue(storefront.check_text("a\u2028b", multiline=True))
+        self.assertEqual(storefront.check_text("Zażółć gęślą jaźń \U0001F642"), [])
+
+    def test_checker_and_schema_refuse_the_same_characters(self):
+        schemas = storefront.SchemaSet(REPO / "schemas")
+        line = {"listing_version": 1, "id": "acme.clock"}
+        points = (list(range(0x0, 0x250)) + list(range(0x2000, 0x2070)) + list(range(0xFE00, 0xFE10))
+                  + list(range(0xE0000, 0xE0080)) + [0x034F, 0x061C, 0x115F, 0x1160, 0x180E, 0x3164, 0xFFA0, 0xFEFF,
+                                                      0xFFF9, 0xFFFA, 0xFFFB, 0xFFFC, 0xE0100, 0xE01EF, 0xE01F0, 0x1F642])
+        for cp in points:
+            text = f"a{chr(cp)}b"
+            if cp == 0x0A or not storefront.unicodedata.is_normalized("NFC", text):
+                continue
+            with self.subTest(cp=f"U+{cp:04X}"):
+                by_checker = bool(storefront.check_text(text))
+                by_schema = bool(schemas.validate(dict(line, promo={"en": text}), storefront.LISTING_SCHEMA))
+                self.assertEqual(by_checker, by_schema)
 
     def test_urls(self):
         ok = "https://github.com/knittingcode/deckpilot-plugins/issues"
@@ -218,6 +266,15 @@ class TextRules(unittest.TestCase):
             ("https://xn--80ak6aa92e.com/", "punycode"),
             ("https://example.com/" + "a" * 520, "512"),
             ("https://example.com/a b", "spaces"),
+            ("https://0x7f.0.0.1/", "IP address"),
+            ("https://0177.0.0.1/", "IP address"),
+            ("https://2130706433.example.1/", "IP address"),
+            ("https://127.1/", "IP address"),
+            ("https://example.0x10/", "IP address"),
+            ("https://example.com/a/./b", "dot segments"),
+            ("https://example.com/a/../b", "dot segments"),
+            ("https://example.com/a/%2e%2e/b", "dot segments"),
+            ("https://example.com/a/%2E/b", "dot segments"),
         ]:
             with self.subTest(url=url):
                 self.assertTrue(any(text in p for p in storefront.check_url(url, "acme.clock")),
@@ -239,6 +296,17 @@ class TextRules(unittest.TestCase):
             ("- a\n  - b", "nested list"),
             ("[x](javascript:alert(1))", "https"),
             ("[x](http://example.com)", "https"),
+            ('[x](https://example.com "title")', "not exactly"),
+            ("[x](https://example.com/a(b))", "not exactly"),
+            ("[x]( https://example.com)", "not exactly"),
+            ("[x](<https://example.com>)", "not exactly"),
+            ("[x](https://example.com/a b)", "not exactly"),
+            ("[x](//example.com)", "not exactly"),
+            ("](javascript:alert(1))", "not exactly"),
+            ("[x]: https://example.com", "reference definition"),
+            ("[x][ref]", "reference link"),
+            ("<https://example.com>", "autolink"),
+            ("[x](https://127.1/)", "IP address"),
         ]:
             with self.subTest(md=md):
                 self.assertTrue(any(text in p for p in storefront.check_markdown(md)), storefront.check_markdown(md))

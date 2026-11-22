@@ -76,14 +76,14 @@
       "enum": ["en", "pl"]
     },
     "line": {
-      "description": "One line of plain text: no control characters (no line break), no bidi overrides or isolates, no zero-width characters. NFC is checked by tools/check-storefront.py.",
+      "description": "One line of plain text: no control characters (no line break) and no invisible or format characters (soft hyphen, CGJ, Hangul fillers, zero-width and directional marks, U+2028/2029, bidi embeddings, overrides and isolates, variation selectors, BOM, interlinear annotations, tag characters; the same set as tools/lib/storefront.py FORBIDDEN_CHARS). NFC is checked by tools/check-storefront.py.",
       "type": "string",
-      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\u200B-\\u200D\\u202A-\\u202E\\u2060\\u2066-\\u2069\\uFEFF]*$"
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\u00AD\\u034F\\u061C\\u115F\\u1160\\u180E\\u200B-\\u200F\\u2028\\u2029\\u202A-\\u202E\\u2060-\\u2064\\u2066-\\u2069\\u3164\\uFE00-\\uFE0F\\uFEFF\\uFFA0\\uFFF9-\\uFFFB\udb40\udc00-\udb40\udc7f\udb40\udd00-\udb40\uddef]*$"
     },
     "multiline": {
-      "description": "Text that may hold line breaks (\\n) but no other control character, no bidi overrides or isolates, no zero-width characters.",
+      "description": "Text that may hold line breaks (\\n) but no other control character and none of the invisible or format characters of `line`.",
       "type": "string",
-      "pattern": "^[^\\u0000-\\u0009\\u000B-\\u001F\\u007F-\\u009F\\u200B-\\u200D\\u202A-\\u202E\\u2060\\u2066-\\u2069\\uFEFF]*$"
+      "pattern": "^[^\\u0000-\\u0009\\u000B-\\u001F\\u007F-\\u009F\\u00AD\\u034F\\u061C\\u115F\\u1160\\u180E\\u200B-\\u200F\\u2028\\u2029\\u202A-\\u202E\\u2060-\\u2064\\u2066-\\u2069\\u3164\\uFE00-\\uFE0F\\uFEFF\\uFFA0\\uFFF9-\\uFFFB\udb40\udc00-\udb40\udc7f\udb40\udd00-\udb40\uddef]*$"
     },
     "promoText": {
       "type": "object", "required": ["en"], "propertyNames": { "$ref": "#/$defs/locale" },

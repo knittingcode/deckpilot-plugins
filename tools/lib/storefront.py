@@ -23,6 +23,7 @@ directory off it).
 import ipaddress
 import json
 import re
+import socket
 import struct
 import unicodedata
 import zlib
@@ -380,38 +381,68 @@ def _webp(data):
     return width, height
 
 
+# The only JPEG segments besides the frame, tables and scans: a plain JFIF
+# APP0 (version, density, no thumbnail: 14 bytes) and Adobe's fixed-length
+# APP14 (12 bytes). Every other APPn (Exif, XMP, ICC, IPTC, JFXX
+# thumbnails, vendor data) and COM is refused, and nothing may follow EOI
+# (an EOI+ZIP polyglot fails). DeckPilot's media rules are the same.
+JPEG_TABLES = {0xC4, 0xDB, 0xDD, 0xCC}  # DHT, DQT, DRI, DAC
+
+
+def _jpeg_app(marker, body):
+    if marker == 0xE0:
+        if body.startswith(b"JFIF\0") and len(body) == 14 and body[12] == 0 and body[13] == 0:
+            return
+        raise MediaError("JPEG APP0 other than a plain JFIF header (no thumbnail) is refused")
+    if marker == 0xEE:
+        if body.startswith(b"Adobe") and len(body) == 12:
+            return
+        raise MediaError("JPEG APP14 other than the 12-byte Adobe segment is refused")
+    if marker == 0xE1:
+        raise MediaError("JPEG APP1 (Exif or XMP metadata) is refused (privacy)")
+    if marker == 0xED:
+        raise MediaError("JPEG APP13 (IPTC metadata) is refused (privacy)")
+    raise MediaError(f"JPEG APP{marker - 0xE0} is refused (only JFIF APP0 and Adobe APP14; no ICC, no metadata)")
+
+
 def _jpeg(data):
-    pos, size, icc = 2, None, 0
+    pos, size, scans = 2, None, 0
+    n = len(data)
     while True:
-        if pos + 4 > len(data):
-            raise MediaError("truncated JPEG")
+        if pos + 2 > n:
+            raise MediaError("truncated JPEG (no EOI)")
         if data[pos] != 0xFF:
             raise MediaError("JPEG marker expected")
-        while pos < len(data) and data[pos] == 0xFF:
+        while pos < n and data[pos] == 0xFF:
             pos += 1
+        if pos >= n:
+            raise MediaError("truncated JPEG")
         marker = data[pos]
         pos += 1
-        if marker == 0xD8 or marker == 0xD9:
-            raise MediaError("misplaced JPEG SOI/EOI")
-        if 0xD0 <= marker <= 0xD7 or marker == 0x01:
-            continue
+        if marker == 0xD9:
+            if size is None or not scans:
+                raise MediaError("JPEG without a frame and a scan")
+            if pos != n:
+                raise MediaError(f"{n - pos} byte(s) after the JPEG EOI are refused")
+            return size
+        if marker == 0xD8 or 0xD0 <= marker <= 0xD7 or marker == 0x01:
+            raise MediaError(f"misplaced JPEG marker FF{marker:02X}")
+        if pos + 2 > n:
+            raise MediaError("truncated JPEG segment")
         (length,) = struct.unpack(">H", data[pos:pos + 2])
         body = data[pos + 2:pos + length]
         if length < 2 or len(body) != length - 2:
             raise MediaError("truncated JPEG segment")
-        if marker == 0xE1:
-            raise MediaError("JPEG APP1 (Exif or XMP metadata) is refused (privacy)")
-        if marker == 0xED:
-            raise MediaError("JPEG APP13 (IPTC metadata) is refused (privacy)")
-        if marker == 0xE2 and body.startswith(b"ICC_PROFILE\0"):
-            icc += len(body)
-            if icc > MAX_ICC:
-                raise MediaError("ICC profile larger than 64 KiB")
-        if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
-            if marker not in (0xC0, 0xC2):
-                raise MediaError("JPEG must be baseline or progressive")
+        pos += length
+        if 0xE0 <= marker <= 0xEF:
+            _jpeg_app(marker, body)
+        elif marker == 0xFE:
+            raise MediaError("JPEG COM (comment) segments are refused")
+        elif marker in (0xC0, 0xC2):
             if size is not None:
                 raise MediaError("second JPEG frame header")
+            if len(body) < 6:
+                raise MediaError("truncated JPEG frame header")
             precision, height, width, components = struct.unpack(">BHHB", body[:6])
             if precision != 8:
                 raise MediaError(f"{precision}-bit JPEG is refused (8-bit only)")
@@ -420,13 +451,26 @@ def _jpeg(data):
             if width == 0 or height == 0:
                 raise MediaError("JPEG without dimensions in its frame header")
             size = (width, height)
-        if marker == 0xDA:
+        elif 0xC0 <= marker <= 0xCF and marker not in JPEG_TABLES:
+            raise MediaError("JPEG must be baseline or progressive")
+        elif marker == 0xDA:
             if size is None:
                 raise MediaError("JPEG scan before its frame header")
-            if not data.endswith(b"\xff\xd9"):
-                raise MediaError("JPEG does not end with EOI")
-            return size
-        pos += length
+            scans += 1
+            # Entropy-coded data: up to the next marker that is neither a
+            # stuffed 0xFF00 nor a restart marker.
+            while True:
+                nxt = data.find(b"\xff", pos)
+                if nxt < 0 or nxt + 1 >= n:
+                    raise MediaError("truncated JPEG scan (no EOI)")
+                follow = data[nxt + 1]
+                if follow == 0x00 or 0xD0 <= follow <= 0xD7 or follow == 0xFF:
+                    pos = nxt + 2 if follow != 0xFF else nxt + 1
+                    continue
+                pos = nxt
+                break
+        elif marker not in JPEG_TABLES and marker != 0xDC:
+            raise MediaError(f"JPEG segment FF{marker:02X} is not allowed")
 
 
 def inspect_media(data):
@@ -478,14 +522,29 @@ def check_asset(kind, data, extension):
 # Text, URL, markdown
 # --------------------------------------------------------------------------
 
-FORBIDDEN_CHARS = re.compile("[\u0000-\u0009\u000b-\u001f\u007f-\u009f​-‍‪-‮⁠"
-                             "⁦-⁩﻿]")
+# Refused in every text (the schemas' `line` and `multiline` patterns are
+# the same set): controls (line break only in multiline text), soft
+# hyphen, CGJ, Arabic letter mark, Hangul fillers, Mongolian vowel
+# separator, zero-width and directional marks, line/paragraph separators,
+# bidi embeddings, overrides and isolates, word joiner and invisible
+# operators, variation selectors, BOM, interlinear annotations, tag
+# characters.
+INVISIBLE = ("\u00ad\u034f\u061c\u115f\u1160\u180e\u200b-\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064"
+             "\u2066-\u2069\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff9-\ufffb\U000e0000-\U000e007f\U000e0100-\U000e01ef")
+FORBIDDEN_CHARS = re.compile("[\u0000-\u0009\u000b-\u001f\u007f-\u009f" + INVISIBLE + "]")
 MD_HTML = re.compile(r"<[A-Za-z/!?]")
 MD_HEADING = re.compile(r"^ {0,3}#{1,6}(\s|$)", re.M)
 MD_IMAGE = re.compile(r"!\[")
 MD_TABLE = re.compile(r"^\s*\|", re.M)
 MD_NESTED_LIST = re.compile(r"^(?: {2,}|\t)\s*[-*+]\s", re.M)
-MD_LINK = re.compile(r"\[([^\]\n]*)\]\(([^)\s]*)\)")
+# The only link form: [text](https://…) with no title, no parentheses or
+# spaces in the URL. Every other `](`, reference definitions, reference
+# links and autolinks are refused.
+MD_LINK_OPEN = re.compile(r"\]\(")
+MD_LINK_EXACT = re.compile(r"\]\((https://[^\s()<>\"'\\]*)\)")
+MD_REFERENCE = re.compile(r"^ {0,3}\[[^\]\n]+\]:", re.M)
+MD_REF_LINK = re.compile(r"\]\[")
+MD_AUTOLINK = re.compile(r"<[a-zA-Z][a-zA-Z0-9+.-]*:")
 PROMOTIONAL = re.compile(r"\bofficial\b|\bverified\b|\bdeckpilot\s+team\b", re.I)
 
 
@@ -497,6 +556,23 @@ def check_text(text, multiline=False):
     if bad:
         problems.append("holds a control, bidi-override or zero-width character")
     return problems
+
+
+def _ip_like(host):
+    """An IP address in any notation a resolver might accept: dotted quad,
+    integer, octal or hex parts (inet_aton), or a numeric or hex-like last label."""
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        pass
+    try:
+        socket.inet_aton(host)
+        return True
+    except OSError:
+        pass
+    last = host.rsplit(".", 1)[-1]
+    return last.isdigit() or bool(re.fullmatch(r"0x[0-9a-f]*", last))
 
 
 def check_url(url, plugin_id=None):
@@ -521,14 +597,14 @@ def check_url(url, plugin_id=None):
     if not re.fullmatch(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+", host or ""):
         problems.append("needs a lowercase ASCII host name")
     else:
-        try:
-            ipaddress.ip_address(host)
-            problems.append("must not be an IP address")
-        except ValueError:
-            if all(label.isdigit() for label in host.split(".")):
-                problems.append("must not be an IP address")
+        if _ip_like(host):
+            problems.append("must not be an IP address (in any notation)")
         if any(label.startswith("xn--") for label in host.split(".")):
             problems.append("must not be punycode (xn--)")
+    segments = parts.path.split("/")
+    if any(s in (".", "..") or re.fullmatch(r"(\.|%2e){1,2}", s, re.I) for s in segments) or re.search(
+            r"%2e", parts.path, re.I):
+        problems.append("must not hold dot segments (/./, /../, %2e)")
     if not re.fullmatch(r"[!#-~]*", url):
         problems.append("holds spaces or non-ASCII characters (percent-encode them)")
     if plugin_id and plugin_id.startswith("deckpilot."):
@@ -549,9 +625,20 @@ def check_markdown(text, plugin_id=None):
         problems.append("holds a table (not in the safe markdown subset)")
     if MD_NESTED_LIST.search(text):
         problems.append("holds a nested list (one level only)")
-    for m in MD_LINK.finditer(text):
-        for p in check_url(m.group(2), plugin_id):
-            problems.append(f"link {m.group(2)[:80]!r} {p}")
+    for m in MD_LINK_OPEN.finditer(text):
+        exact = MD_LINK_EXACT.match(text, m.start())
+        if not exact:
+            problems.append(f"link at character {m.start()} is not exactly [text](https://…) (no title, spaces "
+                            "or parentheses)")
+            continue
+        for p in check_url(exact.group(1), plugin_id):
+            problems.append(f"link {exact.group(1)[:80]!r} {p}")
+    if MD_REFERENCE.search(text):
+        problems.append("holds a link reference definition ([x]: …); only inline [text](https://…) links")
+    if MD_REF_LINK.search(text):
+        problems.append("holds a reference link ([text][ref]); only inline [text](https://…) links")
+    if MD_AUTOLINK.search(text):
+        problems.append("holds an autolink (<scheme:…>); only inline [text](https://…) links")
     return problems
 
 

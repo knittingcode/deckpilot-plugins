@@ -23,6 +23,9 @@ Reads both trees with git; never runs anything from the pull request.
   of the base (the head's while the base has none): it has no placement
   field. Listing text of a non-deckpilot plugin that says "official",
   "verified" or "DeckPilot team" is flagged in the job summary for review.
+  Symlinks (git mode 120000) are refused anywhere in a contributor's pull
+  request and in registry/ and editorial/ for everyone; a media/ directory
+  holds only regular <name>.(png|webp|jpg) files, for everyone.
 * Publisher records: github_id and login must be the pull request author's;
   a contributor cannot set "verified": true or take an existing namespace.
 * Reserved publishers: a contributor can never use a publisher id DeckPilot
@@ -101,6 +104,8 @@ BUNDLED_ONLY_IDS = BUNDLED_PLUGIN_IDS - OFFICIAL_MARKETPLACE_IDS
 PLUGIN_PATH = re.compile(r"^(?:registry/plugins|plugins)/([^/]+)/")
 SEMVER_CORE = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$")
 VERSION_PATH = re.compile(r"^registry/plugins/([^/]+)/versions/([^/]+)\.json$")
+ANY_MEDIA_PATH = re.compile(r"^(?:registry/plugins/[^/]+|editorial)/media/")
+MEDIA_FILE_PATH = re.compile(r"^(?:registry/plugins/[^/]+|editorial)/media/[a-z0-9-]{1,48}\.(?:png|webp|jpg)\Z")
 LISTING_PATH = re.compile(r"^registry/plugins/([^/]+)/listing\.json$")
 MEDIA_PATH = re.compile(r"^registry/plugins/([a-z0-9-]+)\.[^/]+/media/[a-z0-9-]{1,48}\.(png|webp|jpg)$")
 
@@ -190,6 +195,12 @@ def main():
     for line in git("diff", "--name-status", "--no-renames", f"{base}...{head}").decode().splitlines():
         status, path = line.split("\t", 1)
         changes.append((status[0], path))
+    # The new git mode of every changed path (120000: a symlink).
+    modes = {}
+    raw = git("diff", "--raw", "--no-renames", "-z", f"{base}...{head}").decode().split("\0")
+    for meta, path in zip(raw[0::2], raw[1::2]):
+        if meta.startswith(":"):
+            modes[path] = meta[1:].split()[1]
 
     # Namespaces the author owns: their publisher record at the base or head.
     own = set()
@@ -213,6 +224,21 @@ def main():
         if m and m.group(2) in own:
             continue
         problem(f"{path}: only a maintainer may change this (see CONTRIBUTING.md, 'What you may change')")
+
+    # Symlinks: never from a contributor; never in registry/ or editorial/.
+    for status, path in changes:
+        if status == "D" or modes.get(path) != "120000":
+            continue
+        if not maintainer or path.split("/", 1)[0] in ("registry", "editorial"):
+            problem(f"{path}: symlinks are refused")
+
+    # A media/ directory holds only regular image files, for everyone.
+    for status, path in changes:
+        if status == "D" or not ANY_MEDIA_PATH.match(path):
+            continue
+        if not MEDIA_FILE_PATH.match(path) or modes.get(path, "100644") != "100644":
+            problem(f"{path}: media/ holds only regular files named [a-z0-9-]{{1,48}}.png, .webp or .jpg "
+                    "(docs/storefront.md)")
 
     # Storefront media: only in the contributor's own media/ directories.
     if not maintainer:
