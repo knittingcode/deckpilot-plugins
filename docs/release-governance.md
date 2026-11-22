@@ -155,6 +155,20 @@ These stay enforced on top of the gate:
 | Variables `OFFICIAL_RELEASE_REQUIRE_REVIEWERS`, `OFFICIAL_RELEASE_REQUIRE_PREVENT_SELF_REVIEW` | unset |
 | Variable `OFFICIAL_RELEASE_ENABLED` | the owner's switch (`true` only when releases should run) |
 
+### Releases under the exception
+
+The settings above have been live since 2026-11-21: no required reviewer,
+administrators cannot bypass `official-release`, deployments come only
+from `deckpilot.*--v*` tags, and the reviewer variables are removed. The
+production key test passed (`official-test-sign.yml` run 44954714900,
+tag `deckpilot.publisher-test--v1`). On 2026-11-21 all nine official
+plugins were released, each signed by both keys:
+
+- `deckpilot.github` 0.2.1;
+- `deckpilot.gitlab`, `deckpilot.jira` and `deckpilot.notifications` 0.1.2;
+- `deckpilot.workflows`, `deckpilot.git`, `deckpilot.docker`,
+  `deckpilot.projects` and `deckpilot.workspace` 0.1.1.
+
 ### What threshold 2 still protects against
 
 - **One leaked key or secret.** A copy of one secret key file, one
@@ -256,8 +270,10 @@ Their status for a single maintainer:
 | M1, M2 and L6 to L9 (DeckPilot, #380): revocation, floors, audit | Fixed. Unchanged, and part of the compensating controls. |
 | Key custody (item K of DeckPilot's `publisher-review-request.md`) | Accepted risk (single maintainer). One person controls both keys, so there is no independent custody. |
 
-The privileged-kinds gate is a separate decision. It stays closed, and
-this page does not change its review request.
+The privileged-kinds gate is a separate decision. It opened on
+2026-11-21 for exactly the reviewed privileged policy, on the approved
+independent review and the owner's approval (DeckPilot's
+`publisher-review-request.md`). This page does not change either.
 
 ## Transition to team governance
 
