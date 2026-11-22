@@ -15,6 +15,7 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -22,6 +23,7 @@ import unittest
 from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parent.parent / "check-submission.py"
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 FIRST_PARTY_SCRIPT = Path(__file__).resolve().parent.parent / "check-first-party.py"
 AUTHOR, AUTHOR_ID = "octo", 4242
 OWNER, OWNER_ID = "knittingcode", 109468044
@@ -84,6 +86,7 @@ class Repo:
              "--author", author, "--author-id", str(author_id)],
             cwd=self.root, capture_output=True, text=True, env=env,
         )
+        self.stdout = result.stdout
         return result.returncode, result.stderr
 
 
@@ -261,6 +264,167 @@ class Maintainer(unittest.TestCase):
         (self.repo.root / "registry/plugins/deckpilot.weather/plugin.json").unlink()
         status, err = self.repo.check(author=OWNER, author_id=OWNER_ID)
         self.assertEqual(status, 0, err)
+
+
+# A PNG signature is enough here: check-submission.py looks at paths and
+# listing.json; the bytes are tools/check-storefront.py's.
+PNG = "\x89PNG\r\n"
+
+
+class Storefront(unittest.TestCase):
+    """docs/storefront.md: authors cannot place; media only in their own media/."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Repo(self.tmp.name)
+        shutil.copytree(REPO_ROOT / "schemas", self.repo.root / "schemas")
+        self.repo.write(f"registry/publishers/{AUTHOR}.json", publisher("octo-tools"))
+        self.repo.write("registry/plugins/octo-tools.clock/plugin.json", {"id": "octo-tools.clock"})
+        self.repo.base = self.repo.commit("schemas and a publisher on main")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def listing(self, **extra):
+        doc = {"listing_version": 1, "id": "octo-tools.clock", "promo": {"en": "A clock on a key"},
+               "icon": {"file": "media/icon.png"}}
+        doc.update(extra)
+        return doc
+
+    def test_contributor_listing_and_own_media_pass(self):
+        self.repo.write("registry/plugins/octo-tools.clock/listing.json", self.listing())
+        self.repo.write("registry/plugins/octo-tools.clock/media/icon.png", PNG)
+        self.repo.write("registry/plugins/octo-tools.clock/media/shot-1.webp", PNG)
+        status, err = self.repo.check()
+        self.assertEqual(status, 0, err)
+
+    def test_contributor_touching_editorial_is_refused(self):
+        for path in ("editorial/editorial.json", "editorial/media/banner.png", "editorial/README.md"):
+            with self.subTest(path=path):
+                self.repo.write(path, {"editorial_version": 1, "sections": []} if path.endswith(".json") else PNG)
+                status, err = self.repo.check()
+                self.assertEqual(status, 1)
+                self.assertIn(f"{path}: editorial/ (storefront placements: banners, collections, spotlights) "
+                              "is maintainer-only", err)
+                self.repo.git("rm", "-rq", "editorial")
+
+    def test_contributor_deleting_editorial_is_refused(self):
+        self.repo.write("editorial/editorial.json", {"editorial_version": 1, "sections": []})
+        self.repo.base = self.repo.commit("editorial on main")
+        (self.repo.root / "editorial/editorial.json").unlink()
+        status, err = self.repo.check()
+        self.assertEqual(status, 1)
+        self.assertIn("editorial/editorial.json: editorial/ (storefront placements", err)
+
+    def test_maintainer_may_change_editorial(self):
+        self.repo.write("editorial/editorial.json", {"editorial_version": 1, "sections": []})
+        self.repo.write("editorial/media/banner.webp", PNG)
+        status, err = self.repo.check(author=OWNER, author_id=OWNER_ID)
+        self.assertEqual(status, 0, err)
+
+    def test_placement_fields_in_a_listing_are_schema_errors(self):
+        for field, value in (("featured", True), ("order", 1), ("collection", "productivity"),
+                             ("collections", ["productivity"]), ("badges", ["official"])):
+            with self.subTest(field=field):
+                self.repo.write("registry/plugins/octo-tools.clock/listing.json", self.listing(**{field: value}))
+                status, err = self.repo.check()
+                self.assertEqual(status, 1)
+                self.assertIn(f"registry/plugins/octo-tools.clock/listing.json: /{field}: unknown field {field!r}", err)
+
+    def test_listing_schema_errors_are_reported(self):
+        self.repo.write("registry/plugins/octo-tools.clock/listing.json",
+                        self.listing(promo={"de": "Uhr"}, icon={"file": "media/icon.svg"}))
+        status, err = self.repo.check()
+        self.assertEqual(status, 1)
+        self.assertIn("/promo: 'en' is required", err)
+        self.assertIn("/promo/de: the key 'de' is not allowed here", err)
+        self.assertIn("/icon/file", err)
+
+    def test_listing_id_must_be_the_directory(self):
+        self.repo.write("registry/plugins/octo-tools.clock/listing.json", self.listing(id="octo-tools.timer"))
+        status, err = self.repo.check()
+        self.assertEqual(status, 1)
+        self.assertIn("id 'octo-tools.timer' is not the directory name octo-tools.clock", err)
+
+    def test_the_base_schema_is_used(self):
+        # A pull request cannot weaken the schema it is checked against (and
+        # changing schemas/ is maintainer-only anyway).
+        schema = json.loads((self.repo.root / "schemas/inputs/listing.schema.json").read_text())
+        schema["additionalProperties"] = True
+        self.repo.write("schemas/inputs/listing.schema.json", schema)
+        self.repo.write("registry/plugins/octo-tools.clock/listing.json", self.listing(featured=True))
+        status, err = self.repo.check()
+        self.assertEqual(status, 1)
+        self.assertIn("unknown field 'featured'", err)
+        self.assertIn("schemas/inputs/listing.schema.json: only a maintainer may change this", err)
+
+    def test_media_in_another_namespace_is_refused(self):
+        self.repo.write("registry/plugins/other.clock/media/icon.png", PNG)
+        status, err = self.repo.check()
+        self.assertEqual(status, 1)
+        self.assertIn("registry/plugins/other.clock/media/icon.png: media files go only in "
+                      "registry/plugins/<your namespace>.*/media/", err)
+
+    def test_media_outside_media_dirs_is_refused(self):
+        for path in ("registry/plugins/octo-tools.clock/icon.png", "plugins/octo-tools.clock/screenshot.jpg",
+                     "registry/plugins/octo-tools.clock/media/sub/icon.png",
+                     "registry/plugins/octo-tools.clock/media/Icon.PNG",
+                     "registry/plugins/octo-tools.clock/media/icon.jpeg",
+                     "registry/plugins/octo-tools.clock/media/anim.gif", "docs/shot.png"):
+            with self.subTest(path=path):
+                self.repo.write(path, PNG)
+                status, err = self.repo.check()
+                self.assertEqual(status, 1)
+                self.assertIn(f"{path}: media files go only in registry/plugins/<your namespace>.*/media/", err)
+                (self.repo.root / path).unlink()
+
+    def test_svg_is_refused_even_in_own_media(self):
+        self.repo.write("registry/plugins/octo-tools.clock/media/icon.svg", "<svg/>")
+        status, err = self.repo.check()
+        self.assertEqual(status, 1)
+        self.assertIn("media/icon.svg: SVG is refused in the storefront", err)
+
+    def test_symlinks_are_refused(self):
+        os.symlink("../plugin.json", self.repo.root / "registry/plugins/octo-tools.clock/listing.json")
+        os.makedirs(self.repo.root / "plugins/octo-tools.clock", exist_ok=True)
+        os.symlink("/etc/passwd", self.repo.root / "plugins/octo-tools.clock/build.json")
+        status, err = self.repo.check()
+        self.assertEqual(status, 1)
+        self.assertIn("registry/plugins/octo-tools.clock/listing.json: symlinks are refused", err)
+        self.assertIn("plugins/octo-tools.clock/build.json: symlinks are refused", err)
+
+    def test_symlinked_media_is_refused_even_for_the_owner(self):
+        os.makedirs(self.repo.root / "editorial/media")
+        os.symlink("../../README.md", self.repo.root / "editorial/media/banner.png")
+        status, err = self.repo.check(author=OWNER, author_id=OWNER_ID)
+        self.assertEqual(status, 1)
+        self.assertIn("editorial/media/banner.png: symlinks are refused", err)
+        self.assertIn("editorial/media/banner.png: media/ holds only regular files", err)
+
+    def test_non_image_files_in_media_are_refused(self):
+        for path in ("registry/plugins/octo-tools.clock/media/notes.txt",
+                     "registry/plugins/octo-tools.clock/media/payload.zip",
+                     "registry/plugins/octo-tools.clock/media/icon.png.exe",
+                     "registry/plugins/octo-tools.clock/media/.hidden"):
+            with self.subTest(path=path):
+                self.repo.write(path, "x")
+                status, err = self.repo.check()
+                self.assertEqual(status, 1)
+                self.assertIn(f"{path}: media/ holds only regular files", err)
+                (self.repo.root / path).unlink()
+        self.repo.write("editorial/media/readme.md", "x")
+        status, err = self.repo.check(author=OWNER, author_id=OWNER_ID)
+        self.assertEqual(status, 1)
+        self.assertIn("editorial/media/readme.md: media/ holds only regular files", err)
+
+    def test_promotional_listing_text_is_flagged_for_review(self):
+        self.repo.write("registry/plugins/octo-tools.clock/listing.json",
+                        self.listing(promo={"en": "The official clock, by the DeckPilot team"}))
+        self.repo.write("registry/plugins/octo-tools.clock/media/icon.png", PNG)
+        status, err = self.repo.check()
+        self.assertEqual(status, 0, err)
+        self.assertIn("### Listing text for review", self.repo.stdout)
+        self.assertIn("listing.json/promo/en", self.repo.stdout)
 
 
 class MirrorsDeckPilot(unittest.TestCase):

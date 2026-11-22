@@ -1,0 +1,201 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/knittingcode/deckpilot-plugins/schemas/inputs/editorial.schema.json",
+  "title": "editorial/editorial.json: the owner's storefront placements (sections, banners, collections)",
+  "description": "Maintainer-only (tools/check-submission.py, CODEOWNERS /editorial/; docs/storefront.md). Drafts and archived entries live here only: CI signs the published ones. Editorial supplies ids and copy, never trust data: no external URLs, no badges. Cross-field rules (unique ids, referenced plugins, collections and versions exist, windows end after they start, media files pass the media rules) are checked by tools/check-storefront.py and the pinned deckpilot-registry storefront check.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["editorial_version", "sections"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "editorial_version": { "const": 1 },
+    "sections": { "type": "array", "maxItems": 12, "items": { "$ref": "#/$defs/section" } },
+    "collections": { "type": "array", "maxItems": 16, "items": { "$ref": "#/$defs/collection" } }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,47}$" },
+    "pluginId": { "$ref": "https://knittingcode.github.io/deckpilot-plugins/v1/schemas/registry-plugin.schema.json#/$defs/pluginId" },
+    "version": { "$ref": "https://knittingcode.github.io/deckpilot-plugins/v1/schemas/plugin-manifest.schema.json#/$defs/semver" },
+    "category": { "type": "string", "pattern": "^[a-z-]{2,24}$" },
+    "status": { "enum": ["draft", "published", "archived"] },
+    "order": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+    "utc": {
+      "description": "UTC, whole seconds: 2026-12-01T00:00:00Z.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$"
+    },
+    "window": {
+      "description": "Shown from starts_at (inclusive) until ends_at (exclusive); either bound may be left out.",
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": { "starts_at": { "$ref": "#/$defs/utc" }, "ends_at": { "$ref": "#/$defs/utc" } }
+    },
+    "platforms": { "$ref": "https://github.com/knittingcode/deckpilot-plugins/schemas/inputs/listing.schema.json#/$defs/platforms" },
+    "plugins": { "type": "array", "minItems": 1, "maxItems": 24, "uniqueItems": true, "items": { "$ref": "#/$defs/pluginId" } },
+    "locale": { "$ref": "https://github.com/knittingcode/deckpilot-plugins/schemas/inputs/listing.schema.json#/$defs/locale" },
+    "line": { "$ref": "https://github.com/knittingcode/deckpilot-plugins/schemas/inputs/listing.schema.json#/$defs/line" },
+    "title": {
+      "type": "object", "required": ["en"], "propertyNames": { "$ref": "#/$defs/locale" },
+      "additionalProperties": { "$ref": "#/$defs/line", "minLength": 1, "maxLength": 60 }
+    },
+    "body": {
+      "type": "object", "required": ["en"], "propertyNames": { "$ref": "#/$defs/locale" },
+      "additionalProperties": { "$ref": "#/$defs/line", "minLength": 1, "maxLength": 200 }
+    },
+    "cta": {
+      "type": "object", "required": ["en"], "propertyNames": { "$ref": "#/$defs/locale" },
+      "additionalProperties": { "$ref": "#/$defs/line", "minLength": 1, "maxLength": 24 }
+    },
+    "blurb": {
+      "type": "object", "required": ["en"], "propertyNames": { "$ref": "#/$defs/locale" },
+      "additionalProperties": { "$ref": "#/$defs/line", "minLength": 1, "maxLength": 160 }
+    },
+    "alt": { "$ref": "https://github.com/knittingcode/deckpilot-plugins/schemas/inputs/listing.schema.json#/$defs/altText" },
+    "file": {
+      "description": "A file in editorial/media/. PNG, WebP or JPEG only (SVG is refused).",
+      "type": "string",
+      "pattern": "^media/[a-z0-9-]{1,48}\\.(png|webp|jpg)$"
+    },
+    "artwork": {
+      "description": "Banner art (3:1). Alt text is required unless the art is marked decorative, which then has no alt.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file"],
+      "properties": {
+        "file": { "$ref": "#/$defs/file" },
+        "alt": { "$ref": "#/$defs/alt" },
+        "decorative": { "type": "boolean" }
+      },
+      "if": { "required": ["decorative"], "properties": { "decorative": { "const": true } } },
+      "then": { "not": { "required": ["alt"] } },
+      "else": { "required": ["alt"] }
+    },
+    "target": {
+      "description": "Where a banner leads, inside the Marketplace only. There is no external URL in editorial.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": { "type": { "enum": ["plugin", "collection", "category"] }, "id": { "type": "string" } },
+      "allOf": [
+        { "if": { "properties": { "type": { "const": "plugin" } } }, "then": { "properties": { "id": { "$ref": "#/$defs/pluginId" } } } },
+        { "if": { "properties": { "type": { "const": "collection" } } }, "then": { "properties": { "id": { "$ref": "#/$defs/id" } } } },
+        { "if": { "properties": { "type": { "const": "category" } } }, "then": { "properties": { "id": { "$ref": "#/$defs/category" } } } }
+      ]
+    },
+    "bannerItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "artwork", "target"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "title": { "$ref": "#/$defs/title" },
+        "body": { "$ref": "#/$defs/body" },
+        "artwork": { "$ref": "#/$defs/artwork" },
+        "target": { "$ref": "#/$defs/target" },
+        "cta": { "$ref": "#/$defs/cta" }
+      }
+    },
+    "section": {
+      "type": "object",
+      "required": ["id", "status", "kind", "order"],
+      "properties": {
+        "kind": { "enum": ["banner_carousel", "collection_row", "spotlight", "recently_added", "category_highlights", "catalog"] }
+      },
+      "allOf": [
+        { "if": { "required": ["kind"], "properties": { "kind": { "const": "banner_carousel" } } }, "then": { "$ref": "#/$defs/bannerCarousel" } },
+        { "if": { "required": ["kind"], "properties": { "kind": { "const": "collection_row" } } }, "then": { "$ref": "#/$defs/collectionRow" } },
+        { "if": { "required": ["kind"], "properties": { "kind": { "const": "spotlight" } } }, "then": { "$ref": "#/$defs/spotlight" } },
+        { "if": { "required": ["kind"], "properties": { "kind": { "const": "recently_added" } } }, "then": { "$ref": "#/$defs/recentlyAdded" } },
+        { "if": { "required": ["kind"], "properties": { "kind": { "const": "category_highlights" } } }, "then": { "$ref": "#/$defs/categoryHighlights" } },
+        { "if": { "required": ["kind"], "properties": { "kind": { "const": "catalog" } } }, "then": { "$ref": "#/$defs/catalog" } }
+      ]
+    },
+    "bannerCarousel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["items"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" }, "status": { "$ref": "#/$defs/status" }, "kind": { "const": "banner_carousel" },
+        "order": { "$ref": "#/$defs/order" }, "window": { "$ref": "#/$defs/window" }, "platforms": { "$ref": "#/$defs/platforms" },
+        "title": { "$ref": "#/$defs/title" },
+        "items": { "type": "array", "minItems": 1, "maxItems": 6, "items": { "$ref": "#/$defs/bannerItem" } }
+      }
+    },
+    "collectionRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["layout", "title", "plugins"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" }, "status": { "$ref": "#/$defs/status" }, "kind": { "const": "collection_row" },
+        "order": { "$ref": "#/$defs/order" }, "window": { "$ref": "#/$defs/window" }, "platforms": { "$ref": "#/$defs/platforms" },
+        "layout": { "enum": ["cards", "compact"] },
+        "title": { "$ref": "#/$defs/title" },
+        "description": { "$ref": "#/$defs/body" },
+        "plugins": { "$ref": "#/$defs/plugins" }
+      }
+    },
+    "spotlight": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["plugin", "headline"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" }, "status": { "$ref": "#/$defs/status" }, "kind": { "const": "spotlight" },
+        "order": { "$ref": "#/$defs/order" }, "window": { "$ref": "#/$defs/window" }, "platforms": { "$ref": "#/$defs/platforms" },
+        "plugin": { "$ref": "#/$defs/pluginId" },
+        "version": { "$ref": "#/$defs/version" },
+        "headline": { "$ref": "#/$defs/title" },
+        "body": { "$ref": "#/$defs/body" }
+      }
+    },
+    "recentlyAdded": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["limit", "title"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" }, "status": { "$ref": "#/$defs/status" }, "kind": { "const": "recently_added" },
+        "order": { "$ref": "#/$defs/order" }, "window": { "$ref": "#/$defs/window" }, "platforms": { "$ref": "#/$defs/platforms" },
+        "limit": { "type": "integer", "minimum": 4, "maximum": 24 },
+        "title": { "$ref": "#/$defs/title" }
+      }
+    },
+    "categoryHighlights": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["categories"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" }, "status": { "$ref": "#/$defs/status" }, "kind": { "const": "category_highlights" },
+        "order": { "$ref": "#/$defs/order" }, "window": { "$ref": "#/$defs/window" }, "platforms": { "$ref": "#/$defs/platforms" },
+        "title": { "$ref": "#/$defs/title" },
+        "categories": {
+          "type": "array", "minItems": 1, "maxItems": 12,
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["id"],
+            "properties": { "id": { "$ref": "#/$defs/category" }, "blurb": { "$ref": "#/$defs/blurb" } }
+          }
+        }
+      }
+    },
+    "catalog": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" }, "status": { "$ref": "#/$defs/status" }, "kind": { "const": "catalog" },
+        "order": { "$ref": "#/$defs/order" }, "window": { "$ref": "#/$defs/window" }, "platforms": { "$ref": "#/$defs/platforms" },
+        "title": { "$ref": "#/$defs/title" }
+      }
+    },
+    "collection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "status", "order", "title", "plugins"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" }, "status": { "$ref": "#/$defs/status" },
+        "order": { "$ref": "#/$defs/order" }, "window": { "$ref": "#/$defs/window" }, "platforms": { "$ref": "#/$defs/platforms" },
+        "title": { "$ref": "#/$defs/title" },
+        "description": { "$ref": "#/$defs/body" },
+        "plugins": { "$ref": "#/$defs/plugins" }
+      }
+    }
+  }
+}

@@ -1,0 +1,124 @@
+{
+  "$schema": "../schemas/inputs/editorial.schema.json",
+  "editorial_version": 1,
+  "sections": [
+    {
+      "id": "launch",
+      "status": "published",
+      "kind": "banner_carousel",
+      "order": 10,
+      "window": {
+        "starts_at": "2026-12-01T00:00:00Z",
+        "ends_at": "2027-01-15T00:00:00Z"
+      },
+      "platforms": [
+        "macos",
+        "windows",
+        "linux"
+      ],
+      "items": [
+        {
+          "id": "weather-banner",
+          "title": {
+            "en": "Know before you go",
+            "pl": "Sprawdź, zanim wyjdziesz"
+          },
+          "body": {
+            "en": "Weather and air quality on your keys."
+          },
+          "artwork": {
+            "file": "media/weather-banner.webp"
+          },
+          "target": {
+            "type": "plugin",
+            "id": "deckpilot.weather"
+          },
+          "cta": {
+            "en": "See plugin"
+          }
+        }
+      ]
+    },
+    {
+      "id": "focus",
+      "status": "published",
+      "kind": "collection_row",
+      "order": 20,
+      "layout": "cards",
+      "title": {
+        "en": "Stay focused"
+      },
+      "description": {
+        "en": "Timers and reminders."
+      },
+      "plugins": [
+        "deckpilot.pomodoro",
+        "deckpilot.break-reminder"
+      ]
+    },
+    {
+      "id": "spot-memory",
+      "status": "draft",
+      "kind": "spotlight",
+      "order": 30,
+      "plugin": "deckpilot.memory",
+      "version": "0.1.0",
+      "headline": {
+        "en": "New: Memory"
+      },
+      "body": {
+        "en": "Notes on a key."
+      }
+    },
+    {
+      "id": "new",
+      "status": "published",
+      "kind": "recently_added",
+      "order": 40,
+      "limit": 8,
+      "title": {
+        "en": "Recently added"
+      }
+    },
+    {
+      "id": "cats",
+      "status": "published",
+      "kind": "category_highlights",
+      "order": 50,
+      "categories": [
+        {
+          "id": "monitoring",
+          "blurb": {
+            "en": "Watch what matters."
+          }
+        }
+      ]
+    },
+    {
+      "id": "all",
+      "status": "published",
+      "kind": "catalog",
+      "order": 100,
+      "title": {
+        "en": "All plugins"
+      }
+    }
+  ],
+  "collections": [
+    {
+      "id": "productivity",
+      "status": "published",
+      "order": 10,
+      "title": {
+        "en": "Productivity"
+      },
+      "description": {
+        "en": "Plugins for focused work."
+      },
+      "plugins": [
+        "deckpilot.pomodoro",
+        "deckpilot.memory"
+      ]
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# validate.sh [registry|examples|all]   (default: all)
+# validate.sh [registry|examples|storefront|all]   (default: all)
 #
 # What validate.yml runs, also locally (after tools/build-cli.sh):
 #
@@ -28,6 +28,17 @@
 #      and every package matches its pins. The keys and the output are scratch.
 # examples  plugins/examples/*: builds each example from source.json and runs
 #   step 5 on a registry holding only it. Examples are never published.
+# storefront  registry/plugins/*/listing.json, their media/ and editorial/
+#   (docs/storefront.md):
+#   1. tools/check-storefront.py: the input schemas, the cross-file, text,
+#      URL and markdown rules, and a header-level check of every media file.
+#   2. The same schemas with the pinned schema-check (the reference JSON
+#      Schema implementation), on the committed files and on the fixtures of
+#      tools/tests/test_storefront.py, so both implementations agree.
+#   3. `deckpilot-registry storefront check --dir .` (DeckPilot WP1: full
+#      decode of every asset, the authoritative rules) when the pinned CLI
+#      has it; until tools/deckpilot.env pins it, this step says so and only
+#      1 and 2 run.
 #
 # Runs plugin build scripts: never run it where a secret is available.
 . "$(dirname "$0")/lib/common.sh"
@@ -218,10 +229,40 @@ validate_examples() {
   done
 }
 
+validate_storefront() {
+  note "storefront inputs (header-level)"
+  python3 -I "$REPO_ROOT/tools/check-storefront.py" --root "$REPO_ROOT"
+
+  note "storefront schemas with the pinned schema-check"
+  local inputs=https://github.com/knittingcode/deckpilot-plugins/schemas/inputs
+  local listings=()
+  while IFS= read -r -d '' f; do listings+=("$f"); done < <(
+    find "$REPO_ROOT/registry/plugins" -mindepth 2 -maxdepth 2 -name listing.json -type f -print0 2>/dev/null | sort -z)
+  if [ "${#listings[@]}" -gt 0 ]; then
+    "$SCHEMA_CHECK" --schemas "$REPO_ROOT/schemas" "$inputs/listing.schema.json" "${listings[@]}"
+  fi
+  if [ -f "$REPO_ROOT/editorial/editorial.json" ]; then
+    "$SCHEMA_CHECK" --schemas "$REPO_ROOT/schemas" "$inputs/editorial.schema.json" "$REPO_ROOT/editorial/editorial.json"
+  fi
+  STOREFRONT_SCHEMA_CHECK=$SCHEMA_CHECK python3 -I "$REPO_ROOT/tools/tests/test_storefront.py" 2>"$VAL/storefront-tests.log" ||
+    { cat "$VAL/storefront-tests.log" >&2; die "the storefront schema fixtures disagree (log above)"; }
+
+  if "$CLI" help 2>&1 | grep -Eq '^[[:space:]]*storefront check'; then
+    note "deckpilot-registry storefront check (authoritative)"
+    "$CLI" storefront check --dir "$REPO_ROOT"
+    summary "Storefront: \`deckpilot-registry storefront check\` of the pinned DeckPilot passed (full decode)." ""
+  else
+    local why="the pinned deckpilot-registry (DeckPilot ${DECKPILOT_COMMIT:0:12}) has no 'storefront check'"
+    note "$why: ran the JSON-schema and header-level checks only (no full decode of media); the authoritative check runs once tools/deckpilot.env pins DeckPilot's storefront tooling"
+    summary "Storefront: $why, so only the JSON-schema and header-level checks ran (no full decode of media). The authoritative check runs once \`tools/deckpilot.env\` pins DeckPilot's storefront tooling." ""
+  fi
+}
+
 case $what in
   registry) validate_registry ;;
   examples) validate_examples ;;
-  all) validate_registry; validate_examples ;;
-  *) die "usage: validate.sh [registry|examples|all]" ;;
+  storefront) validate_storefront ;;
+  all) validate_registry; validate_examples; validate_storefront ;;
+  *) die "usage: validate.sh [registry|examples|storefront|all]" ;;
 esac
 note "validation passed"

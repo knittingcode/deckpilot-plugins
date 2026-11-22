@@ -9,6 +9,9 @@
 /registry/              @knittingcode
 /registry/publishers/   @knittingcode
 /registry/revocations.json @knittingcode
+# Storefront placements (banners, collections, spotlights): maintainer-only
+# (tools/check-submission.py; docs/storefront.md).
+/editorial/             @knittingcode
 /schemas/               @knittingcode
 /tools/                 @knittingcode
 /website/               @knittingcode

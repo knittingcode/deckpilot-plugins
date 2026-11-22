@@ -21,10 +21,20 @@ updater signature never passes as a registry signature (or the reverse).
 | root (v1 plan: 2 keys, threshold 1, U-10) | `keys/<n>.json` | `… role:keys version:<n>` | **offline only**: the owner's machine and an offline backup; never in GitHub | full registry trust until a DeckPilot release ships new roots |
 | index | `index/<seq>.json` | `… role:index seq:<seq> keys:<n>` | secret `REGISTRY_INDEX_KEY` of environment `registry-release` (release-tag runs only; tags are admin-only) | malicious listings until rotation; every use needs an admin-created release tag on a reviewed `main` commit whose required checks passed |
 | timestamp | `timestamp.json` | `… role:timestamp seq:<seq> keys:<n>` | secret `REGISTRY_TIMESTAMP_KEY` of `registry-release` and `registry-timestamp` | freezing or delaying only: it cannot point at an index the index key did not sign |
+| storefront (planned; signed by the **index** key, not a new role) | `storefront/<seq>.json`, which pins the listings, the editorial document and the media by sha256 and is bound to `index/<seq>.json` by path, sha256 and length | `… role:storefront seq:<seq> keys:<n>` | the index key, in the same `sign` job and environment | the index key's (above); a storefront by itself can only change copy, art and placements, never install, trust or badge data, which come only from the index and details ([storefront.md](storefront.md)) |
 
 A key set whose roles share a key is refused, so the unattended timestamp
 key can never act as the index key or a root. The index and timestamp
 thresholds are 1.
+
+The storefront (Marketplace listings, editorial placements and media) is
+not built or served yet: [storefront.md](storefront.md) has the inputs and
+the rollout. It adds no role to the key set, because clients up to v0.12
+refuse a key set with an unknown field; it is signed by the index key under
+its own exact trusted comment, so an index signature never passes as a
+storefront signature or the reverse, and old clients never request it.
+Editorial is maintainer-only input (`editorial/`), and a storefront can
+only name plugins that the verified index already lists.
 
 ## What a client checks
 
@@ -153,9 +163,14 @@ they are enforced offline from then on.
 
 ## Current status
 
-No production keys exist. The first key set must be made with
-`keyset init --first-party` ([production-readiness.md](production-readiness.md)
-§2.4). `keys/` is empty, `registry-release` and
-`registry-timestamp` do not exist, and the public site serves only the
-Marketplace website and `/v1/README.txt`. Registries signed with throwaway keys
-exist only inside CI jobs and are discarded.
+The production registry is live. Key set 1 comes from the key ceremony of
+2026-11-17 ([`keys/README.md`](../keys/README.md)): two offline roots
+(threshold 1), the index and timestamp keys as secrets of
+`registry-release` and `registry-timestamp`, and `first_party` authorizing
+the namespace `deckpilot`. The public site serves the Marketplace website
+around the signed `/v1/` (key set, timestamp, indexes, details), and the
+timestamp is re-signed daily. Only `deckpilot.*` plugins are signed
+(`tools/check-first-party-only.sh`; [third-party-readiness.md](third-party-readiness.md)).
+No storefront is signed or served yet ([storefront.md](storefront.md#rollout)).
+Registries signed with throwaway keys exist only inside CI jobs and are
+discarded.
