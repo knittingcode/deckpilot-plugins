@@ -1,0 +1,27 @@
+/* Discover wireframe (studio.py render_html): boxes, not the real client UI. */
+:root { color-scheme: light; --line: #c8c8c4; --muted: #5f6368; }
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.4 system-ui, sans-serif; color: #1d1d1f; background: #f4f4f2; }
+.bar { padding: 10px 16px; background: #fff; border-bottom: 1px solid var(--line); }
+.bar h1 { margin: 0; font-size: 16px; }
+main { padding: 16px; max-width: 1100px; margin: 0 auto; }
+.meta, .tag { color: var(--muted); font-size: 12px; margin: 2px 0; }
+.section { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin: 0 0 16px; }
+.section h2 { margin: 4px 0 8px; font-size: 18px; }
+.banners { list-style: none; display: flex; gap: 12px; overflow-x: auto; padding: 0; margin: 0; }
+.banner { flex: 0 0 min(100%, 720px); position: relative; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); }
+.banner img { width: 100%; height: auto; display: block; aspect-ratio: 3 / 1; object-fit: cover; background: #ddd; }
+.banner .copy { padding: 8px 12px; }
+.banner h3 { margin: 0; }
+.cta { font-weight: 600; }
+.cards { list-style: none; display: flex; gap: 10px; overflow-x: auto; padding: 0; margin: 0; }
+.card { flex: 0 0 220px; border: 1px solid var(--line); border-radius: 8px; padding: 10px; display: grid;
+  grid-template-columns: 40px 1fr; gap: 2px 8px; background: #fafafa; }
+.cards.compact { flex-direction: column; } .card.compact { flex: none; }
+.monogram { grid-row: span 3; width: 40px; height: 40px; border-radius: 8px; background: #d9e2f5; display: grid;
+  place-items: center; font-weight: 700; }
+.name { font-weight: 600; } .id { color: var(--muted); font-size: 11px; } .promo { grid-column: 2; font-size: 12px; }
+.categories { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.categories li { border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+.collections, .notes { background: #fff; border: 1px dashed var(--line); border-radius: 8px; padding: 8px 12px; margin-top: 16px; }
+.empty { padding: 24px; text-align: center; color: var(--muted); }
