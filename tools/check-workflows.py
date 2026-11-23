@@ -126,7 +126,34 @@ IF_CONDITION = re.compile(r"^(\s*)(?:-\s+)?if:\s*(.*(?:\n\1\s+.*)*)", re.M)
 STOREFRONT_VAR = "REGISTRY_STOREFRONT_ENABLED"
 STOREFRONT_WORKFLOW = "publish.yml"
 STOREFRONT_ENV_LINE = re.compile(r"^\s+REGISTRY_STOREFRONT_ENABLED:\s*\$\{\{\s*vars\.REGISTRY_STOREFRONT_ENABLED\s*\}\}\s*$")
-STOREFRONT_SIGN = re.compile(r"\bstorefront[ \t]+sign\b")
+STOREFRONT_SIGN = re.compile(r"\bstorefront\s+sign\b")
+
+
+def strip_comment(line):
+    """A YAML or shell comment: `#` at the start or after whitespace, outside
+    quotes (a ` #` inside a quoted string is not one)."""
+    quote = None
+    for i, c in enumerate(line):
+        if quote:
+            if c == quote:
+                quote = None
+            elif c == "\\" and quote == '"':
+                continue
+        elif c in "'\"":
+            quote = c
+        elif c == "#" and (i == 0 or line[i - 1] in " \t"):
+            return line[:i]
+    return line
+
+
+def normalized(text):
+    """The text the storefront rules match: comments stripped (quote-aware),
+    line continuations (`\\` + newline) joined, quotes removed, so
+    `"REGISTRY_STOREFRONT""_ENABLED"` or `storefront \\` + `sign` are
+    the words they spell."""
+    lines = [strip_comment(line) for line in text.splitlines()]
+    joined = re.sub(r"\\[ \t]*\n", " ", "\n".join(lines))
+    return re.sub(r"[\"']", "", joined)
 # The environments whose jobs hold signing keys: nothing compiles there.
 SIGNING_ENVIRONMENTS = {"registry-release", "registry-timestamp", "official-release"}
 
@@ -360,16 +387,18 @@ def main():
                 problems.append(f"{path}: the publisher key belongs to {PUBLISHER_WORKFLOW} and {TEST_WORKFLOW} only")
             elif name not in ALLOWED_SECRETS:
                 problems.append(f"{path}: secret {name} is not a registry role key")
-        for i, line in enumerate(code):
-            if STOREFRONT_VAR not in line:
-                continue
-            if path.name != STOREFRONT_WORKFLOW:
-                problems.append(f"{path}:{i + 1}: {STOREFRONT_VAR} belongs to {STOREFRONT_WORKFLOW} alone "
-                                "(the timestamp refresh keeps any storefront unchanged)")
-            elif not STOREFRONT_ENV_LINE.match(line):
-                problems.append(f"{path}:{i + 1}: {STOREFRONT_VAR} only as `{STOREFRONT_VAR}: "
-                                f"${{{{ vars.{STOREFRONT_VAR} }}}}` in a step's env (the owner's repository variable)")
-        if STOREFRONT_SIGN.search(body):
+        # The allowed env line is checked on the raw line; everything else on
+        # the normalized text, where a quoted or split name is the name.
+        storefront_text = normalized(text)
+        allowed = [ln for ln in lines if STOREFRONT_ENV_LINE.match(ln)]
+        uses = storefront_text.count(STOREFRONT_VAR)
+        if uses and path.name != STOREFRONT_WORKFLOW:
+            problems.append(f"{path}: {STOREFRONT_VAR} belongs to {STOREFRONT_WORKFLOW} alone "
+                            "(the timestamp refresh keeps any storefront unchanged)")
+        elif uses != 2 * len(allowed):
+            problems.append(f"{path}: {STOREFRONT_VAR} only as `{STOREFRONT_VAR}: "
+                            f"${{{{ vars.{STOREFRONT_VAR} }}}}` in a step's env (the owner's repository variable)")
+        if STOREFRONT_SIGN.search(storefront_text):
             problems.append(f"{path}: `storefront sign` in a workflow: only tools/publish-site.sh, in "
                             f"{STOREFRONT_WORKFLOW}'s sign job, signs a storefront")
         if re.search(r"^\s*secrets:\s*inherit\s*$", body, re.M):

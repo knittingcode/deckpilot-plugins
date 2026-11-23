@@ -61,6 +61,23 @@ case("storefront: set in a run line", workflow(step="      - run: REGISTRY_STORE
      False, "only as `REGISTRY_STOREFRONT_ENABLED", file="publish.yml")
 case("storefront: a workflow that signs a storefront itself",
      workflow(step="      - run: .work/bin/deckpilot-registry storefront sign --key k\n"), False, "only tools/publish-site.sh")
+# The review's bypasses (F4): each must fail.
+case("storefront: sign after a quoted ' #' on the same line",
+     workflow(step="      - run: echo \" #\"; .work/bin/deckpilot-registry storefront sign --key k\n"), False,
+     "only tools/publish-site.sh")
+case("storefront: the variable spelled in two quoted halves into GITHUB_ENV",
+     workflow(step="      - run: echo \"REGISTRY_STOREFRONT\"\"_ENABLED=true\" >> \"$GITHUB_ENV\"\n"), False,
+     "only as `REGISTRY_STOREFRONT_ENABLED", file="publish.yml")
+case("storefront: the same elsewhere", workflow(step="      - run: echo \"REGISTRY_STOREFRONT\"\"_ENABLED=true\" >> \"$GITHUB_ENV\"\n"),
+     False, "belongs to publish.yml alone", file="_site.yml")
+case("storefront: sign split by a line continuation",
+     workflow(step="      - run: |\n          .work/bin/deckpilot-registry storefront \\\n            sign --key k\n"), False,
+     "only tools/publish-site.sh")
+case("storefront: sign in single quotes", workflow(step="      - run: deckpilot-registry 'storefront' 'sign'\n"), False,
+     "only tools/publish-site.sh")
+case("storefront: the allowed line plus a second, literal use",
+     workflow(step=SF_ENV + "      - run: export REGISTRY_STOREFRONT_ENABLED=true\n"), False,
+     "only as `REGISTRY_STOREFRONT_ENABLED", file="publish.yml")
 case("storefront: prose in a comment is not a use", workflow(step="      # storefront sign, REGISTRY_STOREFRONT_ENABLED\n      - run: echo\n"),
      True, "1 workflow", file="_site.yml")
 case("a registry secret", workflow(step=env_step("secrets.REGISTRY_INDEX_KEY")), True)

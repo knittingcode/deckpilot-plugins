@@ -25,19 +25,22 @@
 #   - index, enabled: `storefront check` of registry/plugins/*/listing.json
 #     and editorial/, then after sign-index `storefront build` for the new
 #     seq and `storefront sign` with the same index key, in this job (sign
-#     re-checks what build wrote), before the timestamp; the live
-#     storefronts of the kept indexes and their files are carried over
-#     (build prunes the rest); verify-site --require-storefront.
+#     re-checks what build wrote), before the timestamp; verify-site
+#     --require-storefront. Nothing of the live site's storefront/ or
+#     media/ is carried over: clients only ever accept the new seq's.
 #   - index, disabled: as before: no storefront/ or media/ on the new site.
-#   - timestamp, always: the live storefront/ and media/ are kept byte for
-#     byte (as index/ and plugins/ are; checked), so a refresh never drops
-#     them, and verified as an existing client does when the live seq has
-#     a storefront.
-#   - Whenever verify-site runs with --require-storefront, the client state
-#     (--state) must then hold registry-storefront.json for that seq and
-#     storefront: the equivocation record clients keep beside
-#     registry-trust.json, carried from the live site's verification to the
-#     new site's like the rest of the state.
+#   - timestamp, always: the live seq's storefront, if it has one, must
+#     verify (verify-site --require-storefront on the mirror, or the refresh
+#     fails), and exactly it is kept, byte for byte: its envelope and
+#     signature, the documents it pins and the images they pin (checked).
+#     Nothing else under storefront/ or media/ is ever deployed again (the
+#     mirror fetches nothing else).
+#   - The client state (--state): registry-storefront.json, the
+#     equivocation record clients keep beside registry-trust.json, starts
+#     from the last verified deployment's (REGISTRY_MIN_STATE
+#     storefront_sha256, branch registry-state), so a storefront other than
+#     the recorded one for the same seq is refused; and every verify-site
+#     --require-storefront must leave the record of that seq's storefront.
 #
 # Keys come from the environment, never from files in the repository:
 #   REGISTRY_INDEX_KEY, REGISTRY_INDEX_KEY_PASSWORD           (index only)
@@ -108,6 +111,11 @@ live=$WORK/live
 rm -rf "$live" "$WORK/client-state"
 state=$("$REPO_ROOT/tools/mirror-site.sh" "$base_url" "$live")
 mkdir -p "$WORK/client-state"
+# The storefront the last verified deployment recorded, as the client's
+# equivocation record (registry-storefront.json: {seq, sha256}).
+if [ -n "${REGISTRY_MIN_STATE:-}" ] && jq -e '(.storefront_sha256 | type) == "string"' "$REGISTRY_MIN_STATE" > /dev/null 2>&1; then
+  jq '{seq, sha256: .storefront_sha256}' "$REGISTRY_MIN_STATE" > "$WORK/client-state/registry-storefront.json"
+fi
 live_storefront=()
 if [ "$state" = live ]; then
   live_seq=$(jq -er .seq "$live/site/v1/timestamp.json")
@@ -123,14 +131,25 @@ if [ "$state" = live ]; then
     cmp -s "$f" "$ws/site/v1/keys/$(basename "$f")" ||
       die "keys/$(basename "$f") differs from the live key set"
   done
-  carried=(index plugins)
-  # A refresh keeps the storefront; a publication only when it builds one.
-  if [ "$mode" = timestamp ] || [ "$storefront" = true ]; then
-    carried+=(storefront media)
-  fi
-  for d in "${carried[@]}"; do
+  for d in index plugins; do
     [ -d "$live/site/v1/$d" ] && cp -R "$live/site/v1/$d" "$ws/site/v1/"
   done
+  # A refresh keeps the live seq's storefront, verified above, and exactly
+  # the files it pins; a publication carries none.
+  if [ "$mode" = timestamp ] && [ ${#live_storefront[@]} -gt 0 ]; then
+    envelope=$live/site/v1/storefront/$live_seq.json
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      mkdir -p "$(dirname "$ws/site/v1/$f")"
+      cp "$live/site/v1/$f" "$ws/site/v1/$f"
+    done < <(
+      printf 'storefront/%s.json\nstorefront/%s.json.minisig\n' "$live_seq" "$live_seq"
+      jq -r '.listings[].ref.path, (.editorial.path // empty)' "$envelope" | while IFS= read -r doc; do
+        printf '%s\n' "$doc"
+        jq -r '[.. | objects | select((.sha256 | type) == "string" and (.format | type) == "string" and (.length | type) == "number")]
+          | unique_by(.sha256) | .[] | "media/\(.sha256).\(.format)"' "$live/site/v1/$doc"
+      done)
+  fi
   cp "$live/site/v1/timestamp.json" "$live/site/v1/timestamp.json.minisig" "$ws/site/v1/"
 else
   [ "$mode" = index ] || die "no live registry to refresh"
@@ -168,14 +187,17 @@ if [ "$mode" = index ]; then
   "$CLI" build-index --dir "$ws" --source-commit "$(git -C "$REPO_ROOT" rev-parse HEAD)"
   # shellcheck disable=SC2046
   "$CLI" sign-index --dir "$ws" $(key_args index.key REGISTRY_INDEX_KEY_PASSWORD)
+  rm -f "$secrets/index.key"
   if [ "$storefront" = true ]; then
     seq=$(find "$ws/site/v1/index" -name '[1-9]*.json' -exec basename {} .json \; | sort -n | tail -1)
     "$CLI" storefront build --dir "$ws" --seq "$seq"
-    # The index role signs the storefront, with its own trusted comment.
+    # The index role signs the storefront, with its own trusted comment;
+    # the key is on disk for this one command only.
+    write_key REGISTRY_INDEX_KEY index.key
     # shellcheck disable=SC2046
     "$CLI" storefront sign --dir "$ws" --seq "$seq" $(key_args index.key REGISTRY_INDEX_KEY_PASSWORD)
+    rm -f "$secrets/index.key"
   fi
-  rm -f "$secrets/index.key"
 else
   write_key REGISTRY_TIMESTAMP_KEY timestamp.key
 fi

@@ -134,14 +134,35 @@ jobs:
         run: tools/validate.sh storefront
       - name: Tests of the storefront in the signing pipeline (off is the base's site; on, refresh, revert)
         env:
-          BASELINE_REF: ${{ github.event.pull_request.base.sha }}
+          # A pull request's base; on main, the commit before the push.
+          BASELINE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: tools/tests/test-storefront-site.sh
       - name: Tests of the registry freshness guard with the pinned tools (a timestamp refresh keeps the storefront)
         run: tools/tests/test-registry-freshness.sh --with-cli
-      - name: Storefront preview (static wireframe of Discover; Marketplace Studio)
+      # Read-only, no secret. pending/: this pull request's placements
+      # against registry/ at HEAD (Studio's labelled --pending mode: recorded
+      # releases count whether or not the live index has them yet; not what
+      # clients see). live/: what clients would see, against the live signed
+      # index, when it can be mirrored anonymously and verified.
+      - name: Storefront preview (static wireframes of Discover; Marketplace Studio; pending and live views)
         run: |
-          python3 -I tools/studio/studio.py render-preview --out "$RUNNER_TEMP/storefront-preview"
-          cat "$RUNNER_TEMP/storefront-preview/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          out=$RUNNER_TEMP/storefront-preview
+          python3 -I tools/studio/studio.py render-preview --pending --out "$out/pending"
+          {
+            echo "#### Pending view (artifact storefront-preview, pending/): this pull request's placements against registry/ at HEAD; pending releases count, not what clients see"
+            echo
+            cat "$out/pending/summary.md"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if python3 -I -c 'import sys; sys.path.insert(0, "tools/studio"); import studio; s = studio.mirror_live("."); sys.exit(0 if s["mirrored"] and s["state"] == "live" and s["verified"] else 1)'; then
+            python3 -I tools/studio/studio.py render-preview --out "$out/live"
+            {
+              echo "#### Live view (artifact storefront-preview, live/): against the live signed index, mirrored anonymously and verified"
+              echo
+              cat "$out/live/summary.md"
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "#### Live view: not rendered (the live registry could not be mirrored and verified); the pending view above is the preview" >> "$GITHUB_STEP_SUMMARY"
+          fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: storefront-preview

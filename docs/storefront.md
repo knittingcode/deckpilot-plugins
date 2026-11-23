@@ -287,17 +287,25 @@ the throwaway-key tests are `tools/tests/test-storefront-site.sh` and
 | Where | Variable unset or `false` | `REGISTRY_STOREFRONT_ENABLED=true` |
 | --- | --- | --- |
 | *Validate registry* (every pull request) | the pinned `deckpilot-registry storefront check`, then a throwaway-key `storefront build`, `storefront sign`, `verify-site --require-storefront` of the sources | the same |
-| *Publish* `sign` (a `registry--v…` or plugin tag) | build-index, sign-index, timestamp: no `storefront/` or `media/` on the new site (turning the variable off withdraws the storefront at the next publication) | `storefront check`; build-index, sign-index; `storefront build` and `storefront sign` (the index key, its own trusted comment `role:storefront`) for the new seq; timestamp; `verify-site --require-storefront`. The live storefronts of the indexes kept (the newest and 10 before it) and their files are carried over; `storefront build` prunes the rest |
+| *Publish* `sign` (a `registry--v…` or plugin tag) | build-index, sign-index, timestamp: no `storefront/` or `media/` on the new site (turning the variable off withdraws the storefront at the next publication) | `storefront check`; build-index, sign-index; `storefront build` and `storefront sign` (the index key, on disk for that command only; its own trusted comment `role:storefront`) for the new seq; timestamp; `verify-site --require-storefront`. Nothing of the live site's `storefront/` or `media/` is carried over: clients accept only the new seq's |
 | *Publish* `verify-published` | as before | the live `storefront/` and `media/`, fetched anonymously, are the signed bytes; `verify-site --require-storefront` |
-| Daily refresh and every Pages deploy (`_site.yml`) | the mirror takes the storefront of every kept index, its documents and images (each against its pinned sha256 and length); a refresh changes `timestamp.json` only (checked: `index/`, `plugins/`, `storefront/`, `media/` byte for byte) and verifies the live seq's storefront as a client would | the same (the refresh never looks at the variable) |
+| Daily refresh and every Pages deploy (`_site.yml`) | the mirror takes the **live seq's** storefront only, its documents and images (each against its pinned sha256 and length, within the budgets above, checked on the declared lengths before anything is fetched), never another seq's; it must verify (`verify-site --require-storefront`) or the run fails, nothing re-signed; with the last verified deployment of that seq on the branch `registry-state` (`storefront_sha256`), it must be exactly that storefront, or absent when none was; a refresh changes `timestamp.json` only (checked: `index/`, `plugins/`, `storefront/`, `media/` byte for byte) | the same (the refresh never looks at the variable) |
 | Freshness monitor (`check-freshness.sh`) | when the live seq has a storefront: its signature, documents and images are all served as pinned | the same |
 
 Whenever `verify-site --require-storefront` runs with a client state
 (`--state`), that state must then record the storefront it accepted
-(`registry-storefront.json`, beside `registry-trust.json`): the live site's
-verification records the live seq's storefront, and the new site is
-verified against that state, so a refresh can never sign a different
-storefront for the same seq.
+(`registry-storefront.json`, beside `registry-trust.json`). That record
+starts from the last verified deployment's (`storefront_sha256` in
+`state.json` on the branch `registry-state`, which `tools/registry-state.sh`
+records with every deployment and never changes for a seq), the live
+site's verification checks against it, and the new site is verified
+against that state, so a refresh can never sign a different storefront for
+the same seq, nor drop one.
+
+With the variable off, the site a publication signs is the one it signed
+before storefronts, whatever the live site holds: an unsigned file under
+`storefront/` or `media/` is never fetched, carried or deployed, and a live
+seq's storefront that does not verify fails the run instead.
 
 ## Rollout
 

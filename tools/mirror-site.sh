@@ -3,12 +3,13 @@
 #
 # Copies the live signed registry (BASE_URL/v1/...) into DIR/site/v1: every
 # key set, the timestamp, the newest index and the 10 before it, and every
-# detail those indexes pin; and the storefront of each of those indexes, if
-# it has one (storefront/<seq>.json and its signature, docs/storefront.md),
+# detail those indexes pin; and the storefront of the live seq only, if it
+# has one (storefront/<seq>.json and its signature, docs/storefront.md),
 # with every listing and editorial document it pins and every image those
 # documents pin (media/<sha256>.<png|webp|jpg>), each checked against its
-# pinned sha256 and length. A daily timestamp refresh redeploys exactly
-# this mirror, so nothing the grammar leaves out survives it. Prints `live`
+# pinned sha256 and length, within the storefront's budgets. Nothing is
+# deployed from this mirror before verify-site --require-storefront has
+# accepted that storefront; no other storefront file is ever fetched. Prints `live`
 # or `none` (no timestamp served: no registry was ever published). Only the
 # registry's own path grammar is fetched, and the result is data:
 # tools/publish-site.sh runs `verify-site` on it with the committed roots
@@ -43,18 +44,38 @@ GRAMMAR="^((timestamp\.json|keys/[1-9][0-9]*\.json|index/[1-9][0-9]*\.json|plugi
 # in_grammar PATH: whether the mirror may fetch PATH.
 in_grammar() { [[ $1 =~ $GRAMMAR ]]; }
 
+# The storefront's budgets (docs/storefront.md), checked on the declared
+# lengths before anything is fetched, so an unsigned document cannot make
+# the mirror download more: per file (an envelope or listing 64 KiB, the
+# editorial document 128 KiB, an image 1 MiB), per document (a listing's
+# images 8 MiB, the editorial's 16 MiB), and in all (256 listings, 1024
+# images, 256 MiB).
+MAX_LISTINGS=256 MAX_IMAGES=1024 MAX_TOTAL=$((256 * 1048576))
+max_bytes() {
+  case $1 in
+    media/*) echo 1048576 ;;
+    storefront/editorial/*) echo 131072 ;;
+    storefront/*.minisig) echo 4096 ;;
+    storefront/*) echo 65536 ;;
+    *) echo 4194304 ;;
+  esac
+}
+
 # get PATH [optional]: fetch BASE_URL/v1/PATH into the mirror. With
 # `optional`, a 404 returns 1; anything else that fails is fatal.
 get() {
-  local path=$1 code max=4194304
+  local path=$1 code max
   in_grammar "$path" || die "refusing to mirror $path"
-  # An image is at most 1 MiB (docs/storefront.md).
-  [[ $path == media/* ]] && max=1048576
+  max=$(max_bytes "$path")
   mkdir -p "$(dirname "$site/$path")"
   local attempt
   for attempt in 1 2 3 4 5 6; do
+    local rc=0
     code=$(curl -sS --proto "$proto" --max-filesize "$max" -o "$site/$path" -w '%{http_code}' \
-      "$base/v1/$path") || code=000
+      "$base/v1/$path") || rc=$?
+    # Over the size limit (curl: maximum file size exceeded) is not transient.
+    if [ "$rc" = 63 ]; then rm -f "$site/$path"; die "the live $path is over its $max-byte limit"; fi
+    [ "$rc" = 0 ] || code=000
     case $code in
       200) return 0 ;;
       404) rm -f "$site/$path"; [ "${2:-}" = optional ] && return 1; die "$path is missing on the live site" ;;
@@ -101,22 +122,39 @@ pinned() {
   local path=$1 sha=$2 length=$3
   in_grammar "$path" || die "refusing to mirror $path"
   [[ $sha =~ ^[0-9a-f]{64}$ && $length =~ ^[1-9][0-9]{0,7}$ ]] || die "a storefront pins $path with a bad sha256 or length"
+  [ "$length" -le "$(max_bytes "$path")" ] || die "a storefront pins $path with $length bytes, over its $(max_bytes "$path")-byte limit"
   [ "$(basename "$path" | sed 's/\.[a-z]*$//')" = "$sha" ] || die "a storefront pins $path, which is not named by its sha256 $sha"
   [ -f "$site/$path" ] || get "$path"
   [ "$(shasum -a 256 "$site/$path" | cut -d' ' -f1)" = "$sha" ] && [ "$(wc -c < "$site/$path" | tr -d ' ')" = "$length" ] ||
     die "the live $path is not the file its storefront pins (sha256 $sha, $length bytes)"
 }
 
-# storefront SEQ: storefront/SEQ.json, if the live site has one, with its
-# signature, the documents it pins and the images those pin.
+# storefront SEQ: storefront/SEQ.json of the live seq, if the live site has
+# one, with its signature, the documents it pins and the images those pin;
+# nothing of any other seq (clients accept only the live seq's storefront,
+# and nothing is mirrored that is not verified before it is deployed:
+# tools/publish-site.sh and _site.yml run verify-site --require-storefront
+# on the mirror). With REGISTRY_MIN_STATE of the same seq recording the
+# storefront deployed (`storefront_sha256`: its sha256, or null for none),
+# the live one must be exactly that one, or absent when none was.
 storefront() {
-  local s=$1 path sha length doc
-  get "storefront/$s.json" optional || return 0
+  local s=$1 path sha length doc docs images=0 total=0 have=""
+  if get "storefront/$s.json" optional; then
+    have=$(shasum -a 256 "$site/storefront/$s.json" | cut -d' ' -f1)
+  fi
+  if [ -n "$min_state" ] && jq -e --argjson s "$s" '.seq == $s and has("storefront_sha256")' "$min_state" > /dev/null; then
+    local want
+    want=$(jq -r '.storefront_sha256 // ""' "$min_state")
+    [ "$have" = "$want" ] || die "the live storefront/$s.json is $([ -n "$have" ] && echo "sha256 $have" || echo absent), but the last verified deployment of seq $s had $([ -n "$want" ] && echo "sha256 $want" || echo none) (branch registry-state); refusing to build on it"
+  fi
+  [ -n "$have" ] || return 0
+  [ "$(wc -c < "$site/storefront/$s.json" | tr -d ' ')" -le 65536 ] || die "the live storefront/$s.json is over 64 KiB"
   get "storefront/$s.json.minisig"
-  local docs
   jq -e 'type == "object" and (.listings | type) == "array"' "$site/storefront/$s.json" > /dev/null 2>&1 &&
     docs=$(jq -r '[.listings[].ref, (.editorial // empty)] | .[] | [.path, .sha256, (.length | tostring)] | @tsv' \
       "$site/storefront/$s.json") || die "the live storefront/$s.json is not a storefront envelope"
+  [ "$(jq '.listings | length' "$site/storefront/$s.json")" -le "$MAX_LISTINGS" ] ||
+    die "the live storefront/$s.json lists more than $MAX_LISTINGS listings"
   while IFS=$'\t' read -r path sha length; do
     [ -n "$path" ] || continue
     pinned "$path" "$sha" "$length"
@@ -126,6 +164,18 @@ storefront() {
       doc=$(jq -r '[.. | objects | select((.sha256 | type) == "string" and (.format | type) == "string" and (.length | type) == "number")]
         | unique_by(.sha256) | .[] | ["media/\(.sha256).\(.format)", .sha256, (.length | tostring)] | @tsv' "$site/$path") ||
       die "the live $path is not a JSON document"
+    # The document's budget, on the declared lengths, before any fetch.
+    local n=0 bytes=0 budget=$((8 * 1048576))
+    [[ $path == storefront/editorial/* ]] && budget=$((16 * 1048576))
+    while IFS=$'\t' read -r _ _ length; do
+      [ -n "$length" ] || continue
+      [[ $length =~ ^[1-9][0-9]{0,7}$ ]] || die "$path pins an image with a bad length"
+      n=$((n + 1)) bytes=$((bytes + length))
+    done <<< "$doc"
+    [ "$bytes" -le "$budget" ] || die "$path pins $bytes bytes of images, over its $budget-byte budget"
+    images=$((images + n)) total=$((total + bytes))
+    [ "$images" -le "$MAX_IMAGES" ] || die "the live storefront/$s.json pins more than $MAX_IMAGES images"
+    [ "$total" -le "$MAX_TOTAL" ] || die "the live storefront/$s.json pins more than $MAX_TOTAL bytes of images"
     while IFS=$'\t' read -r path sha length; do
       [ -n "$path" ] || continue
       pinned "$path" "$sha" "$length"
@@ -142,10 +192,10 @@ while [ "$s" -ge 1 ] && [ "$s" -gt $((seq - 11)) ]; do
     jq -r '.plugins[]?.detail.path' "$site/index/$s.json" | while read -r detail; do
       [ -f "$site/$detail" ] || get "$detail"
     done
-    storefront "$s"
   elif [ "$s" -eq "$seq" ]; then
     die "the live timestamp names index/$seq.json, which is missing"
   fi
   s=$((s - 1))
 done
+storefront "$seq"
 echo live

@@ -10,10 +10,17 @@
 #   - tools/check-freshness.sh: enough validity, too little, expired, a
 #     published release missing from the index, drafts ignored; a storefront
 #     whose images or documents are not all served as pinned.
-#   - the storefront in the mirror (docs/storefront.md): the storefront of
-#     every kept index, its documents and images, byte for byte; the path
-#     grammar refuses media/../x, uppercase hex and .svg, and a pinned file
-#     that is missing or has other bytes fails the mirror.
+#   - the storefront in the mirror (docs/storefront.md): the live seq's
+#     storefront, its documents and images, byte for byte, and nothing of an
+#     older seq (an unsigned older storefront pinning HTML as an image is
+#     never fetched); the path grammar refuses media/../x, uppercase hex
+#     and .svg; a pinned file that is missing or has other bytes, an image
+#     over 1 MiB, a listing over its 8 MiB, an envelope with too many
+#     listings or over 64 KiB fail before anything more is fetched; with a
+#     recorded state of the same seq, the live storefront must be the
+#     recorded one, or absent when none was;
+#   - tools/registry-state.sh records the seq's storefront sha256 (or null)
+#     and refuses another one for the same seq.
 # Regression tests of the launch failures: a redeploy that could replace
 # the signed registry with a stale CDN copy, or with no registry at all.
 #
@@ -119,42 +126,63 @@ sha() { shasum -a 256 "$1" | cut -d' ' -f1; }
 len() { wc -c < "$1" | tr -d ' '; }
 printf 'icon bytes' > "$work/icon"; icon_sha=$(sha "$work/icon")
 printf 'banner bytes' > "$work/banner"; banner_sha=$(sha "$work/banner")
-# sf [ICON_SHA] [ICON_FORMAT] [EDITORIAL_PATH]: a live storefront of seq 4
-# and of seq 3 (unsigned: the mirror verifies hashes, verify-site the rest),
-# a listing whose icon is ICON_SHA.ICON_FORMAT and an editorial document
-# whose banner is a WebP image.
+# envelope SEQ LISTING_JSON EDITORIAL_JSON [EDITORIAL_PATH]: storefront/SEQ.json
+# pinning the two documents (each written content-addressed).
+envelope() {
+  local seq=$1 l=$2 e=$3 epath=${4:-} lsha esha
+  lsha=$(sha "$l") esha=$(sha "$e")
+  mkdir -p "$www/v1/storefront/editorial" "$www/v1/storefront/listings/deckpilot.memory"
+  cp "$l" "$www/v1/storefront/listings/deckpilot.memory/$lsha.json"
+  cp "$e" "$www/v1/storefront/editorial/$esha.json"
+  jq -n --argjson seq "$seq" --arg l "storefront/listings/deckpilot.memory/$lsha.json" --arg lsha "$lsha" \
+    --argjson ln "$(len "$l")" --arg e "${epath:-storefront/editorial/$esha.json}" --arg esha "$esha" --argjson en "$(len "$e")" \
+    '{_type: "deckpilot-registry-storefront", seq: $seq, listings: [{id: "deckpilot.memory", ref: {path: $l, sha256: $lsha, length: $ln}}],
+      editorial: {path: $e, sha256: $esha, length: $en}}' > "$www/v1/storefront/$seq.json"
+  echo sig > "$www/v1/storefront/$seq.json.minisig"
+}
+# sf [ICON_SHA] [ICON_FORMAT] [EDITORIAL_PATH]: the live seq's (4) storefront,
+# unsigned (the mirror checks hashes and budgets, verify-site the rest): a
+# listing whose icon is ICON_SHA.ICON_FORMAT, an editorial document whose
+# banner is a WebP image.
 sf() {
-  local isha=${1:-$icon_sha} ifmt=${2:-png} epath=${3:-} lsha esha
+  local isha=${1:-$icon_sha} ifmt=${2:-png}
   rm -rf "$www/v1/storefront" "$www/v1/media"
-  mkdir -p "$www/v1/media" "$www/v1/storefront/editorial" "$www/v1/storefront/listings/deckpilot.memory"
+  mkdir -p "$www/v1/media"
   cp "$work/icon" "$www/v1/media/$isha.$ifmt"
   cp "$work/banner" "$www/v1/media/$banner_sha.webp"
   jq -n --arg s "$isha" --arg f "$ifmt" --argjson n "$(len "$work/icon")" \
     '{_type: "deckpilot-registry-listing", listing_version: 1, id: "deckpilot.memory",
       icon: {sha256: $s, length: $n, format: $f, width: 512, height: 512}}' > "$work/l.json"
-  lsha=$(sha "$work/l.json")
-  cp "$work/l.json" "$www/v1/storefront/listings/deckpilot.memory/$lsha.json"
   jq -n --arg s "$banner_sha" --argjson n "$(len "$work/banner")" \
     '{_type: "deckpilot-registry-editorial", editorial_version: 1, sections: [{kind: "banner_carousel",
       items: [{artwork: {asset: {sha256: $s, length: $n, format: "webp", width: 1800, height: 600}}}]}]}' > "$work/e.json"
-  esha=$(sha "$work/e.json")
-  cp "$work/e.json" "$www/v1/storefront/editorial/$esha.json"
-  for s in 3 4; do
-    jq -n --argjson seq "$s" --arg l "storefront/listings/deckpilot.memory/$lsha.json" --arg lsha "$lsha" \
-      --argjson ln "$(len "$work/l.json")" --arg e "${epath:-storefront/editorial/$esha.json}" --arg esha "$esha" \
-      --argjson en "$(len "$work/e.json")" \
-      '{_type: "deckpilot-registry-storefront", seq: $seq, listings: [{id: "deckpilot.memory", ref: {path: $l, sha256: $lsha, length: $ln}}],
-        editorial: {path: $e, sha256: $esha, length: $en}}' > "$www/v1/storefront/$s.json"
-    echo sig > "$www/v1/storefront/$s.json.minisig"
-  done
+  envelope 4 "$work/l.json" "$work/e.json" "${3:-}"
 }
-same_storefront() { # the mirror holds exactly the live storefront/ and media/
+same_storefront() { # the mirror holds exactly the live seq's storefront/ and media/
   diff -r "$www/v1/storefront" "$work/m/site/v1/storefront" > /dev/null && diff -r "$www/v1/media" "$work/m/site/v1/media" > /dev/null
 }
 sf
-expect_mirror "a live storefront is mirrored" live
-if same_storefront; then ok "... storefront/ and media/ byte for byte (both kept indexes' storefronts, documents, images)"
+expect_mirror "the live seq's storefront is mirrored" live
+if same_storefront; then ok "... storefront/ and media/ byte for byte (envelope, signature, documents, images)"
 else bad "the mirrored storefront differs from the live one"; fi
+# The review's proof of concept: an unsigned storefront of an older kept
+# seq, with a garbage signature, pinning HTML bytes as an image. The mirror
+# never fetches it, so nothing deploys it again.
+printf '<html><script>alert(1)</script></html>' > "$work/html"; html_sha=$(sha "$work/html")
+cp "$work/html" "$www/v1/media/$html_sha.png"
+jq -n --arg s "$html_sha" --argjson n "$(len "$work/html")" \
+  '{_type: "deckpilot-registry-listing", listing_version: 1, id: "deckpilot.memory",
+    icon: {sha256: $s, length: $n, format: "png", width: 512, height: 512}}' > "$work/evil-l.json"
+cp "$work/e.json" "$work/evil-e.json"
+mv "$www/v1/storefront/4.json" "$work/keep4.json"
+envelope 3 "$work/evil-l.json" "$work/evil-e.json"
+mv "$work/keep4.json" "$www/v1/storefront/4.json"; echo sig > "$www/v1/storefront/4.json.minisig"
+echo garbage > "$www/v1/storefront/3.json.minisig"
+expect_mirror "an older seq's unsigned storefront (the review's PoC)" live
+if [ ! -e "$work/m/site/v1/storefront/3.json" ] && [ ! -e "$work/m/site/v1/media/$html_sha.png" ] &&
+  [ ! -e "$work/m/site/v1/storefront/listings/deckpilot.memory/$(sha "$work/evil-l.json").json" ]; then
+  ok "... is not mirrored: neither its envelope, its document nor the HTML it pins as an image"
+else bad "the mirror took an older seq's storefront or what it pins"; fi
 sf "" "" "media/../x"
 expect_mirror "the grammar refuses media/../x" fail "" "refusing to mirror media/../x"
 sf "$(tr 'a-f' 'A-F' <<< "$icon_sha")"
@@ -167,8 +195,37 @@ sf; rm "$www/v1/media/$banner_sha.webp"
 expect_mirror "a pinned image missing on the live site fails" fail "" "media/$banner_sha.webp is missing on the live site"
 sf; rm "$www/v1/storefront/4.json.minisig"
 expect_mirror "a storefront without its signature fails" fail "" "storefront/4.json.minisig is missing"
-sf; rm "$www/v1/storefront/3.json" "$www/v1/storefront/3.json.minisig"
-expect_mirror "an index without a storefront is mirrored without one" live
+# Budgets, on the declared lengths, before anything is fetched.
+bomb_listing() { # bomb_listing JQ: the live listing document, edited
+  sf; jq "$1" "$work/l.json" > "$work/bomb.json"; envelope 4 "$work/bomb.json" "$work/e.json"
+}
+bomb_listing '.icon.length = 2097152'
+expect_mirror "an image declared over 1 MiB is refused" fail "" "over its 1048576-byte limit"
+bomb_listing '.screenshots = [range(9) | {asset: {sha256: ("\(.)" * 64)[0:64] | gsub("[^0-9]"; "a"), length: 1048576, format: "png", width: 1280, height: 800}}]'
+expect_mirror "a listing pinning more than 8 MiB of images is refused before any fetch" fail "" "over its 8388608-byte budget"
+sf; jq -c '.listings = [range(257) | {id: "deckpilot.memory", ref: {path: "storefront/listings/deckpilot.memory/\("0" * 64).json", sha256: ("0" * 64), length: 10}}]' \
+  "$www/v1/storefront/4.json" > "$work/many.json" && mv "$work/many.json" "$www/v1/storefront/4.json"
+expect_mirror "an envelope with more than 256 listings is refused" fail "" "more than 256 listings"
+sf; head -c 70000 /dev/zero | tr '\0' ' ' >> "$www/v1/storefront/4.json"
+expect_mirror "an envelope over 64 KiB is refused at once" fail "" "storefront/4.json is over its 65536-byte limit"
+# The last verified deployment's storefront (state.json storefront_sha256).
+sf
+state_sf() { # state_sf SHA|null: a recorded state of seq 4 with that storefront
+  jq -n --argjson f "$1" '{seq: 4, signed_at: "2026-11-18T09:00:00Z", expires: "2099-01-01T00:00:00Z",
+    timestamp_sha256: "00", storefront_sha256: $f, run: 1, attempt: 1}' > "$work/state.json"
+}
+state_sf "\"$(sha "$www/v1/storefront/4.json")\""
+expect_mirror "state: the recorded storefront is the live one" live "$work/state.json"
+state_sf "\"$(printf '%064d' 5)\""
+expect_mirror "state: a live storefront other than the recorded one is refused" fail "$work/state.json" "but the last verified deployment of seq 4 had sha256"
+state_sf null
+expect_mirror "state: a live storefront where none was deployed is refused" fail "$work/state.json" "had none"
+state_sf "\"$(sha "$www/v1/storefront/4.json")\""
+mv "$www/v1/storefront/4.json" "$work/keep4.json"
+expect_mirror "state: a dropped storefront is refused" fail "$work/state.json" "storefront/4.json is absent"
+mv "$work/keep4.json" "$www/v1/storefront/4.json"
+state 4 2026-11-18T09:00:00Z
+expect_mirror "state: a state that predates storefronts checks nothing" live "$work/state.json"
 sf
 
 # --- tools/registry-state.sh with a gh stand-in ----------------------------
@@ -235,6 +292,25 @@ if "$root/tools/registry-state.sh" record "$www/v1/timestamp.json" 2> "$work/err
   [ "$(jq -r '.force' "$STUB/patch.json")" = false ]; then
   ok "record: a newer state is appended (no force)"
 else bad "record appending ($(tail -1 "$work/err"))"; fi
+
+# The storefront of the recorded seq (storefront/<seq>.json beside the
+# timestamp): its sha256, or null; the same seq never gets another one.
+mkdir -p "$work/rec/storefront"; cp "$www/v1/timestamp.json" "$work/rec/timestamp.json"
+fresh_stub
+"$root/tools/registry-state.sh" record "$work/rec/timestamp.json" 2> "$work/err" &&
+  jq -e '.tree[0].content | fromjson | .storefront_sha256 == null' "$STUB/tree.json" > /dev/null &&
+  ok "record: no storefront is recorded as null" || bad "record without a storefront ($(tail -1 "$work/err"))"
+echo '{"seq": 4}' > "$work/rec/storefront/4.json"
+fresh_stub
+"$root/tools/registry-state.sh" record "$work/rec/timestamp.json" 2> "$work/err" &&
+  jq -e --arg s "$(sha "$work/rec/storefront/4.json")" '.tree[0].content | fromjson | .storefront_sha256 == $s' "$STUB/tree.json" > /dev/null &&
+  ok "record: the seq's storefront sha256" || bad "record with a storefront ($(tail -1 "$work/err"))"
+fresh_stub; echo 1111111111111111111111111111111111111111 > "$STUB/head"
+jq -n '{seq: 4, signed_at: "2026-11-18T09:00:00Z", expires: "2099-01-01T00:00:00Z", timestamp_sha256: "00", storefront_sha256: null, run: 1, attempt: 1}' > "$STUB/state.json"
+if "$root/tools/registry-state.sh" record "$work/rec/timestamp.json" 2> "$work/err" || [ -e "$STUB/commit.json" ]; then
+  bad "record accepts another storefront for a recorded seq"
+elif grep -q "the recorded state of seq 4 has null" "$work/err"; then ok "record refuses another storefront for the same seq"
+else bad "record same seq: $(tail -1 "$work/err")"; fi
 
 fresh_stub; echo 1111111111111111111111111111111111111111 > "$STUB/head"; state 4 2026-11-18T09:00:01Z; cp "$work/state.json" "$STUB/state.json"
 if "$root/tools/registry-state.sh" record "$www/v1/timestamp.json" 2> "$work/err" || [ -e "$STUB/commit.json" ]; then

@@ -27,8 +27,16 @@
 #      signed one, verify-site --require-storefront; a difference fails, and
 #      so does an enabled publication whose signed site has no storefront.
 #   6. Disabled again: the next publication has no storefront.
+#   8. Adversarial live content (the security review): an unsigned
+#      storefront of an older seq pinning HTML as an image is dropped by a
+#      refresh and a publication, on and off, and with the variable off the
+#      site is the one built over the clean live site; a tampered live
+#      storefront or image fails the refresh (and the publication), nothing
+#      signed; with a recorded state, a live storefront other than the
+#      recorded one, one where none was, or a dropped one fails.
 #
-#   tools/tests/test-storefront-site.sh        (BASELINE_REF=<commit> optional)
+#   tools/tests/test-storefront-site.sh   (BASELINE_REF=<commit>; default: the
+#                                          merge base with main; none: skip)
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/../.." && pwd)
@@ -67,6 +75,17 @@ publish "first publication, variable unset" "$repo" index "$work/unset"
 publish "first publication, variable false" "$repo" index "$work/false" REGISTRY_STOREFRONT_ENABLED=false
 check "unset: no storefront/ or media/" no_storefront "$work/unset"
 check "false: the same site as unset (files; bytes but signatures and times)" same "$work/unset" "$work/false"
+# The baseline: BASELINE_REF, else the merge base with main (origin/main,
+# else main). The comparison is never skipped silently: without a baseline
+# the test fails, unless BASELINE_REF=none says to skip it.
+if [ -z "${BASELINE_REF:-}" ]; then
+  for main in origin/main main; do
+    BASELINE_REF=$(git -C "$root" merge-base HEAD "$main" 2>/dev/null) && break
+  done
+  [ -n "$BASELINE_REF" ] || bad "no baseline: set BASELINE_REF to a commit, or fetch main (BASELINE_REF=none skips the comparison)"
+  [ -z "$BASELINE_REF" ] || echo "note baseline: the merge base with main, $BASELINE_REF"
+fi
+[ "${BASELINE_REF:-}" != none ] || { echo "note BASELINE_REF=none: the comparison with a baseline is skipped"; BASELINE_REF=; }
 if [ -n "${BASELINE_REF:-}" ]; then
   if git -C "$root" cat-file -e "$BASELINE_REF:tools/publish-site.sh" 2>/dev/null; then
     site_clone "$repo" "$work/base" "$BASELINE_REF"
@@ -152,6 +171,74 @@ for flag in "" false true; do
   check "... verified with the storefront and its record" grep -q "storefront accepted by the client: seq 2" "$work/ts$flag.log"
 done
 
+# --- 8. adversarial live content (the security review's F2, F3) ----------
+# The proof of concept: next to the signed seq 2, an unsigned storefront of
+# the older kept seq 1 (a garbage signature) pinning a listing that pins
+# HTML bytes as an image.
+evil=$work/evil
+cp -R "$work/on" "$evil"
+ev=$evil/site/v1
+printf '<html><script>alert(1)</script></html>' > "$work/html"
+html_sha=$(shasum -a 256 "$work/html" | cut -d' ' -f1)
+cp "$work/html" "$ev/media/$html_sha.png"
+jq -n --arg s "$html_sha" --argjson n "$(wc -c < "$work/html" | tr -d ' ')" \
+  '{_type: "deckpilot-registry-listing", listing_version: 1, id: "deckpilot.example-default",
+    icon: {sha256: $s, length: $n, format: "png", width: 512, height: 512}}' > "$work/evil-listing.json"
+evil_listing=storefront/listings/deckpilot.example-default/$(shasum -a 256 "$work/evil-listing.json" | cut -d' ' -f1).json
+cp "$work/evil-listing.json" "$ev/$evil_listing"
+jq --arg p "$evil_listing" --arg s "$(shasum -a 256 "$work/evil-listing.json" | cut -d' ' -f1)" \
+  --argjson n "$(wc -c < "$work/evil-listing.json" | tr -d ' ')" \
+  '.seq = 1 | .index.path = "index/1.json" | .listings = [{id: "deckpilot.example-default", ref: {path: $p, sha256: $s, length: $n}}] | del(.editorial)' \
+  "$on/storefront/2.json" > "$ev/storefront/1.json"
+echo garbage > "$ev/storefront/1.json.minisig"
+no_evil() { [ ! -e "$1/storefront/1.json" ] && [ ! -e "$1/storefront/1.json.minisig" ] && [ ! -e "$1/media/$html_sha.png" ] && [ ! -e "$1/$evil_listing" ]; }
+site_serve "$evil"
+for flag in false true; do
+  publish "PoC: timestamp refresh over an unsigned older storefront (variable $flag)" "$repo" timestamp "$work/evil-ts$flag" REGISTRY_STOREFRONT_ENABLED=$flag
+  check "... drops it: no storefront/1.json, no HTML image, no unsigned listing" no_evil "$work/evil-ts$flag/site/v1"
+  check "... keeps exactly the signed seq 2 storefront" bash -c 'diff -r "$1/storefront" "$2/storefront" > /dev/null && diff -r "$1/media" "$2/media" > /dev/null' _ "$on" "$work/evil-ts$flag/site/v1"
+done
+publish "PoC: publication with the storefront over it" "$repo" index "$work/evil-on" REGISTRY_STOREFRONT_ENABLED=true
+check "... seq 3 carries none of it (nor seq 2's storefront)" bash -c '[ "$(jq .seq "$1/timestamp.json")" = 3 ] && [ ! -e "$1/storefront/2.json" ]' _ "$work/evil-on/site/v1"
+check "... no HTML image, no unsigned listing" no_evil "$work/evil-on/site/v1"
+publish "PoC: publication with the storefront off over it" "$repo" index "$work/evil-off" REGISTRY_STOREFRONT_ENABLED=false
+site_serve "$work/on"
+publish "the same publication over the clean live site" "$repo" index "$work/clean-off" REGISTRY_STOREFRONT_ENABLED=false
+check "off: over adversarial live content, the same site as over the clean one" same "$work/clean-off" "$work/evil-off"
+check "off: no storefront/ or media/" no_storefront "$work/evil-off"
+# A tampered live storefront of the live seq fails the refresh loudly; it
+# is never re-signed around.
+tamper=$work/tamper
+cp -R "$work/on" "$tamper"
+jq -c . "$tamper/site/v1/storefront/2.json" > "$work/compact.json" && cp "$work/compact.json" "$tamper/site/v1/storefront/2.json"
+site_serve "$tamper"
+refused "a live storefront whose bytes are not the signed ones fails the refresh" "the client refuses storefront/2.json: storefront signature" "$repo" timestamp "$work/tamper-ts"
+check "... and nothing was signed" test ! -e "$work/tamper-ts/site/v1/timestamp.json"
+refused "... and the publication" "the client refuses storefront/2.json: storefront signature" "$repo" index "$work/tamper-ix" REGISTRY_STOREFRONT_ENABLED=true
+rm -rf "$tamper"; cp -R "$work/on" "$tamper"
+img=$(ls "$tamper"/site/v1/media/*.png | head -1)
+printf 'x' >> "$img"
+site_serve "$tamper"
+refused "a live image other than the pinned one fails the refresh" "is not the file its storefront pins" "$repo" timestamp "$work/tamper-img"
+# The recorded state (F3): the storefront of the recorded seq.
+site_serve "$work/on"
+state_of() { jq -n --arg f "$1" --slurpfile t "$on/timestamp.json" \
+  '$t[0] | {seq, signed_at, expires, timestamp_sha256: "00", storefront_sha256: (if $f == "null" then null else $f end), run: 1, attempt: 1}' > "$work/state.json"; }
+state_of "$(shasum -a 256 "$on/storefront/2.json" | cut -d' ' -f1)"
+publish "state: a refresh of the recorded storefront" "$repo" timestamp "$work/st-ok" REGISTRY_MIN_STATE="$work/state.json"
+state_of "$(printf '%064d' 5)"
+refused "state: a live storefront other than the recorded one fails the refresh" "last verified deployment of seq 2 had sha256" \
+  "$repo" timestamp "$work/st-other" REGISTRY_MIN_STATE="$work/state.json"
+state_of null
+refused "state: a live storefront where none was recorded fails the refresh" "had none" \
+  "$repo" timestamp "$work/st-none" REGISTRY_MIN_STATE="$work/state.json"
+rm -rf "$work/dropped"; cp -R "$work/on" "$work/dropped"; rm -rf "$work/dropped/site/v1/storefront" "$work/dropped/site/v1/media"
+site_serve "$work/dropped"
+state_of "$(shasum -a 256 "$on/storefront/2.json" | cut -d' ' -f1)"
+refused "state: a dropped storefront fails the refresh" "storefront/2.json is absent" \
+  "$repo" timestamp "$work/st-dropped" REGISTRY_MIN_STATE="$work/state.json"
+site_serve "$work/on"
+
 # --- 4. revert ----------------------------------------------------------
 git -C "$repo" rm -q -r editorial "registry/plugins/deckpilot.example-default/listing.json" \
   "registry/plugins/deckpilot.example-default/media"
@@ -162,8 +249,8 @@ check "revert: a higher seq" test "$(seq_of "$work/revert")" = 3
 check "revert: its storefront has no listing and no editorial" \
   bash -c 'jq -e ".seq == 3 and (.listings | length) == 0 and (has(\"editorial\") | not)" "$1/storefront/3.json" > /dev/null' _ "$rv"
 check "revert: the client accepted storefront/3.json" grep -q "storefront accepted by the client: seq 3, sha256 [0-9a-f]*, 0 listing(s), 0 section(s)" "$work/revert.log"
-check "revert: storefront/2.json and its files are only the kept index 2's" \
-  bash -c 'cmp -s "$1/storefront/2.json" "$2/storefront/2.json" && diff -r "$1/media" "$2/media" > /dev/null' _ "$on" "$rv"
+check "revert: nothing of seq 2's storefront remains (no storefront/2.json, no images)" \
+  bash -c '[ ! -e "$1/storefront/2.json" ] && [ ! -e "$1/media" ] && [ -z "$(ls "$1/storefront/listings" 2> /dev/null)" ]' _ "$rv"
 
 # --- 6. disabled again --------------------------------------------------
 site_serve "$work/revert"
