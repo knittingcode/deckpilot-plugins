@@ -1,0 +1,101 @@
+---
+/**
+ * The page of a plugin whose every version is withdrawn and that the index
+ * no longer lists: a notice built from its signed revocations only. It
+ * offers nothing to install and is never part of discovery.
+ */
+import Badge from '@/components/Badge.astro';
+import Notice from '@/components/Notice.astro';
+import PluginIcon from '@/components/PluginIcon.astro';
+import { REPO_PLUGINS } from '@/data/site';
+import { fill, t, type Lang } from '@/i18n';
+import Base from '@/layouts/Base.astro';
+import { formatDate, isoDate } from '@/lib/format';
+import { page } from '@/lib/paths';
+import type { RevokedPlugin } from '@/lib/registry';
+
+type Props = { revoked: RevokedPlugin; lang: Lang };
+const { revoked, lang } = Astro.props;
+const dict = t(lang);
+const p = dict.plugin;
+// Registry text (reasons) is English; mark it on the Polish page.
+const foreign = lang === 'en' ? undefined : 'en';
+const github = (login: string) => `https://github.com/${login}`;
+---
+
+<Base lang={lang} title={fill(p.metaTitle, { name: revoked.name })} description={`${p.revokedTitle}. ${p.withdrawnLead}`} ogType="article">
+  <div class="container py-10 md:py-14">
+    <nav class="breadcrumb" aria-label={dict.a11y.breadcrumb}>
+      <ol>
+        <li><a href={page(lang, 'plugins')}>{p.allPlugins}</a></li>
+        <li aria-current="page">{revoked.name}</li>
+      </ol>
+    </nav>
+
+    <header class="mt-6 flex flex-col gap-5 sm:flex-row sm:items-center">
+      <PluginIcon id={revoked.id} name={revoked.name} size="lg" />
+      <div class="min-w-0">
+        <h1 class="section-title">{revoked.name}</h1>
+        {
+          revoked.publisher && (
+            <p class="mt-2 text-muted">{fill(p.by, { publisher: revoked.publisher.displayName })}</p>
+          )
+        }
+        <div class="mt-3 flex flex-wrap gap-2">
+          <Badge variant="danger">{p.revoked}</Badge>
+        </div>
+      </div>
+    </header>
+
+    <div class="mt-6 grid max-w-3xl gap-3" data-revocation-notice>
+      <Notice variant="danger" role="note">
+        <strong>{p.revokedTitle}.</strong> {p.withdrawnLead}
+      </Notice>
+      {
+        revoked.revocations.map((revocation) => (
+          <Notice variant={revocation.action === 'disable' ? 'danger' : 'warning'} role="note">
+            <strong>
+              {revocation.versions === '*'
+                ? p.allVersionsRevoked
+                : fill(p.revokedVersions, { versions: revocation.versions.join(', ') })}
+            </strong>{' '}
+            {revocation.action === 'disable' ? p.revokedDisable : p.revokedYank}
+            <span class="mt-2 block">
+              {p.reason} <span lang={foreign}>{revocation.reason}</span>
+            </span>
+            <span class="mt-1 block text-sm text-subtle">
+              {p.revokedOn} <time datetime={isoDate(revocation.at)}>{formatDate(lang, revocation.at)}</time>
+            </span>
+            {revocation.advisory && (
+              <a class="mt-2 inline-block" href={revocation.advisory} rel="noopener">
+                {p.advisory}
+              </a>
+            )}
+          </Notice>
+        ))
+      }
+      <p class="mt-3 text-muted">{p.installRevoked}</p>
+    </div>
+
+    <dl class="meta-list mt-10 max-w-3xl">
+      <div>
+        <dt>{p.id}</dt>
+        <dd><code>{revoked.id}</code></dd>
+      </div>
+      {
+        revoked.publisher && (
+          <div>
+            <dt>{p.publisher}</dt>
+            <dd>
+              <a href={github(revoked.publisher.login)} rel="noopener">{revoked.publisher.displayName}</a>
+              <span class="text-subtle"> (@{revoked.publisher.login})</span>
+            </dd>
+          </div>
+        )
+      }
+    </dl>
+    <p class="mt-6 text-sm">
+      <a href={`${REPO_PLUGINS}/issues/new/choose`} rel="noopener">{p.report}</a>
+    </p>
+  </div>
+</Base>
