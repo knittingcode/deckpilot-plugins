@@ -507,14 +507,28 @@ class RoundTrip(unittest.TestCase):
         self.assertTrue(any("'plugin' is required" in e for e in errors), errors)
 
 
-def plugins_catalog():
-    """plugin_catalog()-shaped data from Scratch.PLUGINS without git."""
+def plugins_catalog(live=True):
+    """plugin_catalog()-shaped data from Scratch.PLUGINS without git. `live`:
+    True marks every plugin with a recorded version as live in the mirrored
+    index (latest = its newest version), None as no mirror at all."""
     out = {}
     for pid, p in Scratch.PLUGINS.items():
+        versions = [{"version": v, "published_at": d, "platforms": pl, "yanked": bool(p.get("yanked"))}
+                    for v, d, pl in p["versions"]]
+        is_live = None if live is None else bool(versions)
         out[pid] = {"id": pid, "name": p["name"], "summary": "", "categories": p["categories"], "revocations": [],
-                    "versions": [{"version": v, "published_at": d, "platforms": pl, "yanked": bool(p.get("yanked"))}
-                                 for v, d, pl in p["versions"]]}
+                    "versions": versions, "live": is_live,
+                    "live_latest": {"stable": versions[-1]["version"]} if is_live else None}
     return out
+
+
+def write_mirror(root, plugins, revocations=(), seq=7):
+    """A mirrored live index in .work/studio/mirror, as mirror_live() leaves it."""
+    work = Path(root) / ".work" / "studio" / "mirror"
+    write(work, "status.json", {"mirrored": True, "state": "live", "log": "", "verified": None})
+    write(work, "site/v1/timestamp.json", {"seq": seq, "index": {"path": f"index/{seq}.json"}})
+    write(work, f"site/v1/index/{seq}.json", {"seq": seq, "revocations": list(revocations),
+                                              "plugins": [{"id": pid, "latest": {"stable": v}} for pid, v in plugins.items()]})
 
 
 class Resolver(unittest.TestCase):
@@ -689,6 +703,106 @@ class Resolver(unittest.TestCase):
         self.assertEqual([c["id"] for c in view["collections"]], ["a-first", "productivity"])
 
 
+class LivePublication(unittest.TestCase):
+    """Issue #87: the live preview and the fixture export show only what the
+    live signed index serves; recorded-only releases need the pending mode."""
+    NOW = "2026-12-10T12:00:00Z"
+    DOC = {"editorial_version": 1, "sections": [], "collections": [
+        {"id": "picks", "status": "published", "order": 10, "title": {"en": "Picks"},
+         "plugins": ["deckpilot.weather", "deckpilot.pomodoro"]}]}
+
+    def catalog(self, **kw):
+        catalog = plugins_catalog(**kw)
+        if kw.get("live", True) is not None:
+            catalog["deckpilot.pomodoro"]["live"] = False  # recorded 0.2.1, absent from the live index
+            catalog["deckpilot.pomodoro"]["live_latest"] = None
+        return catalog
+
+    def picks(self, view):
+        return next((c["plugins"] for c in view["collections"] if c["id"] == "picks"), [])
+
+    def test_recorded_but_not_live_plugin_is_dropped(self):
+        catalog = self.catalog()
+        self.assertTrue(catalog["deckpilot.pomodoro"]["versions"])  # a nonempty recorded version list
+        self.assertIsNone(studio.installable(catalog["deckpilot.pomodoro"], "macos"))
+        view, notes = studio.resolve(copy.deepcopy(self.DOC), catalog, now=self.NOW, platform="macos")
+        self.assertEqual(self.picks(view), ["deckpilot.weather"])
+        self.assertIn("collection picks: deckpilot.pomodoro dropped (not in the live catalog)", notes)
+
+    def test_live_compatible_placements_render(self):
+        catalog = self.catalog()
+        self.assertEqual(studio.installable(catalog["deckpilot.weather"], "macos")["version"], "0.2.1")
+        view, _ = studio.resolve(copy.deepcopy(self.DOC), catalog, now=self.NOW, platform="macos")
+        self.assertIn("deckpilot.weather", self.picks(view))
+
+    def test_a_recorded_version_newer_than_the_live_one_does_not_count(self):
+        catalog = self.catalog()
+        weather = catalog["deckpilot.weather"]
+        weather["versions"].append({"version": "0.3.0", "published_at": "2026-12-01T00:00:00Z",
+                                    "platforms": ["windows"], "yanked": False})
+        self.assertEqual(studio.installable(weather, "macos")["version"], "0.2.1")
+        self.assertEqual(studio.installable(weather, "windows")["version"], "0.2.1")
+        self.assertEqual(studio.installable(weather, "windows", pending=True)["version"], "0.3.0")
+
+    def test_missing_mirror_is_not_confirmed_absence(self):
+        catalog = self.catalog(live=None)
+        view, notes = studio.resolve(copy.deepcopy(self.DOC), catalog, now=self.NOW, platform="macos")
+        self.assertEqual(self.picks(view), [])
+        self.assertTrue(any(n.startswith("live mirror data unavailable") for n in notes), notes)
+        self.assertIn("collection picks: deckpilot.weather dropped (live data unavailable)", notes)
+        self.assertNotIn("collection picks: deckpilot.weather dropped (not in the live catalog)", notes)
+        page = studio.render_html(view, notes, catalog, title="t", media_url=lambda s, e: "", css_href="x")
+        self.assertIn("Live mirror data unavailable", page)
+
+    def test_pending_mode_is_explicit_and_labelled(self):
+        catalog = self.catalog()
+        view, notes = studio.resolve(copy.deepcopy(self.DOC), catalog, now=self.NOW, platform="macos", pending=True)
+        self.assertEqual(self.picks(view), ["deckpilot.weather", "deckpilot.pomodoro"])
+        self.assertTrue(any(n.startswith("pending releases included") for n in notes), notes)
+        page = studio.render_html(view, notes, catalog, title="t", media_url=lambda s, e: "", css_href="x",
+                                  pending=True)
+        self.assertIn("Pending releases included", page)
+
+    def test_preview_and_fixture_export_agree(self):
+        scratch = Scratch()
+        self.addCleanup(scratch.cleanup)
+        root = scratch.root
+        write(root, "editorial/editorial.json", self.DOC)
+        ws = scratch.ws
+        # No mirror: nothing is confirmed live, in the preview and in the export.
+        _, fixture = ws.export_fixture(now=self.NOW, platform="macos")
+        self.assertEqual(fixture["storefront"]["collections"], [])
+        self.assertFalse(fixture["live"]["available"])
+        # The mirror serves weather only; pomodoro is recorded at HEAD but not live.
+        write_mirror(root, {"deckpilot.weather": "0.2.1"})
+        view, notes = ws.view(now=self.NOW, platform="macos")
+        _, fixture = ws.export_fixture(now=self.NOW, platform="macos")
+        self.assertEqual(self.picks(view), ["deckpilot.weather"])
+        self.assertEqual(fixture["storefront"], view)
+        self.assertEqual(fixture["notes"], notes)
+        self.assertTrue(fixture["live"]["available"])
+        self.assertFalse(fixture["pending"])
+        out = root / ".work" / "preview"
+        studio.render_preview(ws, out, now=self.NOW)
+        self.assertIn("deckpilot.pomodoro dropped (not in the live catalog)", (out / "macos-en.html").read_text())
+        # The pending mode, on request only.
+        _, fixture = ws.export_fixture(now=self.NOW, platform="macos", pending=True)
+        self.assertEqual(self.picks(fixture["storefront"]), ["deckpilot.weather", "deckpilot.pomodoro"])
+        self.assertTrue(fixture["pending"])
+
+    def test_catalog_states(self):
+        scratch = Scratch()
+        self.addCleanup(scratch.cleanup)
+        status, plugins = scratch.ws.catalog()
+        self.assertIsNone(status)
+        self.assertIsNone(plugins["deckpilot.weather"]["live"])  # unknown, not "absent"
+        write_mirror(scratch.root, {"deckpilot.weather": "0.2.1"})
+        status, plugins = scratch.ws.catalog()
+        self.assertEqual(status["seq"], 7)
+        self.assertIs(plugins["deckpilot.weather"]["live"], True)
+        self.assertIs(plugins["deckpilot.pomodoro"]["live"], False)
+
+
 class Outputs(unittest.TestCase):
     def setUp(self):
         self.scratch = Scratch()
@@ -700,6 +814,8 @@ class Outputs(unittest.TestCase):
         write(self.root, "registry/plugins/deckpilot.weather/media/icon.png", images.png(512, 512))
         write(self.root, "registry/plugins/deckpilot.weather/media/forecast.png", images.png(1280, 800))
         write(self.root, "registry/plugins/deckpilot.weather/media/promo.webp", images.webp(1600, 800))
+        # Every plugin with a recorded version is live in the mirrored index.
+        write_mirror(self.root, {pid: p["versions"][-1][0] for pid, p in Scratch.PLUGINS.items() if p["versions"]})
 
     def tearDown(self):
         self.scratch.cleanup()
@@ -790,7 +906,10 @@ class Outputs(unittest.TestCase):
     def test_catalog_marks_unpublished_plugins(self):
         _, plugins = self.scratch.ws.catalog()
         self.assertEqual(plugins["deckpilot.unpublished"]["versions"], [])
-        self.assertFalse(plugins["deckpilot.weather"]["live"])  # no mirror in the scratch repository
+        self.assertIs(plugins["deckpilot.unpublished"]["live"], False)
+        self.assertIs(plugins["deckpilot.weather"]["live"], True)
+        _, plugins = self.scratch.ws.catalog(use_live=False)
+        self.assertIsNone(plugins["deckpilot.weather"]["live"])  # no live data asked for: unknown
 
 
 class Contract(unittest.TestCase):
