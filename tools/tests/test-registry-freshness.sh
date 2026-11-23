@@ -8,17 +8,40 @@
 #     branch, record (first and appended), refusal to record an older state,
 #     API failures;
 #   - tools/check-freshness.sh: enough validity, too little, expired, a
-#     published release missing from the index, drafts ignored.
+#     published release missing from the index, drafts ignored; a storefront
+#     whose images or documents are not all served as pinned.
+#   - the storefront in the mirror (docs/storefront.md): the live seq's
+#     storefront, its documents and images, byte for byte, and nothing of an
+#     older seq (an unsigned older storefront pinning HTML as an image is
+#     never fetched); the path grammar refuses media/../x, uppercase hex
+#     and .svg; a pinned file that is missing or has other bytes, an image
+#     over 1 MiB, a listing over its 8 MiB, an envelope with too many
+#     listings or over 64 KiB fail before anything more is fetched; with a
+#     recorded state of the same seq, the live storefront must be the
+#     recorded one, or absent when none was;
+#   - tools/registry-state.sh records the seq's storefront sha256 (or null)
+#     and refuses another one for the same seq.
 # Regression tests of the launch failures: a redeploy that could replace
 # the signed registry with a stale CDN copy, or with no registry at all.
 #
-#   tools/tests/test-registry-freshness.sh
+# --with-cli (needs tools/build-cli.sh; validate.yml's registry job): also a
+# real timestamp-only refresh (tools/publish-site.sh timestamp, throwaway
+# keys) of a signed site with a storefront keeps storefront/ and media/
+# byte for byte, and its mirror (what the refresh deploys) too.
+#
+#   tools/tests/test-registry-freshness.sh [--with-cli]
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/../.." && pwd)
 work=$(mktemp -d "${TMPDIR:-/tmp}/registry-freshness.XXXXXX")
+with_cli=0
+case ${1:-} in --with-cli) with_cli=1 ;; "") ;; *) echo "usage: test-registry-freshness.sh [--with-cli]" >&2; exit 2 ;; esac
 server_pid=""
-cleanup() { if [ -n "$server_pid" ]; then kill "$server_pid" 2>/dev/null || true; wait "$server_pid" 2>/dev/null || true; fi; rm -rf "$work"; }
+cleanup() {
+  if [ -n "$server_pid" ]; then kill "$server_pid" 2>/dev/null || true; wait "$server_pid" 2>/dev/null || true; fi
+  if declare -F site_stop > /dev/null; then site_stop; fi
+  rm -rf "$work"
+}
 trap cleanup EXIT
 export DECKPILOT_PLUGINS_WORK=$work/dot-work
 passed=0 failed=0
@@ -98,6 +121,113 @@ if REGISTRY_MIN_STATE=$work/absent.json "$root/tools/mirror-site.sh" "$base" "$w
   bad "a missing REGISTRY_MIN_STATE file is accepted"
 else ok "a missing REGISTRY_MIN_STATE file fails"; fi
 
+# --- the storefront in the mirror ------------------------------------------
+sha() { shasum -a 256 "$1" | cut -d' ' -f1; }
+len() { wc -c < "$1" | tr -d ' '; }
+printf 'icon bytes' > "$work/icon"; icon_sha=$(sha "$work/icon")
+printf 'banner bytes' > "$work/banner"; banner_sha=$(sha "$work/banner")
+# envelope SEQ LISTING_JSON EDITORIAL_JSON [EDITORIAL_PATH]: storefront/SEQ.json
+# pinning the two documents (each written content-addressed).
+envelope() {
+  local seq=$1 l=$2 e=$3 epath=${4:-} lsha esha
+  lsha=$(sha "$l") esha=$(sha "$e")
+  mkdir -p "$www/v1/storefront/editorial" "$www/v1/storefront/listings/deckpilot.memory"
+  cp "$l" "$www/v1/storefront/listings/deckpilot.memory/$lsha.json"
+  cp "$e" "$www/v1/storefront/editorial/$esha.json"
+  jq -n --argjson seq "$seq" --arg l "storefront/listings/deckpilot.memory/$lsha.json" --arg lsha "$lsha" \
+    --argjson ln "$(len "$l")" --arg e "${epath:-storefront/editorial/$esha.json}" --arg esha "$esha" --argjson en "$(len "$e")" \
+    '{_type: "deckpilot-registry-storefront", seq: $seq, listings: [{id: "deckpilot.memory", ref: {path: $l, sha256: $lsha, length: $ln}}],
+      editorial: {path: $e, sha256: $esha, length: $en}}' > "$www/v1/storefront/$seq.json"
+  echo sig > "$www/v1/storefront/$seq.json.minisig"
+}
+# sf [ICON_SHA] [ICON_FORMAT] [EDITORIAL_PATH]: the live seq's (4) storefront,
+# unsigned (the mirror checks hashes and budgets, verify-site the rest): a
+# listing whose icon is ICON_SHA.ICON_FORMAT, an editorial document whose
+# banner is a WebP image.
+sf() {
+  local isha=${1:-$icon_sha} ifmt=${2:-png}
+  rm -rf "$www/v1/storefront" "$www/v1/media"
+  mkdir -p "$www/v1/media"
+  cp "$work/icon" "$www/v1/media/$isha.$ifmt"
+  cp "$work/banner" "$www/v1/media/$banner_sha.webp"
+  jq -n --arg s "$isha" --arg f "$ifmt" --argjson n "$(len "$work/icon")" \
+    '{_type: "deckpilot-registry-listing", listing_version: 1, id: "deckpilot.memory",
+      icon: {sha256: $s, length: $n, format: $f, width: 512, height: 512}}' > "$work/l.json"
+  jq -n --arg s "$banner_sha" --argjson n "$(len "$work/banner")" \
+    '{_type: "deckpilot-registry-editorial", editorial_version: 1, sections: [{kind: "banner_carousel",
+      items: [{artwork: {asset: {sha256: $s, length: $n, format: "webp", width: 1800, height: 600}}}]}]}' > "$work/e.json"
+  envelope 4 "$work/l.json" "$work/e.json" "${3:-}"
+}
+same_storefront() { # the mirror holds exactly the live seq's storefront/ and media/
+  diff -r "$www/v1/storefront" "$work/m/site/v1/storefront" > /dev/null && diff -r "$www/v1/media" "$work/m/site/v1/media" > /dev/null
+}
+sf
+expect_mirror "the live seq's storefront is mirrored" live
+if same_storefront; then ok "... storefront/ and media/ byte for byte (envelope, signature, documents, images)"
+else bad "the mirrored storefront differs from the live one"; fi
+# The review's proof of concept: an unsigned storefront of an older kept
+# seq, with a garbage signature, pinning HTML bytes as an image. The mirror
+# never fetches it, so nothing deploys it again.
+printf '<html><script>alert(1)</script></html>' > "$work/html"; html_sha=$(sha "$work/html")
+cp "$work/html" "$www/v1/media/$html_sha.png"
+jq -n --arg s "$html_sha" --argjson n "$(len "$work/html")" \
+  '{_type: "deckpilot-registry-listing", listing_version: 1, id: "deckpilot.memory",
+    icon: {sha256: $s, length: $n, format: "png", width: 512, height: 512}}' > "$work/evil-l.json"
+cp "$work/e.json" "$work/evil-e.json"
+mv "$www/v1/storefront/4.json" "$work/keep4.json"
+envelope 3 "$work/evil-l.json" "$work/evil-e.json"
+mv "$work/keep4.json" "$www/v1/storefront/4.json"; echo sig > "$www/v1/storefront/4.json.minisig"
+echo garbage > "$www/v1/storefront/3.json.minisig"
+expect_mirror "an older seq's unsigned storefront (the review's PoC)" live
+if [ ! -e "$work/m/site/v1/storefront/3.json" ] && [ ! -e "$work/m/site/v1/media/$html_sha.png" ] &&
+  [ ! -e "$work/m/site/v1/storefront/listings/deckpilot.memory/$(sha "$work/evil-l.json").json" ]; then
+  ok "... is not mirrored: neither its envelope, its document nor the HTML it pins as an image"
+else bad "the mirror took an older seq's storefront or what it pins"; fi
+sf "" "" "media/../x"
+expect_mirror "the grammar refuses media/../x" fail "" "refusing to mirror media/../x"
+sf "$(tr 'a-f' 'A-F' <<< "$icon_sha")"
+expect_mirror "the grammar refuses uppercase hex" fail "" "refusing to mirror media/$(tr 'a-f' 'A-F' <<< "$icon_sha").png"
+sf "" svg
+expect_mirror "the grammar refuses .svg" fail "" "refusing to mirror media/$icon_sha.svg"
+sf; printf 'other bytes' > "$www/v1/media/$icon_sha.png"
+expect_mirror "an image with other bytes than pinned fails" fail "" "is not the file its storefront pins"
+sf; rm "$www/v1/media/$banner_sha.webp"
+expect_mirror "a pinned image missing on the live site fails" fail "" "media/$banner_sha.webp is missing on the live site"
+sf; rm "$www/v1/storefront/4.json.minisig"
+expect_mirror "a storefront without its signature fails" fail "" "storefront/4.json.minisig is missing"
+# Budgets, on the declared lengths, before anything is fetched.
+bomb_listing() { # bomb_listing JQ: the live listing document, edited
+  sf; jq "$1" "$work/l.json" > "$work/bomb.json"; envelope 4 "$work/bomb.json" "$work/e.json"
+}
+bomb_listing '.icon.length = 2097152'
+expect_mirror "an image declared over 1 MiB is refused" fail "" "over its 1048576-byte limit"
+bomb_listing '.screenshots = [range(9) | {asset: {sha256: ("\(.)" * 64)[0:64] | gsub("[^0-9]"; "a"), length: 1048576, format: "png", width: 1280, height: 800}}]'
+expect_mirror "a listing pinning more than 8 MiB of images is refused before any fetch" fail "" "over its 8388608-byte budget"
+sf; jq -c '.listings = [range(257) | {id: "deckpilot.memory", ref: {path: "storefront/listings/deckpilot.memory/\("0" * 64).json", sha256: ("0" * 64), length: 10}}]' \
+  "$www/v1/storefront/4.json" > "$work/many.json" && mv "$work/many.json" "$www/v1/storefront/4.json"
+expect_mirror "an envelope with more than 256 listings is refused" fail "" "more than 256 listings"
+sf; head -c 70000 /dev/zero | tr '\0' ' ' >> "$www/v1/storefront/4.json"
+expect_mirror "an envelope over 64 KiB is refused at once" fail "" "storefront/4.json is over its 65536-byte limit"
+# The last verified deployment's storefront (state.json storefront_sha256).
+sf
+state_sf() { # state_sf SHA|null: a recorded state of seq 4 with that storefront
+  jq -n --argjson f "$1" '{seq: 4, signed_at: "2026-11-18T09:00:00Z", expires: "2099-01-01T00:00:00Z",
+    timestamp_sha256: "00", storefront_sha256: $f, run: 1, attempt: 1}' > "$work/state.json"
+}
+state_sf "\"$(sha "$www/v1/storefront/4.json")\""
+expect_mirror "state: the recorded storefront is the live one" live "$work/state.json"
+state_sf "\"$(printf '%064d' 5)\""
+expect_mirror "state: a live storefront other than the recorded one is refused" fail "$work/state.json" "but the last verified deployment of seq 4 had sha256"
+state_sf null
+expect_mirror "state: a live storefront where none was deployed is refused" fail "$work/state.json" "had none"
+state_sf "\"$(sha "$www/v1/storefront/4.json")\""
+mv "$www/v1/storefront/4.json" "$work/keep4.json"
+expect_mirror "state: a dropped storefront is refused" fail "$work/state.json" "storefront/4.json is absent"
+mv "$work/keep4.json" "$www/v1/storefront/4.json"
+state 4 2026-11-18T09:00:00Z
+expect_mirror "state: a state that predates storefronts checks nothing" live "$work/state.json"
+sf
+
 # --- tools/registry-state.sh with a gh stand-in ----------------------------
 mkdir -p "$work/bin"
 cat > "$work/bin/gh" << 'STUB'
@@ -163,6 +293,25 @@ if "$root/tools/registry-state.sh" record "$www/v1/timestamp.json" 2> "$work/err
   ok "record: a newer state is appended (no force)"
 else bad "record appending ($(tail -1 "$work/err"))"; fi
 
+# The storefront of the recorded seq (storefront/<seq>.json beside the
+# timestamp): its sha256, or null; the same seq never gets another one.
+mkdir -p "$work/rec/storefront"; cp "$www/v1/timestamp.json" "$work/rec/timestamp.json"
+fresh_stub
+"$root/tools/registry-state.sh" record "$work/rec/timestamp.json" 2> "$work/err" &&
+  jq -e '.tree[0].content | fromjson | .storefront_sha256 == null' "$STUB/tree.json" > /dev/null &&
+  ok "record: no storefront is recorded as null" || bad "record without a storefront ($(tail -1 "$work/err"))"
+echo '{"seq": 4}' > "$work/rec/storefront/4.json"
+fresh_stub
+"$root/tools/registry-state.sh" record "$work/rec/timestamp.json" 2> "$work/err" &&
+  jq -e --arg s "$(sha "$work/rec/storefront/4.json")" '.tree[0].content | fromjson | .storefront_sha256 == $s' "$STUB/tree.json" > /dev/null &&
+  ok "record: the seq's storefront sha256" || bad "record with a storefront ($(tail -1 "$work/err"))"
+fresh_stub; echo 1111111111111111111111111111111111111111 > "$STUB/head"
+jq -n '{seq: 4, signed_at: "2026-11-18T09:00:00Z", expires: "2099-01-01T00:00:00Z", timestamp_sha256: "00", storefront_sha256: null, run: 1, attempt: 1}' > "$STUB/state.json"
+if "$root/tools/registry-state.sh" record "$work/rec/timestamp.json" 2> "$work/err" || [ -e "$STUB/commit.json" ]; then
+  bad "record accepts another storefront for a recorded seq"
+elif grep -q "the recorded state of seq 4 has null" "$work/err"; then ok "record refuses another storefront for the same seq"
+else bad "record same seq: $(tail -1 "$work/err")"; fi
+
 fresh_stub; echo 1111111111111111111111111111111111111111 > "$STUB/head"; state 4 2026-11-18T09:00:01Z; cp "$work/state.json" "$STUB/state.json"
 if "$root/tools/registry-state.sh" record "$www/v1/timestamp.json" 2> "$work/err" || [ -e "$STUB/commit.json" ]; then
   bad "record accepts a state older than the recorded one"
@@ -195,6 +344,55 @@ if monitor 2026-11-18T10:00:00Z; then bad "monitor misses an unpublished release
 elif grep -q "deckpilot.memory--v0.3.0 is not in the live index" "$work/err"; then ok "monitor: a release missing from the index fails"; else bad "monitor missing release: $(tail -1 "$work/err")"; fi
 releases '[{tag_name: "deckpilot.memory--v0.3.0", draft: true}, {tag_name: "deckpilot.memory--v0.2.0", draft: false}]'
 if monitor 2026-11-18T10:00:00Z; then ok "monitor: a draft release is not expected in the index"; else bad "monitor draft ($(tail -1 "$work/err"))"; fi
+
+# The storefront of the live seq (seq 4, from the mirror tests above).
+releases '[{tag_name: "deckpilot.memory--v0.2.0", draft: false}]'
+if monitor 2026-11-18T10:00:00Z && grep -q "storefront, if any, is served as pinned" "$work/err"; then
+  ok "monitor: the storefront and every file it pins served as pinned"
+else bad "monitor with a storefront ($(tail -1 "$work/err"))"; fi
+mv "$www/v1/media/$banner_sha.webp" "$work/banner.moved"
+if monitor 2026-11-18T10:00:00Z; then bad "monitor misses a dropped image"
+elif grep -q "media/$banner_sha.webp, which is not served: a deployment dropped it" "$work/err"; then ok "monitor: a dropped image fails"
+else bad "monitor dropped image: $(tail -1 "$work/err")"; fi
+mv "$work/banner.moved" "$www/v1/media/$banner_sha.webp"
+printf '\n' >> "$(ls "$www"/v1/storefront/listings/deckpilot.memory/*.json)"
+if monitor 2026-11-18T10:00:00Z; then bad "monitor misses a changed listing"
+elif grep -q "is not the file the storefront of seq 4 pins" "$work/err"; then ok "monitor: a changed listing fails"
+else bad "monitor changed listing: $(tail -1 "$work/err")"; fi
+rm -rf "$www/v1/storefront" "$www/v1/media"
+if monitor 2026-11-18T10:00:00Z; then ok "monitor: no storefront is not a problem"; else bad "monitor without a storefront ($(tail -1 "$work/err"))"; fi
+
+# --- --with-cli: a real timestamp refresh of a site with a storefront -------
+if [ "$with_cli" = 1 ]; then
+  # shellcheck source=lib/registry-site.sh
+  . "$root/tools/tests/lib/registry-site.sh"
+  site_www=$work/cli-www
+  site_start
+  repo=$work/cli-repo
+  site_repo "$repo"
+  site_storefront "$repo"
+  if site_publish "$repo" index "$work/cli-on" REGISTRY_STOREFRONT_ENABLED=true; then ok "cli: a signed site with a storefront (seq 1)"
+  else bad "cli: publication: $(tail -3 "$work/cli-on.log" | tr '\n' ' ')"; fi
+  site_serve "$work/cli-on"
+  if site_publish "$repo" timestamp "$work/cli-ts"; then ok "cli: the timestamp refresh (publish-site.sh timestamp)"
+  else bad "cli: refresh: $(tail -3 "$work/cli-ts.log" | tr '\n' ' ')"; fi
+  on=$work/cli-on/site/v1 ts=$work/cli-ts/site/v1
+  if [ -n "$(ls "$ts/media" 2> /dev/null)" ] && diff -r "$on/storefront" "$ts/storefront" > /dev/null && diff -r "$on/media" "$ts/media" > /dev/null; then
+    ok "cli: storefront/ and media/ byte for byte after the refresh"
+  else bad "cli: the refresh changed storefront/ or media/"; fi
+  if diff <(cd "$on" && find . -type f ! -name 'timestamp.json*' | sort | xargs shasum -a 256) \
+    <(cd "$ts" && find . -type f ! -name 'timestamp.json*' | sort | xargs shasum -a 256) > /dev/null &&
+    [ "$(jq .seq "$ts/timestamp.json")" = "$(jq .seq "$on/timestamp.json")" ] && ! cmp -s "$on/timestamp.json" "$ts/timestamp.json"; then
+    ok "cli: only timestamp.json changed (same seq, new signature)"
+  else bad "cli: more than the timestamp changed"; fi
+  # What _site.yml deploys after the refresh is the mirror of it.
+  site_serve "$work/cli-ts"
+  rm -rf "$work/cli-m"
+  if "$root/tools/mirror-site.sh" "$site_base" "$work/cli-m" > /dev/null 2> "$work/err" &&
+    diff -r "$ts" "$work/cli-m/site/v1" > /dev/null; then
+    ok "cli: the mirror of the refreshed site is all of it, byte for byte"
+  else bad "cli: the mirror of the refreshed site differs ($(tail -1 "$work/err"))"; fi
+fi
 
 echo "$passed passed, $failed failed"
 [ "$failed" -eq 0 ]

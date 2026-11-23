@@ -10,7 +10,12 @@
 #   - a published plugin release (`<id>--v<version>`, not a draft, not a
 #     registry-only `registry--v…` tag) is not in the live index: its
 #     publish.yml run failed or was cancelled (a newer run of the
-#     registry-pages concurrency group replaces a pending one).
+#     registry-pages concurrency group replaces a pending one);
+#   - the live seq has a storefront (storefront/<seq>.json,
+#     docs/storefront.md) but its signature, a listing or editorial
+#     document it pins, or an image one of those pins is not served with
+#     the pinned sha256 and length: a deployment dropped or changed them
+#     (the daily refresh must keep them byte for byte).
 # Reads the live site anonymously and the releases with GH_TOKEN
 # (contents: read). Verifies no signature: every deployment is verified by
 # the workflow that made it; this watches what happens between them.
@@ -63,5 +68,47 @@ for tag in $missing; do
   problem "the release $tag is not in the live index: its publication did not complete. Re-run publish.yml on the tag (docs/publishing.md, Recovery)"
 done
 summary "Published plugin releases in the live index: $(comm -12 "$tmp/released" "$tmp/listed" | wc -l | tr -d ' ') of $(wc -l < "$tmp/released" | tr -d ' ')."
+
+# served PATH SHA256 LENGTH: PATH is served with that sha256 and length.
+served() {
+  local max=4194304
+  [[ $1 == media/* ]] && max=1048576
+  if ! curl -fsS --proto "$proto" --max-filesize "$max" -o "$tmp/pinned" "$base/v1/$1" 2> /dev/null; then
+    problem "the storefront of seq $seq pins /v1/$1, which is not served: a deployment dropped it"
+    return 1
+  fi
+  if [ "$(shasum -a 256 "$tmp/pinned" | cut -d' ' -f1)" != "$2" ] || [ "$(wc -c < "$tmp/pinned" | tr -d ' ')" != "$3" ]; then
+    problem "/v1/$1 is not the file the storefront of seq $seq pins (sha256 $2, $3 bytes)"
+    return 1
+  fi
+}
+seq=$(jq -er '.seq | select(type == "number" and . >= 1 and . == floor)' "$tmp/timestamp.json") ||
+  die "the live timestamp has no valid seq"
+code=$(curl -sS --proto "$proto" --max-filesize 4194304 -o "$tmp/storefront.json" -w '%{http_code}' \
+  "$base/v1/storefront/$seq.json") || code=000
+case $code in
+  404) summary "Storefront: none for seq $seq." ;;
+  200)
+    curl -fsS --proto "$proto" --max-filesize 4194304 -o "$tmp/storefront.minisig" "$base/v1/storefront/$seq.json.minisig" 2> /dev/null ||
+      problem "/v1/storefront/$seq.json is served without its signature"
+    docs=$(jq -r '[.listings[].ref, (.editorial // empty)] | .[] | [.path, .sha256, (.length | tostring)] | @tsv' \
+      "$tmp/storefront.json") || die "the live storefront/$seq.json is not a storefront envelope"
+    images=0
+    while IFS=$'\t' read -r path sha length; do
+      [ -n "$path" ] || continue
+      [[ $path =~ ^storefront/(listings/[a-z][a-z0-9.-]{3,56}|editorial)/[0-9a-f]{64}\.json$ && $sha =~ ^[0-9a-f]{64}$ ]] ||
+        die "the live storefront/$seq.json pins a bad document $path"
+      served "$path" "$sha" "$length" || continue
+      cp "$tmp/pinned" "$tmp/doc.json"
+      while IFS=$'\t' read -r msha format mlength; do
+        [ -n "$msha" ] || continue
+        [[ $msha =~ ^[0-9a-f]{64}$ && $format =~ ^(png|webp|jpg)$ ]] || die "$path pins a bad image $msha.$format"
+        served "media/$msha.$format" "$msha" "$mlength" && images=$((images + 1))
+      done < <(jq -r '[.. | objects | select((.sha256 | type) == "string" and (.format | type) == "string" and (.length | type) == "number")]
+        | unique_by(.sha256) | .[] | [.sha256, .format, (.length | tostring)] | @tsv' "$tmp/doc.json")
+    done <<< "$docs"
+    summary "Storefront of seq $seq: $(jq '.listings | length' "$tmp/storefront.json") listing(s), editorial $(jq -r 'if .editorial then "yes" else "none" end' "$tmp/storefront.json"), $images image(s) served as pinned." ;;
+  *) problem "fetching /v1/storefront/$seq.json: HTTP $code" ;;
+esac
 [ "$problems" -eq 0 ] || exit 1
-note "the live timestamp is valid for ${hours}h more; every published plugin release is listed"
+note "the live timestamp is valid for ${hours}h more; every published plugin release is listed; the storefront, if any, is served as pinned"

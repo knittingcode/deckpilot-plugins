@@ -35,10 +35,14 @@
 #   2. The same schemas with the pinned schema-check (the reference JSON
 #      Schema implementation), on the committed files and on the fixtures of
 #      tools/tests/test_storefront.py, so both implementations agree.
-#   3. `deckpilot-registry storefront check --dir .` (DeckPilot WP1: full
-#      decode of every asset, the authoritative rules) when the pinned CLI
-#      has it; until tools/deckpilot.env pins it, this step says so and only
-#      1 and 2 run.
+#   3. `deckpilot-registry storefront check --dir .` of the pinned DeckPilot:
+#      the authoritative rules, every image decoded in full.
+#   4. The pipeline on a throwaway workspace (registry/ and editorial/ of
+#      this checkout, no packages) under THROWAWAY keys made here:
+#      build-index, sign-index, `storefront build`, `storefront sign` (the
+#      index key, as publish.yml's sign job), timestamp, then `verify-site
+#      --require-storefront`: the client accepts the storefront these
+#      sources make, its documents and every image. Scratch only.
 #
 # Runs plugin build scripts: never run it where a secret is available.
 . "$(dirname "$0")/lib/common.sh"
@@ -247,15 +251,26 @@ validate_storefront() {
   STOREFRONT_SCHEMA_CHECK=$SCHEMA_CHECK python3 -I "$REPO_ROOT/tools/tests/test_storefront.py" 2>"$VAL/storefront-tests.log" ||
     { cat "$VAL/storefront-tests.log" >&2; die "the storefront schema fixtures disagree (log above)"; }
 
-  if "$CLI" help 2>&1 | grep -Eq '^[[:space:]]*storefront check'; then
-    note "deckpilot-registry storefront check (authoritative)"
-    "$CLI" storefront check --dir "$REPO_ROOT"
-    summary "Storefront: \`deckpilot-registry storefront check\` of the pinned DeckPilot passed (full decode)." ""
-  else
-    local why="the pinned deckpilot-registry (DeckPilot ${DECKPILOT_COMMIT:0:12}) has no 'storefront check'"
-    note "$why: ran the JSON-schema and header-level checks only (no full decode of media); the authoritative check runs once tools/deckpilot.env pins DeckPilot's storefront tooling"
-    summary "Storefront: $why, so only the JSON-schema and header-level checks ran (no full decode of media). The authoritative check runs once \`tools/deckpilot.env\` pins DeckPilot's storefront tooling." ""
-  fi
+  "$CLI" help 2>&1 | grep -Eq '^[[:space:]]*storefront check' ||
+    die "the pinned deckpilot-registry (DeckPilot ${DECKPILOT_COMMIT:0:12}) has no 'storefront check'"
+  note "deckpilot-registry storefront check (authoritative)"
+  "$CLI" storefront check --dir "$REPO_ROOT"
+
+  note "storefront build and sign with throwaway keys, verify-site --require-storefront"
+  local ws=$VAL/storefront keys
+  mkdir -p "$ws"
+  cp -R "$REPO_ROOT/registry" "$ws/registry"
+  [ ! -d "$REPO_ROOT/editorial" ] || cp -R "$REPO_ROOT/editorial" "$ws/editorial"
+  keys=$(mktemp -d "$VAL/keys.XXXXXX")
+  throwaway_keys "$ws" "$keys"
+  "$CLI" build-index --dir "$ws" --source-commit "$COMMIT"
+  "$CLI" sign-index --dir "$ws" --key "$keys/index.key"
+  "$CLI" storefront build --dir "$ws" --seq 1
+  "$CLI" storefront sign --dir "$ws" --seq 1 --key "$keys/index.key"
+  "$CLI" timestamp --dir "$ws" --key "$keys/timestamp.key"
+  rm -rf "$keys"
+  "$CLI" verify-site --dir "$ws" --require-storefront --min-remaining 6d | tee "$VAL/storefront-verify.log"
+  summary "Storefront: \`deckpilot-registry storefront check\` of the pinned DeckPilot passed (every image decoded); built and signed with throwaway keys, accepted by \`verify-site --require-storefront\`: $(grep -o 'storefront accepted by the client: .*' "$VAL/storefront-verify.log" | sed 's/, sha256 [0-9a-f]*//')." ""
 }
 
 case $what in

@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 # The registry state of the last verified deployment: the seq, signed_at and
-# sha256 of the timestamp.json that the live site was proven to serve, kept
-# as state.json on the branch `registry-state` (nothing builds from it and
-# no workflow runs on it). tools/mirror-site.sh refuses a live site older
+# sha256 of the timestamp.json that the live site was proven to serve, and
+# the sha256 of that seq's storefront (`storefront_sha256`, null for none:
+# storefront/<seq>.json beside the recorded timestamp.json;
+# docs/storefront.md), kept as state.json on the branch `registry-state`
+# (nothing builds from it and no workflow runs on it). tools/mirror-site.sh
+# then requires the live seq's storefront to be exactly the recorded one
+# (or absent), and tools/publish-site.sh starts the client's equivocation
+# record from it. tools/mirror-site.sh refuses a live site older
 # than it (REGISTRY_MIN_STATE), because Pages' CDN can serve the previous
 # timestamp, or none, for 10 minutes after a deployment.
 #
@@ -16,6 +21,9 @@
 #                                              (job permissions: contents: read)
 #   tools/registry-state.sh record TIMESTAMP   after the live site was
 #                                              verified to serve TIMESTAMP
+#                                              (and DIR/storefront/<seq>.json,
+#                                              DIR the TIMESTAMP's directory,
+#                                              if there is one)
 #                                              (job permissions: contents: write)
 #
 # Environment: GH_TOKEN, GITHUB_REPOSITORY, GITHUB_RUN_ID, GITHUB_RUN_ATTEMPT
@@ -74,8 +82,19 @@ record() {
       die "refusing to record $(timestamp_order "$ts"): older than the recorded $(timestamp_order "$current")"
     fi
   fi
+  local seq storefront=null
+  seq=$(jq -er .seq "$ts")
+  if [ -f "$(dirname "$ts")/storefront/$seq.json" ]; then
+    storefront=\"$(shasum -a 256 "$(dirname "$ts")/storefront/$seq.json" | cut -d' ' -f1)\"
+  fi
+  # The same seq keeps its storefront: a refresh never changes or drops it.
+  if [ -n "$parent" ] && jq -e --argjson s "$seq" '.seq == $s and has("storefront_sha256")' "$current" > /dev/null &&
+    ! jq -e --argjson f "$storefront" '.storefront_sha256 == $f' "$current" > /dev/null; then
+    die "refusing to record seq $seq with storefront $storefront: the recorded state of seq $seq has $(jq -c .storefront_sha256 "$current")"
+  fi
   state=$(jq -c --arg sha "$(shasum -a 256 "$ts" | cut -d' ' -f1)" --arg run "$GITHUB_RUN_ID" --arg attempt "$GITHUB_RUN_ATTEMPT" \
-    '{seq, signed_at, expires, timestamp_sha256: $sha, run: ($run | tonumber), attempt: ($attempt | tonumber)}' "$ts")
+    --argjson storefront "$storefront" \
+    '{seq, signed_at, expires, timestamp_sha256: $sha, storefront_sha256: $storefront, run: ($run | tonumber), attempt: ($attempt | tonumber)}' "$ts")
   message="Verified deployment: seq $(jq -r .seq <<< "$state"), signed $(jq -r .signed_at <<< "$state") (run $GITHUB_RUN_ID, attempt $GITHUB_RUN_ATTEMPT)"
   tree=$(jq -n --arg c "$(jq . <<< "$state")" '{tree: [{path: "state.json", mode: "100644", type: "blob", content: ($c + "\n")}]}' |
     "$gh" api -X POST "repos/$repo/git/trees" --input - --jq .sha) || die "cannot create the state tree"
