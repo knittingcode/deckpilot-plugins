@@ -25,8 +25,8 @@ Other commands:
 
 | Command | Does |
 | --- | --- |
-| `studio.py render-preview --out DIR [--as-of T] [--drafts]` | static HTML wireframes of Discover per platform and locale, their media, `summary.md` (CI uploads these as the `storefront-preview` artifact of *Validate registry*) |
-| `studio.py export-fixture [--platform P] [--locale L] [--as-of T] [--drafts]` | `.work/studio/storefront-fixture.json` and `.work/studio/media/` for the DeckPilot desktop dev build (below) |
+| `studio.py render-preview --out DIR [--as-of T] [--drafts] [--pending]` | static HTML wireframes of Discover per platform and locale, their media, `summary.md` (CI uploads these as the `storefront-preview` artifact of *Validate registry*) |
+| `studio.py export-fixture [--platform P] [--locale L] [--as-of T] [--drafts] [--pending]` | `.work/studio/storefront-fixture.json` and `.work/studio/media/` for the DeckPilot desktop dev build (below) |
 | `studio.py check` | the storefront checks, plus `deckpilot-registry storefront check` when the pinned CLI has it |
 
 ## What it does
@@ -35,7 +35,8 @@ Other commands:
   state in the live signed index (mirrored by `tools/mirror-site.sh` into
   `.work/studio/mirror` and verified with the pinned `verify-site` against
   `keys/roots.json` when the CLI is built): live, recorded but not live
-  yet, or never published. Pickers offer only these ids.
+  yet, never published, or unknown when there is no live mirror data
+  (offline, or the mirror failed). Pickers offer only these ids.
 - **Edit**: sections, banners, collections; localized text with `en`
   required and `pl` beside it; reordering with ↑/↓ buttons or Alt+↑/↓ on a
   focused row (the `order` values are renumbered 10, 20, …); status draft,
@@ -60,13 +61,31 @@ Other commands:
   sections dropped, unknown section kinds skipped, and the 48 KiB cap. It
   cannot know the user's DeckPilot version, so `engines` is not applied.
   The dropped entries are listed under the preview.
+- **Live publication state**: the preview and the fixture export are live
+  by default. A plugin counts only if it is in the mirrored live signed
+  index, and only up to the version that index names as latest. A version
+  recorded in `registry/` but not published yet never counts, so a
+  placement that would disappear in the real Marketplace is dropped
+  ("not in the live catalog"). Without live mirror data nothing can be
+  confirmed live: every placement is dropped as "live data unavailable"
+  (not the same as a confirmed absence), and the preview, the status line
+  and the export say so. Refresh the live index (*Validate*) or launch
+  without `--offline`.
+- **Pending releases** (opt-in, off by default): *Include pending
+  releases* in the Preview panel, `--pending` on `render-preview` and
+  `export-fixture`, or `"pending": true` in the API also counts recorded
+  versions that are not live yet, for editorial work ahead of a
+  publication. Every output says it: a banner on the wireframe, a note in
+  the notes, `"pending": true` in the fixture. It is never what clients
+  see; approve placements on the live preview.
 - **True preview**: *Export fixture* (or `export-fixture`) writes
   `.work/studio/storefront-fixture.json`, the `StorefrontFixture` that
   DeckPilot's `fixtureFromJson()` loads (`storefront-mocks.ts`, frozen
   contract `storefront-types.ts` at knittingcode/deckpilot `97bceac7`):
   `storefront` is the `StorefrontView` the agent would answer, `listings`
   the `ListingView`s, `media` each image as a `data:image/…;base64,` URL by
-  sha256. The desktop dev build loads it with
+  sha256. Its metadata (ignored by the loader) records `pending` and
+  `live` (`available`, `seq`, `verified`). The desktop dev build loads it with
   `VITE_STOREFRONT_FIXTURE=<path>`, so the real components render it.
   The editorial source keeps its own names (`banner_carousel`, a spotlight's
   `headline` and `body`); the view uses the contract's (`bannerCarousel`,

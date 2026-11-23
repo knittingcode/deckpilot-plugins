@@ -2,8 +2,8 @@
 """Marketplace Studio: the owner's local editor for the storefront (stdlib only).
 
     python3 -I tools/studio/studio.py [serve] [--offline] [--no-browser]
-    python3 -I tools/studio/studio.py render-preview --out DIR [--as-of T] [--drafts]
-    python3 -I tools/studio/studio.py export-fixture [--platform P] [--locale L] [--as-of T] [--drafts]
+    python3 -I tools/studio/studio.py render-preview --out DIR [--as-of T] [--drafts] [--pending]
+    python3 -I tools/studio/studio.py export-fixture [--platform P] [--locale L] [--as-of T] [--drafts] [--pending]
     python3 -I tools/studio/studio.py check
 
 Maintainer-only (docs/studio.md). It edits editorial/editorial.json,
@@ -369,34 +369,86 @@ def live_index(root):
 
 
 def plugin_catalog(root, use_live=True):
-    """The plugins Studio offers: registry/ at HEAD, marked with the live index."""
+    """The plugins Studio offers: registry/ at HEAD, marked with the live index.
+
+    `live` is True (in the mirrored live index), False (the mirror is there
+    and the plugin is not in it) or None (no live mirror data: unknown, not
+    absent)."""
     head = registry_at_head(root)
     status, live, live_revocations = live_index(root) if use_live else (None, {}, [])
     out = {}
     for pid, entry in head.items():
         e = dict(entry)
-        e["live"] = pid in live
+        e["live"] = (pid in live) if status is not None else None
         e["live_latest"] = (live.get(pid) or {}).get("latest")
         e["revocations"] = entry.get("revocations", []) + [r for r in live_revocations if r.get("id") == pid]
         out[pid] = e
     return status, out
 
 
-def installable(entry, platform):
-    """The newest version a client on `platform` could install, or None."""
+def live_ceiling(latest):
+    """The newest version the live index names as latest (any channel), or None."""
+    values = latest.values() if isinstance(latest, dict) else [latest]
+    keys = [k for k in (semver_key(v) for v in values if isinstance(v, str)) if k]
+    return max(keys) if keys else None
+
+
+def eligible(entry, version, pending=False):
+    """Whether a recorded version counts: not yanked, and in live mode not newer
+    than the live index's latest (a recorded release clients cannot get yet)."""
+    if version.get("yanked"):
+        return False
+    if pending:
+        return True
+    ceiling = live_ceiling(entry.get("live_latest"))
+    key = semver_key(version.get("version"))
+    return ceiling is None or (key is not None and key <= ceiling)
+
+
+def installable(entry, platform, pending=False):
+    """The newest version a client on `platform` could install, or None.
+
+    Live mode (the default) is what clients see: only a plugin in the live
+    signed index counts, up to the version that index serves. `pending`
+    also counts recorded releases that are not live yet (editorial work
+    ahead of a publication; never what a client sees)."""
+    if not pending and entry.get("live") is not True:
+        return None
     revoked = set()
     for r in entry.get("revocations") or []:
         if r.get("versions") == "*":
             return None
         revoked.update(r.get("versions") or [])
     for v in reversed(entry.get("versions") or []):
-        if v.get("yanked") or v.get("version") in revoked:
+        if not eligible(entry, v, pending) or v.get("version") in revoked:
             continue
         platforms = v.get("platforms")
         if platform and isinstance(platforms, list) and platform not in platforms:
             continue
         return v
     return None
+
+
+def drop_reason(entry, platform, pending=False):
+    """Why installable() said None, for the preview notes."""
+    if entry is None:
+        return "unknown"
+    if not pending and entry.get("live") is None:
+        return "live data unavailable"
+    if not pending and entry.get("live") is False:
+        return "not in the live catalog"
+    return f"not installable on {platform}"
+
+
+def live_unavailable(plugins):
+    """True when the catalog carries no live mirror data at all."""
+    return any(e.get("live") is None for e in plugins.values())
+
+
+LIVE_UNAVAILABLE_NOTE = ("live mirror data unavailable: no plugin can be confirmed live, so every placement is "
+                         "dropped; mirror the live registry (Refresh the live index) or preview pending releases")
+PENDING_NOTE = ("pending releases included: recorded versions that are not in the live catalog count; "
+                "this is not what clients see")
 
 
 # --------------------------------------------------------------------------
@@ -503,19 +555,26 @@ SECTION_KINDS = {
 CONTRACT_COMMIT = "97bceac79b52932fc9c17891d68b25c853e2e72f"
 
 
-def resolve(editorial, plugins, *, now=None, platform="macos", locale="en", drafts=False, media=None, seq=0):
+def resolve(editorial, plugins, *, now=None, platform="macos", locale="en", drafts=False, media=None, seq=0,
+            pending=False):
     """(StorefrontView, notes): what the agent would answer to getStorefront.
 
     The view is exactly DeckPilot's StorefrontView (storefront-types.ts at
     CONTRACT_COMMIT): camelCase kinds; a spotlight's headline is `title`,
     its body `description`; `recentlyAdded` and `catalog` carry no plugins
     (the UI derives them from AvailablePlugin). `plugins` is
-    plugin_catalog()'s; `media` a Media (artwork refs)."""
+    plugin_catalog()'s; `media` a Media (artwork refs). By default only
+    plugins of the live signed index count; `pending` (explicit, labelled in
+    the notes) also counts recorded releases that are not live yet."""
     now = parse_utc(now) if now is not None else utc_now()
     chain = locale_chain(locale)
     notes = []
+    if pending:
+        notes.append(PENDING_NOTE)
+    elif live_unavailable(plugins):
+        notes.append(LIVE_UNAVAILABLE_NOTE)
     doc = editorial if isinstance(editorial, dict) else {}
-    ok = {pid: v for pid, v in ((pid, installable(e, platform)) for pid, e in plugins.items()) if v}
+    ok = {pid: v for pid, v in ((pid, installable(e, platform, pending)) for pid, e in plugins.items()) if v}
 
     def plugin_ids(ids, where):
         out = []
@@ -524,7 +583,7 @@ def resolve(editorial, plugins, *, now=None, platform="macos", locale="en", draf
                 if pid not in out:
                     out.append(pid)
             else:
-                notes.append(f"{where}: {pid} dropped ({'unknown' if pid not in plugins else 'not installable on ' + platform})")
+                notes.append(f"{where}: {pid} dropped ({drop_reason(plugins.get(pid), platform, pending)})")
         return out
 
     collections = []
@@ -613,10 +672,10 @@ def resolve(editorial, plugins, *, now=None, platform="macos", locale="en", draf
                 view["description"] = body
             version = s.get("version")
             recorded = {v["version"]: v for v in plugins[pid].get("versions") or []}
-            if version and version in recorded and not recorded[version].get("yanked"):
+            if version and version in recorded and eligible(plugins[pid], recorded[version], pending):
                 view["version"] = version
             elif version:
-                notes.append(f"section {sid}: version {version} not shown (not recorded or yanked)")
+                notes.append(f"section {sid}: version {version} not shown (not recorded, yanked or not live)")
         elif kind == "recently_added":
             limit = s.get("limit") if isinstance(s.get("limit"), int) else 8
             view["limit"] = limit  # the UI picks the plugins from AvailablePlugin
@@ -786,13 +845,14 @@ class Workspace:
     def catalog(self, use_live=True):
         return plugin_catalog(self.root, use_live)
 
-    def view(self, *, now=None, platform="macos", locale="en", drafts=False, media=None):
-        _, plugins = self.catalog()
+    def view(self, *, now=None, platform="macos", locale="en", drafts=False, media=None, pending=False):
+        status, plugins = self.catalog()
         media = media or Media(self.root)
+        seq = status.get("seq") if status and isinstance(status.get("seq"), int) else 0
         return resolve(self.editorial(), plugins, now=now, platform=platform, locale=locale, drafts=drafts,
-                       media=media)
+                       media=media, seq=seq, pending=pending)
 
-    def export_fixture(self, out=None, *, now=None, platform="macos", locale="en", drafts=False):
+    def export_fixture(self, out=None, *, now=None, platform="macos", locale="en", drafts=False, pending=False):
         """.work/studio/storefront-fixture.json: DeckPilot's StorefrontFixture
         (storefront-mocks.ts fixtureFromJson at CONTRACT_COMMIT): `storefront`
         (StorefrontView), `listings` ({id: ListingView}) and `media` ({sha256:
@@ -801,11 +861,9 @@ class Workspace:
         out = Path(out) if out else self.root / ".work" / "studio"
         out.mkdir(parents=True, exist_ok=True)
         media = Media(self.root)
-        status, _, _ = live_index(self.root)
-        seq = status.get("seq") if status and isinstance(status.get("seq"), int) else 0
-        _, plugins = self.catalog()
-        view, notes = resolve(self.editorial(), plugins, now=now, platform=platform, locale=locale, drafts=drafts,
-                              media=media, seq=seq)
+        status, _ = self.catalog()
+        view, notes = self.view(now=now, platform=platform, locale=locale, drafts=drafts, media=media,
+                                pending=pending)
         listings = {}
         for pid, doc in self.listings().items():
             lv = listing_view(doc, platform=platform, locale=locale, media=media, pid=pid)
@@ -819,7 +877,9 @@ class Workspace:
             "contract": f"knittingcode/deckpilot@{CONTRACT_COMMIT} apps/desktop/src/plugins/storefront-types.ts",
             "generatedAt": utc_now().strftime("%Y-%m-%dT%H:%M:%SZ"),
             "asOf": (parse_utc(now) if now else utc_now()).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "platform": platform, "locale": locale, "drafts": drafts,
+            "platform": platform, "locale": locale, "drafts": drafts, "pending": pending,
+            "live": {"available": status is not None, "seq": (status or {}).get("seq"),
+                     "verified": (status or {}).get("verified")},
             "storefront": view, "listings": listings, "media": files, "notes": notes,
         }
         path = out / "storefront-fixture.json"
@@ -832,13 +892,13 @@ class Workspace:
 # --------------------------------------------------------------------------
 
 
-def render_html(view, notes, plugins, *, title, media_url, css_href, listings=None, platform="macos"):
+def render_html(view, notes, plugins, *, title, media_url, css_href, listings=None, platform="macos", pending=False):
     """A StorefrontView as a wireframe. recentlyAdded, catalog and the category
     counts are derived here from the catalog, as the UI derives them from
     AvailablePlugin."""
     e = html.escape
     listings = listings or {}
-    ok = {pid: v for pid, v in ((pid, installable(p, platform)) for pid, p in plugins.items()) if v}
+    ok = {pid: v for pid, v in ((pid, installable(p, platform, pending)) for pid, p in plugins.items()) if v}
 
     def name(pid):
         return (plugins.get(pid) or {}).get("name") or pid
@@ -855,6 +915,13 @@ def render_html(view, notes, plugins, *, title, media_url, css_href, listings=No
            f"<title>{e(title)}</title>", f'<link rel="stylesheet" href="{e(css_href)}"></head><body>',
            f'<header class="bar"><h1>{e(title)}</h1><p class="meta">Wireframe of Discover; not the real client '
            "UI. Cards show the registry name and the listing promo.</p></header><main>"]
+    if pending:
+        out.append('<p class="mode pending" role="status"><strong>Pending releases included.</strong> Recorded '
+                   "versions that are not in the live catalog count here; clients do not see them yet.</p>")
+    elif live_unavailable(plugins):
+        out.append('<p class="mode unavailable" role="status"><strong>Live mirror data unavailable.</strong> '
+                   "No plugin can be confirmed live, so every placement is dropped. This is not a confirmed "
+                   "absence from the live catalog: mirror the live registry, or preview pending releases.</p>")
     if not view["sections"]:
         out.append('<p class="empty">No editorial section is shown: Discover is catalog-only.</p>')
     for s in view["sections"]:
@@ -913,7 +980,7 @@ def render_html(view, notes, plugins, *, title, media_url, css_href, listings=No
     return "\n".join(out) + "\n"
 
 
-def render_preview(ws, out, *, now=None, drafts=False):
+def render_preview(ws, out, *, now=None, drafts=False, pending=False):
     """Static wireframes (one per platform and locale), media/ and summary.md."""
     out = Path(out)
     (out / "media").mkdir(parents=True, exist_ok=True)
@@ -926,13 +993,13 @@ def render_preview(ws, out, *, now=None, drafts=False):
     pages = []
     for platform in storefront.PLATFORMS:
         for locale in storefront.LOCALES:
-            view, notes = resolve(ws.editorial(), plugins, now=now, platform=platform, locale=locale,
-                                  drafts=drafts, media=media)
+            view, notes = ws.view(now=now, platform=platform, locale=locale, drafts=drafts, media=media,
+                                  pending=pending)
             name = f"{platform}-{locale}.html"
             (out / name).write_text(render_html(
                 view, notes, plugins, title=f"Discover · {platform} · {locale} · as of {stamp}",
                 media_url=lambda sha, ext: f"media/{sha}.{ext}", css_href="preview.css", listings=listings,
-                platform=platform),
+                platform=platform, pending=pending),
                 encoding="utf-8")
             pages.append((platform, locale, name, view, notes))
     for sha, (path, fmt, _) in media.by_sha.items():
@@ -940,13 +1007,20 @@ def render_preview(ws, out, *, now=None, drafts=False):
     e = html.escape
     index = ["<!doctype html>", '<html lang="en"><head><meta charset="utf-8"><title>Storefront preview</title>',
              '<link rel="stylesheet" href="preview.css"></head><body><main>',
-             f"<h1>Storefront preview as of {e(stamp)}{' (with drafts)' if drafts else ''}</h1><ul>"]
+             f"<h1>Storefront preview as of {e(stamp)}{' (with drafts)' if drafts else ''}"
+             f"{' (pending releases included, not live)' if pending else ''}</h1>"]
+    if not pending and live_unavailable(plugins):
+        index.append('<p class="mode unavailable">Live mirror data unavailable: every placement is dropped.</p>')
+    index.append("<ul>")
     index += [f'<li><a href="{e(n)}">{e(p)} · {e(loc)}</a>: {len(v["sections"])} section(s)</li>'
               for p, loc, n, v, _ in pages]
     index.append("</ul></main></body></html>")
     (out / "index.html").write_text("\n".join(index) + "\n", encoding="utf-8")
     editorial = ws.editorial()
-    lines = [f"### Storefront preview (as of {stamp})", "",
+    mode = ("pending releases included, not what clients see" if pending
+            else "live mirror data unavailable, every placement dropped" if live_unavailable(plugins)
+            else "live catalog")
+    lines = [f"### Storefront preview (as of {stamp}; {mode})", "",
              "| Section | Kind | Status | Order | Window (UTC) | Platforms |", "| --- | --- | --- | --- | --- | --- |"]
     for s in sorted((s for s in editorial.get("sections") or [] if isinstance(s, dict)), key=sort_key):
         w = s.get("window") or {}
@@ -1242,11 +1316,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 raise StudioError("bad platform or locale")
             now = params.get("as_of") or None
             drafts = params.get("drafts") == "1"
+            pending = params.get("pending") == "1"
             _, plugins = ws.catalog()
-            view, notes = ws.view(now=now, platform=platform, locale=locale, drafts=drafts)
+            view, notes = ws.view(now=now, platform=platform, locale=locale, drafts=drafts, pending=pending)
             page = render_html(view, notes, plugins, title=f"Discover · {platform} · {locale}",
                                media_url=lambda sha, ext: f"/media/{sha}.{ext}", css_href="/static/preview.css",
-                               listings=ws.listings(), platform=platform)
+                               listings=ws.listings(), platform=platform, pending=pending)
             self._send(200, page.encode("utf-8"), STATIC_TYPES[".html"])
         else:
             raise StudioError("not found")
@@ -1297,14 +1372,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 raise StudioError("bad locale")
         if path == "/api/preview":
             view, notes = ws.view(now=body.get("as_of") or None, platform=body.get("platform") or "macos",
-                                  locale=body.get("locale") or "en", drafts=bool(body.get("drafts")))
+                                  locale=body.get("locale") or "en", drafts=bool(body.get("drafts")),
+                                  pending=body.get("pending") is True)
             return {"view": view, "notes": notes}
         if path == "/api/mirror":
             return mirror_live(ws.root)
         if path == "/api/export-fixture":
             out, fixture = ws.export_fixture(now=body.get("as_of") or None, platform=body.get("platform") or "macos",
-                                             locale=body.get("locale") or "en", drafts=bool(body.get("drafts")))
-            return {"path": str(out), "sections": len(fixture["storefront"]["sections"]), "notes": fixture["notes"]}
+                                             locale=body.get("locale") or "en", drafts=bool(body.get("drafts")),
+                                             pending=body.get("pending") is True)
+            return {"path": str(out), "sections": len(fixture["storefront"]["sections"]), "notes": fixture["notes"],
+                    "pending": fixture["pending"], "live": fixture["live"]}
         if path == "/api/pr":
             return pr_step(ws.root, body.get("step"), body)
         raise StudioError("not found")
@@ -1335,23 +1413,25 @@ def main(argv=None):
     rp.add_argument("--out", required=True)
     rp.add_argument("--as-of")
     rp.add_argument("--drafts", action="store_true")
+    rp.add_argument("--pending", action="store_true", help="also count recorded releases not in the live catalog yet (not what clients see)")
     ef = sub.add_parser("export-fixture", help=".work/studio/storefront-fixture.json (fixtureFromJson) for the desktop dev build")
     ef.add_argument("--platform", default={"darwin": "macos", "win32": "windows"}.get(sys.platform, "linux"),
                     choices=storefront.PLATFORMS)
     ef.add_argument("--locale", default="en")
     ef.add_argument("--as-of")
     ef.add_argument("--drafts", action="store_true")
+    ef.add_argument("--pending", action="store_true", help="also count recorded releases not in the live catalog yet (not what clients see)")
     sub.add_parser("check", help="the storefront checks (and the Rust check when the pinned CLI has it)")
     args = parser.parse_args(argv)
     ws = Workspace(args.root)
     command = args.command or "serve"
     if command == "render-preview":
-        index = render_preview(ws, args.out, now=args.as_of, drafts=args.drafts)
+        index = render_preview(ws, args.out, now=args.as_of, drafts=args.drafts, pending=args.pending)
         print(index)
         return 0
     if command == "export-fixture":
         path, fixture = ws.export_fixture(now=args.as_of, platform=args.platform, locale=args.locale,
-                                          drafts=args.drafts)
+                                          drafts=args.drafts, pending=args.pending)
         print(f"{path}: {len(fixture['storefront']['sections'])} section(s), {len(fixture['media'])} image(s)")
         return 0
     if command == "check":
