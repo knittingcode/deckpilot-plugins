@@ -53,33 +53,52 @@ remove_tree() {
 # unique directory per call (never one a previous call or a still-running
 # git may be using) and is removed afterwards; its removal never decides
 # the result.
+# With several SHAs (one clone), each must be, and every one after the
+# first must also be an ancestor of (or the same as) the first: the SDK pin
+# is never newer than the tooling pin.
 require_on_main() {
-  local repo=$1 sha=$2 dir verdict=ok
+  local repo=$1 dir verdict=ok sha bad=
+  shift
   [[ $repo =~ ^[A-Za-z0-9-]{1,39}/[A-Za-z0-9._-]{1,100}$ ]] || die "bad repository $repo"
-  [[ $sha =~ ^[0-9a-f]{40}$ ]] || die "bad commit $sha"
+  [ $# -ge 1 ] || die "require_on_main: no commit"
+  for sha in "$@"; do
+    [[ $sha =~ ^[0-9a-f]{40}$ ]] || die "bad commit $sha"
+  done
   mkdir -p "$WORK"
   dir=$(mktemp -d "$WORK/main-check.XXXXXX") || die "cannot create a directory in $WORK"
   if ! git -C "$dir" init -q ||
     ! GIT_NO_LAZY_FETCH=1 git -C "$dir" "${GIT_NO_BACKGROUND[@]}" -c protocol.version=2 fetch -q --filter=tree:0 \
       "$GIT_BASE/$repo.git" "+refs/heads/main:refs/remotes/origin/main"; then
     verdict=unfetchable
-  elif ! GIT_NO_LAZY_FETCH=1 git -C "$dir" "${GIT_NO_BACKGROUND[@]}" cat-file -e "$sha^{commit}" 2>/dev/null ||
-    ! GIT_NO_LAZY_FETCH=1 git -C "$dir" "${GIT_NO_BACKGROUND[@]}" merge-base --is-ancestor "$sha" refs/remotes/origin/main; then
-    verdict=off-main
+  else
+    for sha in "$@"; do
+      if ! GIT_NO_LAZY_FETCH=1 git -C "$dir" "${GIT_NO_BACKGROUND[@]}" cat-file -e "$sha^{commit}" 2>/dev/null ||
+        ! GIT_NO_LAZY_FETCH=1 git -C "$dir" "${GIT_NO_BACKGROUND[@]}" merge-base --is-ancestor "$sha" refs/remotes/origin/main; then
+        verdict=off-main bad=$sha
+        break
+      fi
+      if [ "$sha" != "$1" ] &&
+        ! GIT_NO_LAZY_FETCH=1 git -C "$dir" "${GIT_NO_BACKGROUND[@]}" merge-base --is-ancestor "$sha" "$1"; then
+        verdict=not-ancestor bad=$sha
+        break
+      fi
+    done
   fi
   remove_tree "$dir"
   case $verdict in
     ok) ;;
     unfetchable) die "the main branch of $repo cannot be fetched" ;;
-    *) die "$sha is not a commit of $repo's main branch; refusing to build it (a fork's commit is served under the same URL)" ;;
+    not-ancestor) die "$bad is not an ancestor of $1 on $repo's main (the SDK pin must not be newer than DECKPILOT_COMMIT)" ;;
+    *) die "$bad is not a commit of $repo's main branch; refusing to build it (a fork's commit is served under the same URL)" ;;
   esac
 }
 
 # fetch_deckpilot DIR: DeckPilot at DECKPILOT_COMMIT in DIR, only once that
-# commit is known to be on DeckPilot's main (require_on_main), also when DIR
-# already holds it.
+# commit, and DECKPILOT_SDK_COMMIT (the SDK rev official/ and first-party/
+# build against), are known to be on DeckPilot's main (require_on_main),
+# also when DIR already holds it.
 fetch_deckpilot() {
-  require_on_main "$DECKPILOT_REPOSITORY" "$DECKPILOT_COMMIT"
+  require_on_main "$DECKPILOT_REPOSITORY" "$DECKPILOT_COMMIT" "${DECKPILOT_SDK_COMMIT:-$DECKPILOT_COMMIT}"
   fetch_commit "$1" "$DECKPILOT_REPOSITORY" "$DECKPILOT_COMMIT"
 }
 

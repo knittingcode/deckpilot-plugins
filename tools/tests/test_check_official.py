@@ -17,7 +17,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 CHECK = ROOT / "tools/check-official.py"
 ENV = dict(re.findall(r"^([A-Z_]+)=(\S+)$", (ROOT / "tools/deckpilot.env").read_text(), re.M))
-COMMIT = ENV["DECKPILOT_COMMIT"]
+# The SDK pin of official/Cargo.toml (tools/official.sh passes it as --commit).
+COMMIT = ENV["DECKPILOT_SDK_COMMIT"]
 FIXTURE = "test-fixtures/example-default"
 POLICY = json.loads((ROOT / "official/plugins.json").read_text())
 # The five privileged plugins: released from the committed plugins.json
@@ -41,24 +42,37 @@ def run(root, *extra):
     return p.returncode, p.stdout + p.stderr
 
 
+def contracts_of(official, dp):
+    """DeckPilot's contracts (plugins/first-party/contracts/<id>/): each
+    plugin's release files but the module, as the pinned DeckPilot keeps
+    them for the release it bundles."""
+    for e in POLICY["plugins"]:
+        src, dst = Path(official) / e["path"], dp / "plugins/first-party/contracts" / e["id"]
+        dst.mkdir(parents=True)
+        for name in ("manifest.json", "LICENSE"):
+            shutil.copy(src / name, dst / name)
+        for sub in ("assets", "locales"):
+            if (src / sub).is_dir():
+                shutil.copytree(src / sub, dst / sub)
+
+
 def deckpilot_of(tmp):
-    """A stand-in for the pinned DeckPilot checkout: its fixture, and every
-    privileged plugin as DeckPilot has it (version 0.1.0, its own repository)."""
+    """A stand-in for the pinned DeckPilot checkout: its fixture, the
+    reviewed privileged policy and the contract of every bundled release."""
     dp = Path(tmp) / "deckpilot"
     shutil.copytree(ROOT / "official" / FIXTURE, dp / "plugins/first-party" / FIXTURE)
     # The reviewed privileged policy, as the pinned DeckPilot carries it.
     record = dp / "crates/deckpilot-plugin-registry/publisher/privileged-policy.json"
     record.parent.mkdir(parents=True)
     shutil.copy(ROOT / "official/privileged-policy.json", record)
-    for e in REVIEWED:
-        shutil.copytree(ROOT / "official" / e["path"], dp / "plugins/first-party" / e["path"],
-                        ignore=shutil.ignore_patterns("target"))
-        def back(m, name=e["path"]):
-            m["version"] = "0.1.0"
-            m["repository"] = {"type": "git", "url": "https://github.com/knittingcode/deckpilot",
-                               "directory": f"plugins/first-party/{name}"}
-        edit_json(dp / "plugins/first-party" / e["path"] / "manifest.json", back)
+    contracts_of(ROOT / "official", dp)
     return dp
+
+
+def contract(fn, path=H):
+    """Edits the contract manifest of official/<path> in the stand-in."""
+    hid = next(e["id"] for e in POLICY["plugins"] if e["path"] == path)
+    return lambda dp: edit_json(dp / "plugins/first-party/contracts" / hid / "manifest.json", fn)
 
 
 def case(name, change, want_ok, message="", extra=(), deckpilot=None):
@@ -126,7 +140,9 @@ case("process execution", manifest(lambda m: m["permissions"].append({"kind": "t
 case("a privileged kind", manifest(lambda m: m["permissions"].append({"kind": "hostViews", "justification": "x"})), False,
      "gate is closed|does not admit it")
 case("a plugin API the pin does not provide", manifest(lambda m: m["engines"].update(pluginApi="^1.99")), False, "not satisfied")
-case("a DeckPilot range without the pin", manifest(lambda m: m["engines"].update(deckpilot=">=0.12.0 <1.0.0")), False, "does not accept")
+# A range that starts just above the pinned DeckPilot's version.
+ABOVE_PIN = "{}.{}.0".format(*(lambda v: (v[0], v[1] + 1))([int(x) for x in ENV["DECKPILOT_VERSION"].split(".")]))
+case("a DeckPilot range without the pin", manifest(lambda m: m["engines"].update(deckpilot=f">={ABOVE_PIN} <1.0.0")), False, "does not accept")
 case("another publisher", manifest(lambda m: m["publisher"].update(id="acme")), False, "publisher.id")
 case("a fixture with a bundled id", manifest(lambda m: m.update(id="deckpilot.github")), False, r"plugins.json's|fixture")
 case("a released plugin that DeckPilot does not bundle",
@@ -170,16 +186,83 @@ case("held does not widen process execution",
      lambda r: (held_entry(lambda e: e["permissions"].append("tools"))(r),
                 manifest(lambda m: m["permissions"].append({"kind": "tools", "tools": [{"executable": "sh"}], "justification": "x"}), H)(r)),
      False, "process execution")
-case("the contract equals DeckPilot's but for version and repository", lambda r: None, True, r"member\(s\) checked",
+case("the source is the release DeckPilot bundles (its contract)", lambda r: None, True, r"member\(s\) checked",
      deckpilot=lambda dp: None)
+case("the source is newer than the contract, from its own repository", lambda r: None, True, r"member\(s\) checked",
+     deckpilot=contract(lambda m: m.update(version="0.0.9", repository={
+         "type": "git", "url": "https://github.com/knittingcode/deckpilot", "directory": f"plugins/first-party/{H}"})))
+case("the source is older than the contract", lambda r: None, False, "is older than DeckPilot's contract",
+     deckpilot=contract(lambda m: m.update(version="9.0.0")))
 case("a manifest field that differs from DeckPilot's", manifest(lambda m: m.update(keywords=["x"]), H), False,
      "`keywords` differs from DeckPilot's", deckpilot=lambda dp: None)
 case("a locale that differs from DeckPilot's",
      lambda r: (r / H / "locales/pl.json").write_text((r / H / "locales/pl.json").read_text() + " "), False,
      "locales/pl.json differs", deckpilot=lambda dp: None)
-case("a plugin DeckPilot no longer has is not compared", manifest(lambda m: m.update(keywords=["x"]), H), True,
-     r"member\(s\) checked", deckpilot=lambda dp: shutil.rmtree(dp / "plugins/first-party" / H))
+case("a LICENSE that differs from DeckPilot's",
+     lambda r: (r / H / "LICENSE").write_text((r / H / "LICENSE").read_text() + " "), False,
+     "LICENSE differs", deckpilot=lambda dp: None)
+case("a plugin without a contract at the pin fails, never skipped", lambda r: None, False,
+     "has no contract plugins/first-party/contracts/deckpilot.docker",
+     deckpilot=lambda dp: shutil.rmtree(dp / "plugins/first-party/contracts/deckpilot.docker"))
+case("no contracts at all (a DeckPilot before #392) fails", lambda r: None, False, "has no contract",
+     deckpilot=lambda dp: shutil.rmtree(dp / "plugins/first-party/contracts"))
 case("a held fixture", policy(lambda d: d["fixtures"][0].update(held="x")), False, "for a plugin only")
+
+# The reviewed code of the privileged plugins (official/reviewed-sources.json).
+def write(rel, text):
+    return lambda r: (r / rel).write_text(text)
+def append(rel, text):
+    return lambda r: (r / rel).write_text((r / rel).read_text() + text)
+case("reviewed sources: unchanged", lambda r: None, True, r"member\(s\) checked")
+case("reviewed sources: a new module (mod evil; src/evil.rs)",
+     lambda r: (append("git/src/lib.rs", "\nmod evil;\n")(r), write("git/src/evil.rs", "pub fn x() {}\n")(r)), False,
+     r"official/git/src/evil.rs is not reviewed code")
+case("reviewed sources: a file in a subdirectory of src/",
+     lambda r: ((r / "docker/src/a").mkdir(), (r / "docker/src/a/b.rs").write_text("\n")), False,
+     r"official/docker/src/a/b.rs is not reviewed code")
+case("reviewed sources: a build script", write("workspace/build.rs", "fn main() {}\n"), False,
+     r"official/workspace/build.rs is not reviewed code")
+case("reviewed sources: one byte of a source", append("projects/src/lib.rs", " "), False,
+     r"official/projects/src/lib.rs differs from its reviewed bytes")
+case("reviewed sources: Cargo.toml", append("workflows/Cargo.toml", "\n"), False,
+     r"official/workflows/Cargo.toml differs from its reviewed bytes")
+case("reviewed sources: a removed source", lambda r: (r / "git/src/porcelain.rs").unlink(), False,
+     r"official/git/src/porcelain.rs is reviewed .* but missing")
+case("reviewed sources: a privileged plugin not covered",
+     lambda r: edit_json(r / "reviewed-sources.json", lambda d: d.update(plugins=[p for p in d["plugins"] if p["id"] != "deckpilot.docker"])),
+     False, r"does not cover deckpilot.docker")
+case("reviewed sources: another version", lambda r: edit_json(r / "reviewed-sources.json",
+     lambda d: d["plugins"][0].update(version="0.1.0")), False, r"version '0.1.1', but .* reviewed '0.1.0'")
+case("reviewed sources: the file missing", lambda r: (r / "reviewed-sources.json").unlink(), False, r"reviewed-sources.json")
+# The same check alone (the hygiene job: stdlib only).
+def run_alone(change):
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "official"
+        shutil.copytree(ROOT / "official", root, ignore=shutil.ignore_patterns("target"))
+        change(root)
+        p = subprocess.run([sys.executable, "-I", str(CHECK), "--root", str(root), "--reviewed-sources"],
+                           capture_output=True, text=True)
+        return p.returncode, p.stdout + p.stderr
+for name, change, want_ok, message in [
+    ("alone: unchanged", lambda r: None, True, r"reviewed code of 5 privileged plugin\(s\) is unchanged .*: deckpilot\.docker, deckpilot\.git, deckpilot\.projects, deckpilot\.workflows, deckpilot\.workspace$"),
+    ("alone: a new module", write("git/src/evil.rs", "\n"), False, r"git/src/evil.rs is not reviewed code"),
+    # The review's case: docker dropped from both files, then its code changed.
+    ("alone: a plugin dropped from the policy and the frozen sources", lambda r: (
+        edit_json(r / "privileged-policy.json", lambda d: d.update(plugins=[p for p in d["plugins"] if p["id"] != "deckpilot.docker"])),
+        edit_json(r / "reviewed-sources.json", lambda d: d.update(plugins=[p for p in d["plugins"] if p["id"] != "deckpilot.docker"])),
+        append("docker/src/lib.rs", "\n// changed\n")(r)), False,
+     r"privileged-policy.json does not cover deckpilot.docker.*\n.*reviewed-sources.json does not cover deckpilot.docker"),
+    ("alone: a plugin dropped from the frozen sources only", lambda r: edit_json(r / "reviewed-sources.json",
+        lambda d: d.update(plugins=[p for p in d["plugins"] if p["id"] != "deckpilot.git"])), False,
+     r"reviewed-sources.json does not cover deckpilot.git"),
+]:
+    rc, out = run_alone(change)
+    if (rc == 0) == want_ok and re.search(message, out):
+        passed += 1
+        print(f"ok   reviewed sources {name}")
+    else:
+        failed += 1
+        print(f"FAIL reviewed sources {name}: exit {rc}: {out.strip()}")
 RELEASED = next(e["path"] for e in POLICY["plugins"] if e["path"] not in PRIVILEGED)
 case("a privileged kind on a plugin that is not held", lambda r: (
      policy(lambda d: next(e for e in d["plugins"] if e["path"] == RELEASED)["permissions"].append("hostViews"))(r),
@@ -277,6 +360,7 @@ def deckpilot_with_policy(edit=None):
             edit(target)
         for name in [FIXTURE]:
             shutil.copytree(ROOT / "official" / name, dp / "plugins/first-party" / name)
+        contracts_of(root, dp)
     return make
 
 
@@ -414,7 +498,7 @@ for name, change, path in [
 case("a text parameter is not privileged", first_action(lambda a: a["parameters"].append({"key": "x", "label": "X", "kind": {"type": "text"}})), True, r"member\(s\) checked")
 
 # The mirror against the Rust validator itself, on DeckPilot's nine bundled
-# manifests at the pin: the pinned deckpilot-registry's `package` with the
+# manifests at the pin (the contracts of the releases it bundles): the pinned deckpilot-registry's `package` with the
 # third-party rules (Manifest::validate, whatever the privileged-kinds gate:
 # with it open, `--first-party` admits the reviewed manifests instead)
 # reports every privileged usage as `- <path>: ... is only for DeckPilot's
@@ -423,7 +507,7 @@ case("a text parameter is not privileged", first_action(lambda a: a["parameters"
 spec = __import__("importlib.util").util.spec_from_file_location("check_official", CHECK)
 RULES = __import__("importlib.util").util.module_from_spec(spec)
 spec.loader.exec_module(RULES)
-deckpilot = ROOT / ".work/deckpilot/plugins/first-party"
+deckpilot = ROOT / ".work/deckpilot/plugins/first-party/contracts"
 cli = ROOT / ".work/bin/deckpilot-registry"
 RUST_USAGE = re.compile(r"^- (\S+): .* is only for DeckPilot's own plugins shipped inside the app", re.M)
 BUNDLED = ["docker", "git", "github", "gitlab", "jira", "notifications", "projects", "workflows", "workspace"]
@@ -431,7 +515,8 @@ if deckpilot.is_dir() and cli.is_file():
     # DeckPilot's nine manifests, then every privileged plugin's manifest
     # here: what the third-party rules refuse (and only the reviewed policy
     # admits under --first-party), counted exactly as Rust does.
-    targets = [(f"DeckPilot's {name}", deckpilot / name, name in {"docker", "git", "projects", "workflows", "workspace"})
+    targets = [(f"DeckPilot's contract of deckpilot.{name}", deckpilot / f"deckpilot.{name}",
+                name in {"docker", "git", "projects", "workflows", "workspace"})
                for name in BUNDLED]
     targets += [(f"official/{e['path']}", ROOT / "official" / e["path"], True) for e in REVIEWED]
     for label, directory, expected_some in targets:

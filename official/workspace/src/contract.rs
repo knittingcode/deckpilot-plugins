@@ -1,17 +1,19 @@
 //! The contract with DeckPilot: this plugin moved here from DeckPilot's
 //! `plugins/first-party/<name>` and must stay a drop-in replacement of what
-//! DeckPilot bundled. Its manifest is compared with DeckPilot's at the commit
-//! pinned in `tools/deckpilot.env` (the checkout `tools/build-cli.sh` makes
-//! in `.work/deckpilot`): the same id, the same action ids in the same order
+//! DeckPilot bundles. DeckPilot no longer has its source: it bundles the
+//! signed release and keeps that release's files but the module as the
+//! contract, `plugins/first-party/contracts/deckpilot.<name>/` (DeckPilot
+//! #392). Our manifest is compared with that contract at the commit pinned
+//! in `tools/deckpilot.env` (the checkout `tools/build-cli.sh` makes in
+//! `.work/deckpilot`): the same id, the same action ids in the same order
 //! with the same parameters, the same settings, credential slots, error
 //! codes and permissions, so every stored `<id>.<action>` key, workflow node
-//! and setting keeps working. Only `version` (a new one: a released version
-//! never comes from a different build) and `repository` (the source lives
-//! here now) may differ.
+//! and setting keeps working. Only `version` may differ (equal while this
+//! is the release DeckPilot bundles, newer for the next one, never older),
+//! and `repository` (the source lives here).
 //!
-//! Once a DeckPilot pin no longer has the source (it consumes the released
-//! artifact instead), this test must move to a frozen copy of that contract
-//! in the same reviewed change that moves the pin.
+//! A pinned DeckPilot without this contract fails the test: the comparison
+//! is never skipped.
 
 use std::path::{Path, PathBuf};
 
@@ -33,8 +35,9 @@ fn pinned_commit() -> &'static str {
         .trim()
 }
 
-/// DeckPilot's manifest of this plugin at the pinned commit.
-fn deckpilot_manifest() -> Value {
+/// The contract's directory: `plugins/first-party/contracts/<id>` of the
+/// pinned checkout, checked to be the pinned commit.
+fn contract_dir() -> PathBuf {
     let work = std::env::var_os("DECKPILOT_PLUGINS_WORK")
         .map(PathBuf::from)
         .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.work"));
@@ -51,11 +54,19 @@ fn deckpilot_manifest() -> Value {
         "{} is not DeckPilot at the pinned commit: run tools/build-cli.sh",
         checkout.display()
     );
-    let path = checkout.join(format!("plugins/first-party/{}/manifest.json", name()));
+    checkout.join(format!(
+        "plugins/first-party/contracts/deckpilot.{}",
+        name()
+    ))
+}
+
+/// DeckPilot's contract manifest of this plugin at the pinned commit.
+fn deckpilot_manifest() -> Value {
+    let path = contract_dir().join("manifest.json");
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| {
         panic!(
-            "{} ({e}): the pinned DeckPilot no longer has this plugin's source; \
-             compare with a frozen copy of the contract instead",
+            "{} ({e}): the pinned DeckPilot has no contract of this plugin \
+             (plugins/first-party/contracts/deckpilot.<name>/)",
             path.display()
         )
     });
@@ -140,8 +151,8 @@ fn same_settings_credentials_and_permissions_as_deckpilot() {
 fn only_version_and_repository_differ_from_deckpilot() {
     let (mut ours, mut theirs) = (ours(), deckpilot_manifest());
     assert!(
-        version(&ours) > version(&theirs),
-        "{} must be newer than DeckPilot's {}: a version DeckPilot shipped never comes from here",
+        version(&ours) >= version(&theirs),
+        "{} is older than DeckPilot's contract {}: the source here is the bundled release or a newer one",
         ours["version"],
         theirs["version"]
     );
@@ -162,7 +173,8 @@ fn only_version_and_repository_differ_from_deckpilot() {
 }
 
 /// Besides the manifest and the module, what a bundle takes from a package
-/// (the pins of DeckPilot's `build.sh`): the same files, byte for byte.
+/// (the pins of DeckPilot's `build.sh`): the same files as the contract,
+/// byte for byte.
 #[test]
 fn same_shipped_files_as_deckpilot() {
     fn shipped(base: &Path) -> Vec<(String, Vec<u8>)> {
@@ -183,11 +195,8 @@ fn same_shipped_files_as_deckpilot() {
         files.sort();
         files
     }
-    deckpilot_manifest(); // the pinned checkout, checked
-    let work = std::env::var_os("DECKPILOT_PLUGINS_WORK")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.work"));
-    let theirs = work.join(format!("deckpilot/plugins/first-party/{}", name()));
+    deckpilot_manifest(); // the contract exists at the pinned commit
+    let theirs = contract_dir();
     let (a, b) = (
         shipped(Path::new(env!("CARGO_MANIFEST_DIR"))),
         shipped(&theirs),

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Layout rules of first-party/ (stdlib only; run with python3 -I).
 
-    check-first-party.py --root first-party --commit DECKPILOT_COMMIT [--list]
+    check-first-party.py --root first-party --commit DECKPILOT_SDK_COMMIT [--list]
 
 first-party/ is one Cargo workspace; every directory in it that has a
 manifest.json is one plugin. For each, this checks what neither cargo nor
@@ -19,8 +19,8 @@ the manifest schema does:
   manifest itself. Plugin API 1.0 has no localized metadata, so the file is
   a source convention and is not packaged (docs/plugin-factory.md).
 
-Also: the SDK `rev` of first-party/Cargo.toml must be the pinned DeckPilot
-commit. --list prints `<dir> <id> <version> <package>` per plugin.
+Also: the SDK `rev` of first-party/Cargo.toml must be the SDK pin
+(--commit, DECKPILOT_SDK_COMMIT of tools/deckpilot.env). --list prints `<dir> <id> <version> <package>` per plugin.
 """
 
 import argparse

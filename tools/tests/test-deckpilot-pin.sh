@@ -45,9 +45,11 @@ run() {
       rm() { echo "rm: cannot remove: Directory not empty" >&2; return 1; }
       sleep() { :; }
     fi
-    DECKPILOT_REPOSITORY=acme/deckpilot DECKPILOT_COMMIT=$sha
+    DECKPILOT_REPOSITORY=acme/deckpilot DECKPILOT_COMMIT=$sha DECKPILOT_SDK_COMMIT=${SDK:-$sha}
     if [ "$fn" = fetch_deckpilot ]; then
       fetch_deckpilot "$work/work/checkout"
+    elif [ "$fn" = require_on_main_two ]; then
+      require_on_main acme/deckpilot "$sha" "$fork"
     else
       require_on_main acme/deckpilot "$sha"
     fi
@@ -73,6 +75,21 @@ rm -rf "$work/work/checkout"
 run fail "fetch_deckpilot refuses a fork's commit" "$fork" fetch_deckpilot
 [ ! -e "$work/work/checkout" ] && { echo "ok   ... and fetches nothing of it"; passed=$((passed + 1)); } \
   || { echo "FAIL a checkout of the fork's commit exists"; failed=$((failed + 1)); }
+# The SDK pin (DECKPILOT_SDK_COMMIT: the rev official/ and first-party/
+# build against) must be a commit of main too, checked in the same clone.
+SDK=$first run pass "fetch_deckpilot with an older SDK commit of main" "$second" fetch_deckpilot
+rm -rf "$work/work/checkout"
+SDK=$fork run fail "fetch_deckpilot refuses an SDK commit that is a fork's" "$second" fetch_deckpilot
+grep -q "$fork is not a commit of acme/deckpilot's main" "$work/out" && [ ! -e "$work/work/checkout" ] &&
+  { echo "ok   ... names it and checks nothing out"; passed=$((passed + 1)); } \
+  || { echo "FAIL the SDK refusal: $(cat "$work/out")"; failed=$((failed + 1)); }
+SDK=$(printf '%040d' 7) run fail "fetch_deckpilot refuses an unknown SDK commit" "$second" fetch_deckpilot
+rm -rf "$work/work/checkout"
+SDK=$second run fail "fetch_deckpilot refuses an SDK commit newer than DECKPILOT_COMMIT" "$first" fetch_deckpilot
+grep -q "$second is not an ancestor of $first" "$work/out" && [ ! -e "$work/work/checkout" ] &&
+  { echo "ok   ... says so and checks nothing out"; passed=$((passed + 1)); } \
+  || { echo "FAIL the ancestor refusal: $(cat "$work/out")"; failed=$((failed + 1)); }
+run fail "require_on_main refuses when one of two commits is off main" "$second" require_on_main_two
 
 # check NAME CONDITION...: one more assertion.
 check() {

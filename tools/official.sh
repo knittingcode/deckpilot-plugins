@@ -108,7 +108,7 @@ OUT=$WORK/official
 PACKAGES=$OUT/packages
 
 list() {
-  python3 -I "$REPO_ROOT/tools/check-official.py" --root "$OFF" --commit "$DECKPILOT_COMMIT" \
+  python3 -I "$REPO_ROOT/tools/check-official.py" --root "$OFF" --commit "$DECKPILOT_SDK_COMMIT" \
     --app-version "$DECKPILOT_VERSION" --plugin-api "$DECKPILOT_PLUGIN_API" "$@"
 }
 

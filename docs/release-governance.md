@@ -142,6 +142,13 @@ These stay enforced on top of the gate:
 - The privileged policy record, the privileged-kinds gate (open for
   exactly that record) and the process allow-lists are unchanged by the
   exception.
+- The code of the five privileged plugins is frozen in
+  `official/reviewed-sources.json` (sha256 of each one's `Cargo.toml`,
+  `manifest.json` and `src/`), checked by the required *Repository
+  hygiene* job for a list of ids fixed in `tools/check-official.py`. The
+  workspace's `official/Cargo.toml` and `Cargo.lock` are not hashed there,
+  an accepted gap: a pull request that changes `reviewed-sources.json` is
+  reviewed as a whole diff, workspace dependencies included.
 
 ### Settings of the exception
 

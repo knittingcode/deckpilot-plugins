@@ -18,7 +18,10 @@ uses them, pinned to one DeckPilot commit.
 
 The pin is `tools/deckpilot.env` (`DECKPILOT_COMMIT`). `schemas/` and
 `rust-toolchain.toml` must match that commit (`tools/check-schemas.sh`, job
-*Schemas match DeckPilot*).
+*Schemas match DeckPilot*). The plugin SDK that `official/` and
+`first-party/` build against is pinned separately (`DECKPILOT_SDK_COMMIT`,
+the `rev` of their `Cargo.toml`): another rev changes every module's bytes,
+so it moves only with new plugin versions ([official/README.md](../official/README.md)).
 
 ## Layout
 

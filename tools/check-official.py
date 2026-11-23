@@ -14,8 +14,8 @@ neither cargo nor the manifest schema does:
   `deckpilot.*` and not one; the same version in Cargo.toml and
   manifest.json; publisher `deckpilot`.
 * Pinned SDK: every git dependency of official/Cargo.toml is
-  knittingcode/deckpilot at `rev` = the pinned commit (tools/deckpilot.env),
-  never a branch or tag; no path dependency leaves official/; Cargo.lock
+  knittingcode/deckpilot at `rev` = --commit, the SDK pin
+  (DECKPILOT_SDK_COMMIT of tools/deckpilot.env), never a branch or tag; no path dependency leaves official/; Cargo.lock
   exists and names no other DeckPilot revision.
 * Permission policy: the manifest's permission kinds equal the plugin's
   `permissions` in plugins.json (a new kind is a reviewed policy change).
@@ -47,9 +47,23 @@ neither cargo nor the manifest schema does:
   (--app-version), so `release verify` will accept the host.
 * With --deckpilot DIR (a checkout of the pinned commit): every fixture is
   byte-identical to DeckPilot's plugins/first-party/test-fixtures/<name>,
-  Cargo.toml excepted; and every plugin that DeckPilot still has in
-  plugins/first-party/<name> keeps its contract: the same manifest but for
-  `version` and `repository`, the same locales and assets.
+  Cargo.toml excepted; and every plugin keeps its contract, the files but
+  the module of the release DeckPilot bundles,
+  plugins/first-party/contracts/<id>/ (DeckPilot no longer has the
+  sources): the same manifest but for `version` (never older than the
+  contract's) and `repository`, the same locales and assets. A plugin
+  without a contract there fails: the comparison is never skipped.
+
+* The reviewed code of the privileged plugins (official/reviewed-sources.json,
+  REVIEWED_SOURCES): for every plugin of official/privileged-policy.json,
+  the sha256 of its Cargo.toml, manifest.json and every file under src/
+  (recursively), and its version. Any other file there (a new module, a
+  build.rs), a missing one or other bytes fail: changing the plugins'
+  code means changing that file, which is reviewed like the policy.
+  `check-official.py --root official --reviewed-sources` runs this check
+  alone (stdlib only, no DeckPilot; validate.yml's required *Repository
+  hygiene* job); `--print-reviewed-sources` prints the file for the tree
+  as it is, for a reviewed update.
 
 --list prints `<path> <id> <version> <package> <kind>` per member, kind
 `plugin`, `held` (a plugin marked held) or `fixture`. Without --list, each
@@ -61,6 +75,7 @@ held plugin is printed with its reason.
 
 import argparse
 import filecmp
+import hashlib
 import json
 import re
 import sys
@@ -412,7 +427,110 @@ def check_permissions(where, entry, manifest, held=False):
                     f"does not admit it: {reason}")
 
 
+REVIEWED_SOURCES = "reviewed-sources.json"
+# The privileged plugins whose code is frozen, fixed here and not taken from
+# the files the check reads: a pull request that drops a plugin from both
+# privileged-policy.json and reviewed-sources.json still fails. Changing
+# this list is a change of this checker, reviewed as tooling.
+REVIEWED_PRIVILEGED_IDS = ("deckpilot.docker", "deckpilot.git", "deckpilot.projects",
+                           "deckpilot.workflows", "deckpilot.workspace")
+
+
+def reviewed_files(directory):
+    """The files of a privileged plugin its review covers: Cargo.toml,
+    manifest.json, everything under src/, and a build.rs if there is one
+    (never reviewed, so always a difference)."""
+    names = [n for n in ("Cargo.toml", "manifest.json", "build.rs") if (directory / n).is_file()]
+    src = directory / "src"
+    if src.is_dir():
+        names += [str(p.relative_to(directory)).replace("\\", "/") for p in src.rglob("*") if p.is_file()]
+    return {n: hashlib.sha256((directory / n).read_bytes()).hexdigest() for n in sorted(names)}
+
+
+def privileged_paths(root):
+    """id -> (path, manifest version) of every plugin the reviewed
+    privileged policy covers."""
+    policy = load(root / PRIVILEGED_POLICY) or {}
+    members = {e.get("id"): e.get("path") for e in (load(root / "plugins.json") or {}).get("plugins", [])}
+    out = {}
+    for entry in policy.get("plugins", []):
+        pid = entry.get("id")
+        path = members.get(pid)
+        if path is None:
+            problem(f"official/{PRIVILEGED_POLICY} covers {pid}, which is not a plugin of official/plugins.json")
+            continue
+        manifest = load(root / path / "manifest.json") or {}
+        out[pid] = (path, manifest.get("version"))
+    return out
+
+
+def reviewed_sources_document(root):
+    plugins = [{"id": pid, "path": path, "version": version, "files": reviewed_files(root / path)}
+               for pid, (path, version) in sorted(privileged_paths(root).items())]
+    return {"reviewedSourcesVersion": 1, "plugins": plugins}
+
+
+def check_reviewed_sources(root):
+    """official/reviewed-sources.json is exactly the privileged plugins'
+    reviewed code as it is in the tree, for at least REVIEWED_PRIVILEGED_IDS."""
+    covered = {e.get("id") for e in (load(root / PRIVILEGED_POLICY) or {}).get("plugins", []) if isinstance(e, dict)}
+    for pid in REVIEWED_PRIVILEGED_IDS:
+        if pid not in covered:
+            problem(f"official/{PRIVILEGED_POLICY} does not cover {pid}, one of the privileged plugins "
+                    "tools/check-official.py freezes (REVIEWED_PRIVILEGED_IDS)")
+    frozen = load(root / REVIEWED_SOURCES)
+    if frozen is None:
+        return
+    listed = {e.get("id") for e in frozen.get("plugins", []) if isinstance(e, dict)}
+    for pid in REVIEWED_PRIVILEGED_IDS:
+        if pid not in listed:
+            problem(f"official/{REVIEWED_SOURCES} does not cover {pid}, one of the privileged plugins "
+                    "tools/check-official.py freezes (REVIEWED_PRIVILEGED_IDS)")
+    if frozen.get("reviewedSourcesVersion") != 1:
+        problem(f"official/{REVIEWED_SOURCES}: reviewedSourcesVersion must be 1")
+    want = {e["id"]: e for e in reviewed_sources_document(root)["plugins"]}
+    have = {}
+    for e in frozen.get("plugins", []):
+        if not isinstance(e, dict) or not isinstance(e.get("id"), str):
+            problem(f"official/{REVIEWED_SOURCES}: an entry without an id")
+            continue
+        if e["id"] in have:
+            problem(f"official/{REVIEWED_SOURCES}: {e['id']} is listed twice")
+        have[e["id"]] = e
+    for pid in sorted(set(want) - set(have)):
+        problem(f"official/{REVIEWED_SOURCES} does not cover {pid}, a plugin of the reviewed privileged policy")
+    for pid in sorted(set(have) - set(want)):
+        problem(f"official/{REVIEWED_SOURCES} covers {pid}, which the reviewed privileged policy does not")
+    for pid in sorted(set(want) & set(have)):
+        w, h = want[pid], have[pid]
+        where = f"official/{w['path']}"
+        for key in ("path", "version"):
+            if h.get(key) != w[key]:
+                problem(f"{where}: {key} {w[key]!r}, but official/{REVIEWED_SOURCES} reviewed {h.get(key)!r}")
+        files = h.get("files") if isinstance(h.get("files"), dict) else {}
+        for name in sorted(set(w["files"]) - set(files)):
+            problem(f"{where}/{name} is not reviewed code (official/{REVIEWED_SOURCES}): a new file of a "
+                    "privileged plugin is a reviewed change")
+        for name in sorted(set(files) - set(w["files"])):
+            problem(f"{where}/{name} is reviewed (official/{REVIEWED_SOURCES}) but missing")
+        for name in sorted(set(files) & set(w["files"])):
+            if files[name] != w["files"][name]:
+                problem(f"{where}/{name} differs from its reviewed bytes (official/{REVIEWED_SOURCES}: "
+                        f"sha256 {files[name]}, now {w['files'][name]})")
+
+
 def main():
+    if len(sys.argv) == 4 and sys.argv[1] == "--root" and sys.argv[3] in ("--reviewed-sources", "--print-reviewed-sources"):
+        root = Path(sys.argv[2])
+        if sys.argv[3] == "--print-reviewed-sources":
+            print(json.dumps(reviewed_sources_document(root), indent=2))
+            return 1 if problems else 0
+        check_reviewed_sources(root)
+        if problems:
+            return 1
+        print(f"official: the reviewed code of {len(privileged_paths(root))} privileged plugin(s) is unchanged "
+              f"(official/{REVIEWED_SOURCES}): {', '.join(sorted(privileged_paths(root)))}")
+        return 0
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", required=True, type=Path)
     ap.add_argument("--commit", required=True)
@@ -442,6 +560,7 @@ def main():
                         f"{DECKPILOT_PRIVILEGED_POLICY} at the pinned commit")
         elif PRIVILEGED_GATE_OPEN:
             problem(f"the pinned DeckPilot has no {DECKPILOT_PRIVILEGED_POLICY}: the gate cannot be open")
+    check_reviewed_sources(root)
     policy = load(root / "plugins.json")
     cargo_text = (root / "Cargo.toml").read_text(encoding="utf-8")
     check_pins(root, args.commit)
@@ -512,7 +631,7 @@ def main():
             theirs = args.deckpilot / "plugins/first-party/test-fixtures" / Path(path).name
             compare_tree(where, directory, theirs)
         if kind != "fixture" and args.deckpilot:
-            compare_contract(where, directory, manifest, args.deckpilot / "plugins/first-party" / Path(path).name)
+            compare_contract(where, directory, manifest, args.deckpilot / CONTRACTS / mid)
         rows.append((path, mid, manifest.get("version", ""), package, kind))
 
     if args.release is not None:
@@ -532,18 +651,27 @@ def main():
     return 0
 
 
-# Fields a moved plugin's manifest may change: its version (a new patch
-# version, official/README.md) and where its source lives.
+# Fields a moved plugin's manifest may change: its version (the bundled
+# release's or a newer one, official/README.md) and where its source lives.
 MOVED_FIELDS = ("version", "repository")
+# Where the pinned DeckPilot keeps the contract of each bundled release:
+# its files but the module (DeckPilot #392).
+CONTRACTS = Path("plugins/first-party/contracts")
 
 
 def compare_contract(where, ours, manifest, theirs):
-    """A moved plugin keeps DeckPilot's contract while DeckPilot still has it."""
+    """A moved plugin keeps the contract of the release DeckPilot bundles."""
     if not (theirs / "manifest.json").is_file():
+        problem(f"{where}: the pinned DeckPilot has no contract {CONTRACTS}/{theirs.name}/manifest.json; "
+                "every official plugin is compared with the release DeckPilot bundles")
         return
     original = load(theirs / "manifest.json")
     if original is None:
         return
+    ours_v, theirs_v = version_key(manifest.get("version", "")), version_key(original.get("version", ""))
+    if ours_v is None or theirs_v is None or ours_v < theirs_v:
+        problem(f"{where}/manifest.json: version {manifest.get('version')} is older than DeckPilot's contract "
+                f"{original.get('version')} (the bundled release); a source here is that release or a newer one")
     for key in sorted(set(manifest) | set(original)):
         if key not in MOVED_FIELDS and manifest.get(key) != original.get(key):
             problem(f"{where}/manifest.json: `{key}` differs from DeckPilot's {theirs.name} at the pinned "
@@ -560,6 +688,9 @@ def compare_contract(where, ours, manifest, theirs):
         for rel in files(a):
             if not filecmp.cmp(a / rel, b / rel, shallow=False):
                 problem(f"{where}/{sub}/{rel} differs from DeckPilot's at the pinned commit")
+    if not (ours / "LICENSE").is_file() or not (theirs / "LICENSE").is_file() or \
+            not filecmp.cmp(ours / "LICENSE", theirs / "LICENSE", shallow=False):
+        problem(f"{where}/LICENSE differs from DeckPilot's contract at the pinned commit")
 
 
 def compare_tree(where, ours, theirs):

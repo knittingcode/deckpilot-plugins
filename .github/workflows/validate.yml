@@ -33,6 +33,14 @@ jobs:
           persist-credentials: false
       - name: No private keys, key files or generated output
         run: python3 -I tools/check-hygiene.py
+      # Required on main: the privileged plugins' code is the reviewed code
+      # (official/reviewed-sources.json; stdlib only, nothing built).
+      # The five ids are fixed here too, not read from the files under review.
+      - name: The privileged official plugins' code is the reviewed code
+        run: |
+          python3 -I tools/check-official.py --root official --reviewed-sources | tee "$RUNNER_TEMP/reviewed.txt"
+          grep -qx "official: the reviewed code of 5 privileged plugin(s) is unchanged (official/reviewed-sources.json): deckpilot.docker, deckpilot.git, deckpilot.projects, deckpilot.workflows, deckpilot.workspace" "$RUNNER_TEMP/reviewed.txt" ||
+            { echo "::error::the reviewed code check does not cover exactly docker, git, projects, workflows and workspace"; exit 1; }
       - name: Tests of the publication and timestamp gates
         run: tools/tests/test-release-gates.sh
       - name: Tests of the Pages deployment

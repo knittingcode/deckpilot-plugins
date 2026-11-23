@@ -35,7 +35,7 @@ OUT=$WORK/first-party
 PUBLISHER_RECORD=$REPO_ROOT/registry/publishers/knittingcode.json
 
 list_plugins() {
-  python3 -I "$REPO_ROOT/tools/check-first-party.py" --root "$FP" --commit "$DECKPILOT_COMMIT" "$@"
+  python3 -I "$REPO_ROOT/tools/check-first-party.py" --root "$FP" --commit "$DECKPILOT_SDK_COMMIT" "$@"
 }
 
 check() {

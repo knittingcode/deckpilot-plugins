@@ -216,7 +216,7 @@ echo "== held plugins (official/plugins.json \`held\`): no release"
 privileged="deckpilot.docker deckpilot.git deckpilot.projects deckpilot.workflows deckpilot.workspace"
 for pid in $privileged; do
   expect pass "$pid is a released official plugin" "member\\(s\\) checked" -- \
-    python3 -I "$root/tools/check-official.py" --root "$root/official" --commit "$DECKPILOT_COMMIT" \
+    python3 -I "$root/tools/check-official.py" --root "$root/official" --commit "$DECKPILOT_SDK_COMMIT" \
     --app-version "$DECKPILOT_VERSION" --plugin-api "$DECKPILOT_PLUGIN_API" --release "$pid"
 done
 # A copy of the repository whose plugins.json holds them again: a held
