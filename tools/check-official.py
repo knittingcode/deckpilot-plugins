@@ -428,6 +428,12 @@ def check_permissions(where, entry, manifest, held=False):
 
 
 REVIEWED_SOURCES = "reviewed-sources.json"
+# The privileged plugins whose code is frozen, fixed here and not taken from
+# the files the check reads: a pull request that drops a plugin from both
+# privileged-policy.json and reviewed-sources.json still fails. Changing
+# this list is a change of this checker, reviewed as tooling.
+REVIEWED_PRIVILEGED_IDS = ("deckpilot.docker", "deckpilot.git", "deckpilot.projects",
+                           "deckpilot.workflows", "deckpilot.workspace")
 
 
 def reviewed_files(directory):
@@ -466,10 +472,20 @@ def reviewed_sources_document(root):
 
 def check_reviewed_sources(root):
     """official/reviewed-sources.json is exactly the privileged plugins'
-    reviewed code as it is in the tree."""
+    reviewed code as it is in the tree, for at least REVIEWED_PRIVILEGED_IDS."""
+    covered = {e.get("id") for e in (load(root / PRIVILEGED_POLICY) or {}).get("plugins", []) if isinstance(e, dict)}
+    for pid in REVIEWED_PRIVILEGED_IDS:
+        if pid not in covered:
+            problem(f"official/{PRIVILEGED_POLICY} does not cover {pid}, one of the privileged plugins "
+                    "tools/check-official.py freezes (REVIEWED_PRIVILEGED_IDS)")
     frozen = load(root / REVIEWED_SOURCES)
     if frozen is None:
         return
+    listed = {e.get("id") for e in frozen.get("plugins", []) if isinstance(e, dict)}
+    for pid in REVIEWED_PRIVILEGED_IDS:
+        if pid not in listed:
+            problem(f"official/{REVIEWED_SOURCES} does not cover {pid}, one of the privileged plugins "
+                    "tools/check-official.py freezes (REVIEWED_PRIVILEGED_IDS)")
     if frozen.get("reviewedSourcesVersion") != 1:
         problem(f"official/{REVIEWED_SOURCES}: reviewedSourcesVersion must be 1")
     want = {e["id"]: e for e in reviewed_sources_document(root)["plugins"]}
@@ -513,7 +529,7 @@ def main():
         if problems:
             return 1
         print(f"official: the reviewed code of {len(privileged_paths(root))} privileged plugin(s) is unchanged "
-              f"(official/{REVIEWED_SOURCES})")
+              f"(official/{REVIEWED_SOURCES}): {', '.join(sorted(privileged_paths(root)))}")
         return 0
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", required=True, type=Path)

@@ -244,8 +244,17 @@ def run_alone(change):
                            capture_output=True, text=True)
         return p.returncode, p.stdout + p.stderr
 for name, change, want_ok, message in [
-    ("alone: unchanged", lambda r: None, True, r"reviewed code of 5 privileged plugin\(s\) is unchanged"),
+    ("alone: unchanged", lambda r: None, True, r"reviewed code of 5 privileged plugin\(s\) is unchanged .*: deckpilot\.docker, deckpilot\.git, deckpilot\.projects, deckpilot\.workflows, deckpilot\.workspace$"),
     ("alone: a new module", write("git/src/evil.rs", "\n"), False, r"git/src/evil.rs is not reviewed code"),
+    # The review's case: docker dropped from both files, then its code changed.
+    ("alone: a plugin dropped from the policy and the frozen sources", lambda r: (
+        edit_json(r / "privileged-policy.json", lambda d: d.update(plugins=[p for p in d["plugins"] if p["id"] != "deckpilot.docker"])),
+        edit_json(r / "reviewed-sources.json", lambda d: d.update(plugins=[p for p in d["plugins"] if p["id"] != "deckpilot.docker"])),
+        append("docker/src/lib.rs", "\n// changed\n")(r)), False,
+     r"privileged-policy.json does not cover deckpilot.docker.*\n.*reviewed-sources.json does not cover deckpilot.docker"),
+    ("alone: a plugin dropped from the frozen sources only", lambda r: edit_json(r / "reviewed-sources.json",
+        lambda d: d.update(plugins=[p for p in d["plugins"] if p["id"] != "deckpilot.git"])), False,
+     r"reviewed-sources.json does not cover deckpilot.git"),
 ]:
     rc, out = run_alone(change)
     if (rc == 0) == want_ok and re.search(message, out):
