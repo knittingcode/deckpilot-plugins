@@ -98,6 +98,29 @@ export type CatalogPlugin = {
   actions: ManifestAction[] | null;
 };
 
+/**
+ * A plugin no longer offered: every version is withdrawn. It keeps its page,
+ * a notice with the signed revocations, and is never in discovery.
+ */
+export type RevokedPlugin = {
+  id: string;
+  /** The index name when the index still lists the plugin; otherwise the id. */
+  name: string;
+  summary?: string;
+  /** The publisher of the namespace, when the index has it. */
+  publisher?: CatalogPlugin['publisher'];
+  /** Its signed revocations, newest first. */
+  revocations: Revocation[];
+  /**
+   * The listing and detail, when the index still lists the plugin (a
+   * wildcard revocation of a listed plugin). DeckPilot's publisher omits a
+   * plugin with no installable version from `index.plugins` and keeps its
+   * revocations, so usually there is none: the page is built from the
+   * revocations alone.
+   */
+  plugin?: CatalogPlugin;
+};
+
 export type Catalog = {
   /** `none`: no registry is published. `live`: a registry tree was read. */
   state: 'none' | 'live';
@@ -107,7 +130,7 @@ export type Catalog = {
   /** Plugins the registry offers, newest publication first. */
   plugins: CatalogPlugin[];
   /** Plugins whose every version is revoked; they keep a page with the notice. */
-  revoked: CatalogPlugin[];
+  revoked: RevokedPlugin[];
 };
 
 class RegistryError extends Error {
@@ -416,13 +439,49 @@ function load(): Catalog {
 
   const newestFirst = (a: CatalogPlugin, b: CatalogPlugin) =>
     b.latest.publishedAt.localeCompare(a.latest.publishedAt) || a.id.localeCompare(b.id);
+  const byDateDesc = (a: Revocation, b: Revocation) => b.at.localeCompare(a.at);
+
+  // Listed but wildcard-revoked: the detail is pinned by the index, use it.
+  const revokedListed: RevokedPlugin[] = all
+    .filter((p) => p.revoked)
+    .sort(newestFirst)
+    .map((plugin) => ({
+      id: plugin.id,
+      name: plugin.name,
+      summary: plugin.summary,
+      publisher: plugin.publisher,
+      revocations: [...plugin.revocations].sort(byDateDesc),
+      plugin,
+    }));
+  // Revoked and not listed: the publisher leaves out a plugin with no
+  // installable version and keeps its revocations, so every version is
+  // withdrawn (a wildcard, or individual revocations that exhaust it). The
+  // signed index is the only trustworthy evidence here; no unpinned detail
+  // is read.
+  const listedIds = new Set(all.map((p) => p.id));
+  const withdrawn = new Map<string, Revocation[]>();
+  for (const { id, ...rest } of revocations) {
+    if (listedIds.has(id)) continue;
+    if (!ID.test(id)) throw new RegistryError(`unexpected revoked plugin id ${id}`);
+    withdrawn.set(id, [...(withdrawn.get(id) ?? []), rest]);
+  }
+  const newestRevocation = (r: RevokedPlugin) => r.revocations[0]?.at ?? '';
+  const revokedUnlisted: RevokedPlugin[] = [...withdrawn]
+    .map(([id, own]) => ({
+      id,
+      name: id,
+      publisher: publishers.get(id.slice(0, id.indexOf('.'))),
+      revocations: own.sort(byDateDesc),
+    }))
+    .sort((a, b) => newestRevocation(b).localeCompare(newestRevocation(a)) || a.id.localeCompare(b.id));
+
   return {
     state: 'live',
     trust,
     seq: Number(index.seq),
     generatedAt: str(index.generated_at, 'index.generated_at'),
     plugins: all.filter((p) => !p.revoked).sort(newestFirst),
-    revoked: all.filter((p) => p.revoked).sort(newestFirst),
+    revoked: [...revokedListed, ...revokedUnlisted],
   };
 }
 

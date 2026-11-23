@@ -211,12 +211,60 @@ test.describe('plugin page', () => {
     await expect(page.getByRole('table')).toContainText('Crashed on start.');
   });
 
-  test('a revoked plugin keeps its page, with the reason and no install steps', async ({ page }) => {
+  // Fully revoked plugins are absent from index.plugins (the publisher's
+  // shape); their notice pages come from the signed revocations alone.
+  test('a fully revoked plugin keeps its page, with the action, reason and advisory and no install controls', async ({ page }) => {
     await page.goto('en/plugins/sample.old-monitor/');
-    await expect(page.getByRole('main')).toContainText('This plugin has been revoked');
-    await expect(page.getByRole('main')).toContainText('Sent data to a host unrelated to its purpose.');
-    await expect(page.getByRole('main')).toContainText('DeckPilot does not offer it for installation');
-    await expect(page.getByRole('link', { name: 'Read the advisory' })).toHaveAttribute('href', 'https://example.com/advisory');
+    const main = page.getByRole('main');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('sample.old-monitor');
+    await expect(main).toContainText('This plugin has been revoked');
+    await expect(main).toContainText('DeckPilot stops installed copies and refuses to load them.');
+    await expect(main).toContainText('Sent data to a host unrelated to its purpose.');
+    await expect(main).toContainText('DeckPilot does not offer it for installation');
+    await expect(main.getByRole('link', { name: 'Read the advisory' })).toHaveAttribute('href', 'https://example.com/advisory');
+    await expect(page.locator('#install-title')).toHaveCount(0);
+    await expect(main.getByRole('listitem').filter({ hasText: 'Open the Marketplace' })).toHaveCount(0);
+    await expect(page.locator('[data-revocation-notice]')).toHaveCount(1);
+
+    await page.goto('pl/plugins/sample.old-monitor/');
+    await expect(page.locator('html')).toHaveAttribute('lang', 'pl');
+    await expect(page.getByRole('main')).toContainText('Ta wtyczka została odwołana');
+    await expect(page.getByRole('main')).toContainText('DeckPilot zatrzymuje zainstalowane kopie i odmawia ich wczytania.');
+    await expect(page.getByRole('main').locator('[lang="en"]', { hasText: 'Sent data to a host unrelated to its purpose.' })).toHaveCount(1);
+    await expect(page.getByRole('main').getByRole('link', { name: 'Przeczytaj komunikat bezpieczeństwa' })).toHaveAttribute('href', 'https://example.com/advisory');
+  });
+
+  test('individual revocations that exhaust every version also keep a notice page', async ({ page }) => {
+    for (const [path, title, disable, yank] of [
+      ['en/plugins/sample.legacy-sync/', 'This plugin has been revoked', 'DeckPilot stops installed copies and refuses to load them.', 'It is no longer offered for installation or updates.'],
+      ['pl/plugins/sample.legacy-sync/', 'Ta wtyczka została odwołana', 'DeckPilot zatrzymuje zainstalowane kopie i odmawia ich wczytania.', 'Nie jest już oferowana do instalacji ani aktualizacji.'],
+    ] as const) {
+      await page.goto(path);
+      const main = page.getByRole('main');
+      await expect(main).toContainText(title);
+      await expect(main).toContainText(disable);
+      await expect(main).toContainText(yank);
+      await expect(main).toContainText('Uploaded the settings file to an unrelated host.');
+      await expect(main).toContainText('Lost settings on update.');
+      await expect(main).toContainText('1.1.0');
+      await expect(page.locator('#install-title')).toHaveCount(0);
+    }
+  });
+
+  test('fully revoked plugins stay out of discovery; a partly revoked one stays in', async ({ page, request }) => {
+    for (const lang of ['en', 'pl']) {
+      const ids = (await (await request.get(`${lang}/plugins/search.json`)).json()).plugins.map((p: { id: string }) => p.id);
+      expect(ids).not.toContain('sample.old-monitor');
+      expect(ids).not.toContain('sample.legacy-sync');
+      expect(ids).toContain('fixture.build-status');
+      await page.goto(`${lang}/plugins/`);
+      await expect(page.locator('[data-plugin-item="sample.old-monitor"], [data-plugin-item="sample.legacy-sync"]')).toHaveCount(0);
+      await page.goto(`${lang}/`);
+      await expect(page.locator('[data-plugin="sample.old-monitor"], [data-plugin="sample.legacy-sync"]')).toHaveCount(0);
+    }
+    await page.goto('en/plugins/fixture.build-status/');
+    await expect(page.getByRole('main')).toContainText('Revoked versions: 1.0.0.');
+    await expect(page.locator('#install-title')).toHaveText('How to install');
   });
 
   test('Polish page: Polish interface, publisher text marked as English', async ({ page }) => {
@@ -233,7 +281,7 @@ test.describe('plugin page', () => {
   test('plugin pages are accessible in both themes', async ({ page }) => {
     for (const scheme of ['light', 'dark'] as const) {
       await page.emulateMedia({ colorScheme: scheme });
-      for (const path of ['en/plugins/fixture.build-status/', 'pl/plugins/sample.room-lights/', 'en/plugins/sample.old-monitor/', 'en/plugins/sample.chat-status/']) {
+      for (const path of ['en/plugins/fixture.build-status/', 'pl/plugins/sample.room-lights/', 'en/plugins/sample.old-monitor/', 'pl/plugins/sample.legacy-sync/', 'en/plugins/sample.chat-status/']) {
         await page.goto(path);
         await expectAccessible(page);
       }
