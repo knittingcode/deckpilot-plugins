@@ -61,7 +61,7 @@ async function load() {
   const live = state.data.live;
   const liveText = live
     ? `live index seq ${live.seq ?? '?'}${live.verified === true ? ', verified' : live.verified === false ? ', NOT verified' : ', not verified (CLI not built)'}`
-    : 'live index not mirrored (offline)';
+    : 'LIVE MIRROR DATA UNAVAILABLE (offline or the mirror failed): the preview cannot confirm any plugin is live';
   $('status').textContent = `${state.data.root} · branch ${state.data.branch} · ${liveText} · ` +
     `Rust storefront check: ${state.data.cli.storefrontCheck ? 'available' : 'not in the pinned CLI (header-level checks only)'}`;
   setDirty(false);
@@ -380,7 +380,8 @@ function renderListings() {
     l.promo_art ||= {};
     const versions = (plugins[pid].versions || []).map((v) => v.version);
     body.push(
-      h('p', { class: 'meta' }, plugins[pid].live ? 'Live in the signed index.' : 'Not in the live index yet.'),
+      h('p', { class: 'meta' }, plugins[pid].live === true ? 'Live in the signed index.'
+        : plugins[pid].live === false ? 'Not in the live index yet.' : 'Live state unknown (no live mirror data).'),
       localized(l, 'promo', { label: 'Promo line', max: 80 }, changed),
       localized(l, 'description_md', { label: 'Description (safe markdown)', max: 6000, multiline: true }, changed),
       highlights,
@@ -433,29 +434,35 @@ async function saveListing(holder) {
 // Preview, validate, fixture
 // --------------------------------------------------------------------------
 
-const preview = { as_of: '', platform: 'macos', locale: 'en', drafts: false };
+const preview = { as_of: '', platform: 'macos', locale: 'en', drafts: false, pending: false };
 
 function renderPreview() {
   const panel = $('panel-preview');
   const frame = h('iframe', { title: 'Discover wireframe', class: 'preview', sandbox: 'allow-same-origin' });
   const reload = () => {
-    const q = new URLSearchParams({ platform: preview.platform, locale: preview.locale, drafts: preview.drafts ? '1' : '0' });
+    const q = new URLSearchParams({ platform: preview.platform, locale: preview.locale, drafts: preview.drafts ? '1' : '0',
+      pending: preview.pending ? '1' : '0' });
     if (preview.as_of) q.set('as_of', preview.as_of);
     frame.src = `/preview?${q}`;
   };
   const out = h('p', { class: 'meta', 'aria-live': 'polite' });
   clear(panel, h('h2', {}, 'Preview'),
-    h('p', { class: 'meta' }, 'Saved files only (save first). The same rules as the client: status, UTC window, platform, locale fallback (exact, language, en), order then id, unknown or uninstallable plugins dropped.'),
+    h('p', { class: 'meta' }, 'Saved files only (save first). The same rules as the client: status, UTC window, platform, locale fallback (exact, language, en), order then id, plugins not in the live catalog or not installable dropped.'),
+    state.data.live ? '' : h('p', { class: 'warning', role: 'status' },
+      'Live mirror data unavailable: no plugin can be confirmed live, so the live preview drops every placement. This is not a confirmed absence; refresh the live index under Validate.'),
     h('div', { class: 'row' },
       text(preview, 'as_of', { label: 'As of (UTC, e.g. 2026-12-01T00:00:00Z; empty: now)' }, () => {}),
       select(preview, 'platform', { label: 'Platform', options: PLATFORMS }, reload),
       select(preview, 'locale', { label: 'Locale', options: [...LOCALES, 'pl-PL', 'de'] }, reload),
       checkbox(preview, 'drafts', { label: 'Show drafts' }, reload),
+      checkbox(preview, 'pending', { label: 'Include pending releases (not live; not what clients see)' }, reload),
       h('button', { type: 'button', onclick: reload }, 'Refresh'),
       h('button', { type: 'button', onclick: async () => {
         try {
           const r = await api('POST', '/api/export-fixture', preview);
-          out.textContent = `Wrote ${r.path} (${r.sections} section(s)) for VITE_STOREFRONT_FIXTURE (fixtureFromJson).`;
+          const mode = r.pending ? ' PENDING RELEASES INCLUDED, not what clients see.'
+            : r.live.available ? '' : ' Live mirror data unavailable: every placement dropped.';
+          out.textContent = `Wrote ${r.path} (${r.sections} section(s)) for VITE_STOREFRONT_FIXTURE (fixtureFromJson).${mode}`;
         } catch (error) { out.textContent = error.message; }
       } }, 'Export fixture')),
     out, frame);
