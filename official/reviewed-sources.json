@@ -1,0 +1,67 @@
+{
+  "$comment": "The reviewed code of the privileged official plugins (official/privileged-policy.json): the sha256 of Cargo.toml, manifest.json and every file under src/. tools/check-official.py fails on any other file, a missing one or other bytes, in the required Repository hygiene job and in official.sh check. These are the sources that build the released, reviewed modules (the released-pins guard of official.sh sign-test proves the modules). Changing a privileged plugin's code means changing this file: a reviewed change, like the policy. Regenerate with python3 -I tools/check-official.py --root official --print-reviewed-sources.",
+  "reviewedSourcesVersion": 1,
+  "plugins": [
+    {
+      "id": "deckpilot.docker",
+      "path": "docker",
+      "version": "0.1.1",
+      "files": {
+        "Cargo.toml": "548d1ce886e57c6471036f97fdd0886b5bc07ccdba516572eeee0f1e3960245e",
+        "manifest.json": "51e739be7aa9553da0b51c07e64e41bf6ff83bbe96831d0a4d3faf9f35eb46d0",
+        "src/cli.rs": "dd58dc065b600d09d0302d8072ed08c774c60251d9cb7a6c290a054b9f808770",
+        "src/lib.rs": "4874e289421e618e5cda8534b1ceb8d8ae3bf0019b65d134e59c35c586ab4256",
+        "src/state.rs": "8469b5e49062e07477d711c281808c2cb772e6dc1304fe49a03c74a65abb50db",
+        "src/tests.rs": "f7b03cedb40135c8232ba655849793def8cf3ea95500edc5b266c4955a9e9231"
+      }
+    },
+    {
+      "id": "deckpilot.git",
+      "path": "git",
+      "version": "0.1.1",
+      "files": {
+        "Cargo.toml": "1e2aa276ef05bf8db24890aeaa76cf8291a8e5b702ec51e0f33a285ea12c996f",
+        "manifest.json": "9a603f62cd0a4b8ce065c5e0c56144ccf608bd1c3869a43c3d3f6fb124270952",
+        "src/lib.rs": "8c99853dea68b79ef328d4ee27d1f93088071105c719a35544c9c5fc0bbe9500",
+        "src/porcelain.rs": "6406db1fdd52d5fb0183409a77a875faffd0be71bca143b375881ea0972b0c7b",
+        "src/state.rs": "2fa082a7c1e7e2d6e8d18b1068794972175b07af21467f6b9f03e5f27fc773bf",
+        "src/tests.rs": "9c349930da6421dc65eab3257b540845d9fdd1d83b21ac57b68dad13d346464d"
+      }
+    },
+    {
+      "id": "deckpilot.projects",
+      "path": "projects",
+      "version": "0.1.1",
+      "files": {
+        "Cargo.toml": "9c7a1a6851350fd3cd00fe768acfb0d19857775765641e5721e1c29080f71ee1",
+        "manifest.json": "6e480f09caa3e9fea385c004d82ad54ada37f2c52e7ba6464f474351fba1df53",
+        "src/contract.rs": "15c6fd6b02a4f2f47ae9200ad324941b6976e1839c0831232c580286ce95b7ec",
+        "src/lib.rs": "ef2d3f72ff2964beece5b911b36a00fb8634a7379fade3aee344e3229c01b80e",
+        "src/tests.rs": "32c2442729e036315260f66a94b64de698715a577532bb8721b560a2b358240c"
+      }
+    },
+    {
+      "id": "deckpilot.workflows",
+      "path": "workflows",
+      "version": "0.1.1",
+      "files": {
+        "Cargo.toml": "30584e9a31d42d85e70fa651c9b198ad01df7019b68a2ca488c292719c470b82",
+        "manifest.json": "2dffd32e3d9731b2bea3b3dc2421a3a240655fb08af23b0625dfad7a1291f79a",
+        "src/lib.rs": "9fba960ef24b8ff7e14c6b3e569c5198cee2399e375851a2fe400759ce34e699",
+        "src/tests.rs": "f6eb1f75863956c82a565e5399de3dce3a2ade8729910c07062ef2660bce2d53"
+      }
+    },
+    {
+      "id": "deckpilot.workspace",
+      "path": "workspace",
+      "version": "0.1.1",
+      "files": {
+        "Cargo.toml": "6db91ddd0ef5975778c3bfdb54edeaf1013ae9d28f3e3c9214e468d179effa4c",
+        "manifest.json": "d722832751bbabd091101c519a807bc9a4d4e5249b08f648d8515924a3433a64",
+        "src/contract.rs": "15c6fd6b02a4f2f47ae9200ad324941b6976e1839c0831232c580286ce95b7ec",
+        "src/lib.rs": "96502597973216b4ce55bb702d0d8c4c044971273d56956e0c41ae89d4ab55ba",
+        "src/tests.rs": "9b2e7b9ea3ecd62015cb544c1cb08c5f057fe5af51acbbbaef704ed6df82d799"
+      }
+    }
+  ]
+}

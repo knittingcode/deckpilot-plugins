@@ -54,6 +54,17 @@ neither cargo nor the manifest schema does:
   contract's) and `repository`, the same locales and assets. A plugin
   without a contract there fails: the comparison is never skipped.
 
+* The reviewed code of the privileged plugins (official/reviewed-sources.json,
+  REVIEWED_SOURCES): for every plugin of official/privileged-policy.json,
+  the sha256 of its Cargo.toml, manifest.json and every file under src/
+  (recursively), and its version. Any other file there (a new module, a
+  build.rs), a missing one or other bytes fail: changing the plugins'
+  code means changing that file, which is reviewed like the policy.
+  `check-official.py --root official --reviewed-sources` runs this check
+  alone (stdlib only, no DeckPilot; validate.yml's required *Repository
+  hygiene* job); `--print-reviewed-sources` prints the file for the tree
+  as it is, for a reviewed update.
+
 --list prints `<path> <id> <version> <package> <kind>` per member, kind
 `plugin`, `held` (a plugin marked held) or `fixture`. Without --list, each
 held plugin is printed with its reason.
@@ -64,6 +75,7 @@ held plugin is printed with its reason.
 
 import argparse
 import filecmp
+import hashlib
 import json
 import re
 import sys
@@ -415,7 +427,94 @@ def check_permissions(where, entry, manifest, held=False):
                     f"does not admit it: {reason}")
 
 
+REVIEWED_SOURCES = "reviewed-sources.json"
+
+
+def reviewed_files(directory):
+    """The files of a privileged plugin its review covers: Cargo.toml,
+    manifest.json, everything under src/, and a build.rs if there is one
+    (never reviewed, so always a difference)."""
+    names = [n for n in ("Cargo.toml", "manifest.json", "build.rs") if (directory / n).is_file()]
+    src = directory / "src"
+    if src.is_dir():
+        names += [str(p.relative_to(directory)).replace("\\", "/") for p in src.rglob("*") if p.is_file()]
+    return {n: hashlib.sha256((directory / n).read_bytes()).hexdigest() for n in sorted(names)}
+
+
+def privileged_paths(root):
+    """id -> (path, manifest version) of every plugin the reviewed
+    privileged policy covers."""
+    policy = load(root / PRIVILEGED_POLICY) or {}
+    members = {e.get("id"): e.get("path") for e in (load(root / "plugins.json") or {}).get("plugins", [])}
+    out = {}
+    for entry in policy.get("plugins", []):
+        pid = entry.get("id")
+        path = members.get(pid)
+        if path is None:
+            problem(f"official/{PRIVILEGED_POLICY} covers {pid}, which is not a plugin of official/plugins.json")
+            continue
+        manifest = load(root / path / "manifest.json") or {}
+        out[pid] = (path, manifest.get("version"))
+    return out
+
+
+def reviewed_sources_document(root):
+    plugins = [{"id": pid, "path": path, "version": version, "files": reviewed_files(root / path)}
+               for pid, (path, version) in sorted(privileged_paths(root).items())]
+    return {"reviewedSourcesVersion": 1, "plugins": plugins}
+
+
+def check_reviewed_sources(root):
+    """official/reviewed-sources.json is exactly the privileged plugins'
+    reviewed code as it is in the tree."""
+    frozen = load(root / REVIEWED_SOURCES)
+    if frozen is None:
+        return
+    if frozen.get("reviewedSourcesVersion") != 1:
+        problem(f"official/{REVIEWED_SOURCES}: reviewedSourcesVersion must be 1")
+    want = {e["id"]: e for e in reviewed_sources_document(root)["plugins"]}
+    have = {}
+    for e in frozen.get("plugins", []):
+        if not isinstance(e, dict) or not isinstance(e.get("id"), str):
+            problem(f"official/{REVIEWED_SOURCES}: an entry without an id")
+            continue
+        if e["id"] in have:
+            problem(f"official/{REVIEWED_SOURCES}: {e['id']} is listed twice")
+        have[e["id"]] = e
+    for pid in sorted(set(want) - set(have)):
+        problem(f"official/{REVIEWED_SOURCES} does not cover {pid}, a plugin of the reviewed privileged policy")
+    for pid in sorted(set(have) - set(want)):
+        problem(f"official/{REVIEWED_SOURCES} covers {pid}, which the reviewed privileged policy does not")
+    for pid in sorted(set(want) & set(have)):
+        w, h = want[pid], have[pid]
+        where = f"official/{w['path']}"
+        for key in ("path", "version"):
+            if h.get(key) != w[key]:
+                problem(f"{where}: {key} {w[key]!r}, but official/{REVIEWED_SOURCES} reviewed {h.get(key)!r}")
+        files = h.get("files") if isinstance(h.get("files"), dict) else {}
+        for name in sorted(set(w["files"]) - set(files)):
+            problem(f"{where}/{name} is not reviewed code (official/{REVIEWED_SOURCES}): a new file of a "
+                    "privileged plugin is a reviewed change")
+        for name in sorted(set(files) - set(w["files"])):
+            problem(f"{where}/{name} is reviewed (official/{REVIEWED_SOURCES}) but missing")
+        for name in sorted(set(files) & set(w["files"])):
+            if files[name] != w["files"][name]:
+                problem(f"{where}/{name} differs from its reviewed bytes (official/{REVIEWED_SOURCES}: "
+                        f"sha256 {files[name]}, now {w['files'][name]})")
+
+
 def main():
+    if len(sys.argv) == 4 and sys.argv[1] == "--root" and sys.argv[3] in ("--reviewed-sources", "--print-reviewed-sources"):
+        root = Path(sys.argv[2])
+        if sys.argv[3] == "--print-reviewed-sources":
+            print(json.dumps(reviewed_sources_document(root), indent=2))
+            return 1 if problems else 0
+        check_reviewed_sources(root)
+        if problems:
+            return 1
+        print(f"official: the reviewed code of {len(privileged_paths(root))} privileged plugin(s) is unchanged "
+              f"(official/{REVIEWED_SOURCES})")
+        return 0
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", required=True, type=Path)
     ap.add_argument("--commit", required=True)
@@ -445,6 +544,7 @@ def main():
                         f"{DECKPILOT_PRIVILEGED_POLICY} at the pinned commit")
         elif PRIVILEGED_GATE_OPEN:
             problem(f"the pinned DeckPilot has no {DECKPILOT_PRIVILEGED_POLICY}: the gate cannot be open")
+    check_reviewed_sources(root)
     policy = load(root / "plugins.json")
     cargo_text = (root / "Cargo.toml").read_text(encoding="utf-8")
     check_pins(root, args.commit)

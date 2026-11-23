@@ -221,9 +221,57 @@ fn only_git_runs_and_never_a_shell() {
     }
 }
 
+/// Every file under `src/`, recursively, as `(path relative to src/, text)`.
+fn src_files() -> Vec<(String, String)> {
+    fn walk(dir: &Path, base: &Path, out: &mut Vec<(String, String)>) {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                walk(&path, base, out);
+            } else {
+                let rel = path
+                    .strip_prefix(base)
+                    .unwrap()
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                let text = String::from_utf8(std::fs::read(&path).unwrap())
+                    .unwrap_or_else(|_| panic!("src/{rel} is not UTF-8 text"));
+                out.push((rel, text));
+            }
+        }
+    }
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut out = Vec::new();
+    walk(&src, &src, &mut out);
+    out.sort();
+    out
+}
+
+/// `src/` holds exactly the reviewed files (`SOURCES`), and the crate has no
+/// build script: a new module (`mod evil;` and `src/evil.rs`) or a
+/// `build.rs` is a change of the reviewed code, never silently scanned
+/// around. official/reviewed-sources.json freezes their bytes
+/// (tools/check-official.py).
+#[test]
+fn src_is_exactly_the_reviewed_files() {
+    let found: Vec<String> = src_files().into_iter().map(|(name, _)| name).collect();
+    let mut reviewed: Vec<String> = SOURCES.iter().map(|(name, _)| (*name).to_owned()).collect();
+    reviewed.sort();
+    assert_eq!(found, reviewed, "src/ is not exactly the reviewed files");
+    assert!(
+        !Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("build.rs")
+            .exists(),
+        "a build script is not part of the reviewed plugin"
+    );
+}
+
 #[test]
 fn the_plugin_starts_no_process_itself() {
-    for (name, text) in SOURCES {
+    // Every file of src/, as it is on disk (not only the reviewed list).
+    let files = src_files();
+    assert!(!files.is_empty());
+    for (name, text) in &files {
         for forbidden in [
             "std::process",
             "Command::new",

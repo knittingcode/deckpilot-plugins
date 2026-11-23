@@ -53,7 +53,9 @@ remove_tree() {
 # unique directory per call (never one a previous call or a still-running
 # git may be using) and is removed afterwards; its removal never decides
 # the result.
-# With several SHAs, each must be (one clone).
+# With several SHAs (one clone), each must be, and every one after the
+# first must also be an ancestor of (or the same as) the first: the SDK pin
+# is never newer than the tooling pin.
 require_on_main() {
   local repo=$1 dir verdict=ok sha bad=
   shift
@@ -75,12 +77,18 @@ require_on_main() {
         verdict=off-main bad=$sha
         break
       fi
+      if [ "$sha" != "$1" ] &&
+        ! GIT_NO_LAZY_FETCH=1 git -C "$dir" "${GIT_NO_BACKGROUND[@]}" merge-base --is-ancestor "$sha" "$1"; then
+        verdict=not-ancestor bad=$sha
+        break
+      fi
     done
   fi
   remove_tree "$dir"
   case $verdict in
     ok) ;;
     unfetchable) die "the main branch of $repo cannot be fetched" ;;
+    not-ancestor) die "$bad is not an ancestor of $1 on $repo's main (the SDK pin must not be newer than DECKPILOT_COMMIT)" ;;
     *) die "$bad is not a commit of $repo's main branch; refusing to build it (a fork's commit is served under the same URL)" ;;
   esac
 }

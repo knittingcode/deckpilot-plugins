@@ -33,6 +33,10 @@ jobs:
           persist-credentials: false
       - name: No private keys, key files or generated output
         run: python3 -I tools/check-hygiene.py
+      # Required on main: the privileged plugins' code is the reviewed code
+      # (official/reviewed-sources.json; stdlib only, nothing built).
+      - name: The privileged official plugins' code is the reviewed code
+        run: python3 -I tools/check-official.py --root official --reviewed-sources
       - name: Tests of the publication and timestamp gates
         run: tools/tests/test-release-gates.sh
       - name: Tests of the Pages deployment

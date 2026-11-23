@@ -37,6 +37,17 @@ skipped. The module of a bundled release is pinned by DeckPilot
 runs DeckPilot's released-pins guard on a build of the source, so a source
 that no longer builds the released module under its version fails.
 
+The code of the five privileged plugins (those of `privileged-policy.json`)
+is frozen as reviewed: `reviewed-sources.json` holds the sha256 of each
+one's `Cargo.toml`, `manifest.json` and every file under `src/`.
+`tools/check-official.py` fails on another file (a new module, a
+`build.rs`), a missing one or other bytes, in the required *Repository
+hygiene* job (`--reviewed-sources`) and in `official.sh check`; the Git and
+Docker `tests/reviewed_policy.rs` also require `src/` to be exactly their
+reviewed files and scan all of it. Changing that code means changing
+`reviewed-sources.json` (`--print-reviewed-sources`), a reviewed change
+like the policy.
+
 The SDK, the ABI crate and the support crate are pinned separately, to
 `DECKPILOT_SDK_COMMIT` (`tools/deckpilot.env`): Cargo hashes a git
 dependency's revision into the build, so the released modules are

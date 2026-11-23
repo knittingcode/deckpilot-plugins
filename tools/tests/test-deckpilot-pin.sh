@@ -84,6 +84,11 @@ grep -q "$fork is not a commit of acme/deckpilot's main" "$work/out" && [ ! -e "
   { echo "ok   ... names it and checks nothing out"; passed=$((passed + 1)); } \
   || { echo "FAIL the SDK refusal: $(cat "$work/out")"; failed=$((failed + 1)); }
 SDK=$(printf '%040d' 7) run fail "fetch_deckpilot refuses an unknown SDK commit" "$second" fetch_deckpilot
+rm -rf "$work/work/checkout"
+SDK=$second run fail "fetch_deckpilot refuses an SDK commit newer than DECKPILOT_COMMIT" "$first" fetch_deckpilot
+grep -q "$second is not an ancestor of $first" "$work/out" && [ ! -e "$work/work/checkout" ] &&
+  { echo "ok   ... says so and checks nothing out"; passed=$((passed + 1)); } \
+  || { echo "FAIL the ancestor refusal: $(cat "$work/out")"; failed=$((failed + 1)); }
 run fail "require_on_main refuses when one of two commits is off main" "$second" require_on_main_two
 
 # check NAME CONDITION...: one more assertion.

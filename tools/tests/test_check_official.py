@@ -207,6 +207,53 @@ case("a plugin without a contract at the pin fails, never skipped", lambda r: No
 case("no contracts at all (a DeckPilot before #392) fails", lambda r: None, False, "has no contract",
      deckpilot=lambda dp: shutil.rmtree(dp / "plugins/first-party/contracts"))
 case("a held fixture", policy(lambda d: d["fixtures"][0].update(held="x")), False, "for a plugin only")
+
+# The reviewed code of the privileged plugins (official/reviewed-sources.json).
+def write(rel, text):
+    return lambda r: (r / rel).write_text(text)
+def append(rel, text):
+    return lambda r: (r / rel).write_text((r / rel).read_text() + text)
+case("reviewed sources: unchanged", lambda r: None, True, r"member\(s\) checked")
+case("reviewed sources: a new module (mod evil; src/evil.rs)",
+     lambda r: (append("git/src/lib.rs", "\nmod evil;\n")(r), write("git/src/evil.rs", "pub fn x() {}\n")(r)), False,
+     r"official/git/src/evil.rs is not reviewed code")
+case("reviewed sources: a file in a subdirectory of src/",
+     lambda r: ((r / "docker/src/a").mkdir(), (r / "docker/src/a/b.rs").write_text("\n")), False,
+     r"official/docker/src/a/b.rs is not reviewed code")
+case("reviewed sources: a build script", write("workspace/build.rs", "fn main() {}\n"), False,
+     r"official/workspace/build.rs is not reviewed code")
+case("reviewed sources: one byte of a source", append("projects/src/lib.rs", " "), False,
+     r"official/projects/src/lib.rs differs from its reviewed bytes")
+case("reviewed sources: Cargo.toml", append("workflows/Cargo.toml", "\n"), False,
+     r"official/workflows/Cargo.toml differs from its reviewed bytes")
+case("reviewed sources: a removed source", lambda r: (r / "git/src/porcelain.rs").unlink(), False,
+     r"official/git/src/porcelain.rs is reviewed .* but missing")
+case("reviewed sources: a privileged plugin not covered",
+     lambda r: edit_json(r / "reviewed-sources.json", lambda d: d.update(plugins=[p for p in d["plugins"] if p["id"] != "deckpilot.docker"])),
+     False, r"does not cover deckpilot.docker")
+case("reviewed sources: another version", lambda r: edit_json(r / "reviewed-sources.json",
+     lambda d: d["plugins"][0].update(version="0.1.0")), False, r"version '0.1.1', but .* reviewed '0.1.0'")
+case("reviewed sources: the file missing", lambda r: (r / "reviewed-sources.json").unlink(), False, r"reviewed-sources.json")
+# The same check alone (the hygiene job: stdlib only).
+def run_alone(change):
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "official"
+        shutil.copytree(ROOT / "official", root, ignore=shutil.ignore_patterns("target"))
+        change(root)
+        p = subprocess.run([sys.executable, "-I", str(CHECK), "--root", str(root), "--reviewed-sources"],
+                           capture_output=True, text=True)
+        return p.returncode, p.stdout + p.stderr
+for name, change, want_ok, message in [
+    ("alone: unchanged", lambda r: None, True, r"reviewed code of 5 privileged plugin\(s\) is unchanged"),
+    ("alone: a new module", write("git/src/evil.rs", "\n"), False, r"git/src/evil.rs is not reviewed code"),
+]:
+    rc, out = run_alone(change)
+    if (rc == 0) == want_ok and re.search(message, out):
+        passed += 1
+        print(f"ok   reviewed sources {name}")
+    else:
+        failed += 1
+        print(f"FAIL reviewed sources {name}: exit {rc}: {out.strip()}")
 RELEASED = next(e["path"] for e in POLICY["plugins"] if e["path"] not in PRIVILEGED)
 case("a privileged kind on a plugin that is not held", lambda r: (
      policy(lambda d: next(e for e in d["plugins"] if e["path"] == RELEASED)["permissions"].append("hostViews"))(r),
