@@ -17,6 +17,7 @@
 #![deny(unsafe_code)]
 
 pub mod adapters;
+pub mod changes;
 pub mod client;
 pub mod errors;
 pub mod host;
@@ -26,13 +27,12 @@ pub mod records;
 pub mod remote;
 pub mod transport;
 
-use deckpilot_plugin_sdk::dialog::{Dialog, DialogResultExt};
 use deckpilot_plugin_sdk::prelude::*;
 
 use errors::{Failure, clean, codes, fail};
 use provider::{
-    ConnectionInfo, CrCreate, CrFilter, IssueQuery, IssueState, PipelineSelector, PipelineTrigger,
-    Provider, RepoPage, RepoRef, WebTarget,
+    ConnectionInfo, CrFilter, IssueQuery, IssueState, PipelineSelector, PipelineTrigger, Provider,
+    RepoPage, RepoRef, WebTarget,
 };
 
 /// The plugin's id and version, as in `manifest.json`.
@@ -449,8 +449,8 @@ fn open_issue(ctx: &mut Context<'_>, args: &Args<'_>) -> ActionResult {
     let mut b = bind(args)?;
     let r = b.repo(args)?;
     let number = issue_number(args)?;
-    let issue = b.provider.get_issue(&mut b.transport, &r, number)?;
-    open(ctx, issue.web_url)
+    let url = ops::issue_page(b.provider.as_ref(), &mut b.transport, &r, number)?;
+    open(ctx, url)
 }
 
 fn pipeline_status(_ctx: &mut Context<'_>, args: &Args<'_>) -> ActionResult {
@@ -478,110 +478,53 @@ fn pipeline_status(_ctx: &mut Context<'_>, args: &Args<'_>) -> ActionResult {
     )?)
 }
 
-/// The rule for actions that change something (design §5): from a key or
-/// a gesture they ask first (unless the instance's `confirm` is off); a
-/// workflow the user started is the intent; a schedule, an event or an
-/// unknown run fails with `needs-confirmation` unless `confirm` is off.
-fn confirmed(ctx: &mut Context<'_>, args: &Args<'_>, question: &str) -> Result<(), PluginError> {
-    if !args.get::<Option<bool>>("confirm")?.unwrap_or(true) {
-        return Ok(());
-    }
-    let run = ctx.run_context()?;
-    if !run.is_user_initiated() {
-        return Err(PluginError::new(
-            codes::NEEDS_CONFIRMATION,
-            "this action changes something and asks first; a run nobody started cannot ask, so \
-             turn its “Ask first” off to let it run unattended",
-        ));
-    }
-    if !matches!(run.trigger, RunTrigger::Key | RunTrigger::Gesture) {
-        return Ok(());
-    }
-    let answer = ctx.dialog(
-        Dialog::confirm("Git Providers")
-            .message(question.chars().take(400).collect::<String>())
-            .confirm_label("Continue"),
-    )?;
-    if answer.cancel_reason().is_none() {
-        Ok(())
-    } else {
-        Err(PluginError::new(codes::CANCELLED, "cancelled"))
-    }
+fn confirm(args: &Args<'_>) -> Result<bool, PluginError> {
+    Ok(args.get::<Option<bool>>("confirm")?.unwrap_or(true))
 }
 
 fn create_change_request(ctx: &mut Context<'_>, args: &Args<'_>) -> ActionResult {
     let mut b = bind(args)?;
     b.connection.require_write()?;
     let r = b.repo(args)?;
-    let source = ops::reference(&text(args, "source")?.unwrap_or_default())?;
-    let target = match text(args, "target")? {
-        Some(target) => ops::reference(&target)?,
-        None => b
-            .provider
-            .get_repository(&mut b.transport, &r)?
-            .default_branch
-            .ok_or_else(|| PluginError::new(codes::INVALID_REF, "choose a target branch"))?,
-    };
-    let title = text(args, "title")?.unwrap_or_default();
-    let host = client::Api::new(&b.connection)?.host;
-    let path = b.provider.get_repository(&mut b.transport, &r)?.path;
-    confirmed(
-        ctx,
-        args,
-        &format!(
-            "Open a {} from {source} into {target} in {path} on {host}?",
-            if b.provider.kind() == provider::ProviderKind::Gitlab {
-                "merge request"
-            } else {
-                "pull request"
-            }
-        ),
-    )?;
-    let c = CrCreate {
-        source,
-        target,
-        title,
+    let request = changes::CrRequest {
+        source: ops::reference(&text(args, "source")?.unwrap_or_default())?,
+        target: text(args, "target")?
+            .map(|t| ops::reference(&t))
+            .transpose()?,
+        title: text(args, "title")?.unwrap_or_default(),
         description: text(args, "description")?,
         draft: args.get::<Option<bool>>("draft")?.unwrap_or(false),
+        open_after: args.get::<Option<bool>>("openAfter")?.unwrap_or(false),
     };
-    let output =
-        ops::create_change_request(b.provider.as_ref(), &mut b.transport, &b.connection, &r, &c)?;
-    // The change already happened: a page that cannot be opened is told,
-    // never a failure of the action.
-    if args.get::<Option<bool>>("openAfter")?.unwrap_or(false)
-        && let Some(deckpilot_plugin_sdk::ParamValue::String(url)) = output.data().get("url")
-    {
-        let opened = !url.is_empty() && ctx.open_url(url.clone()).is_ok();
-        return Ok(output.with("opened", opened));
-    }
-    Ok(output)
+    changes::create_change_request(
+        ctx,
+        b.provider.as_ref(),
+        &mut b.transport,
+        &b.connection,
+        &r,
+        confirm(args)?,
+        request,
+    )
 }
 
 fn trigger_pipeline(ctx: &mut Context<'_>, args: &Args<'_>) -> ActionResult {
     let mut b = bind(args)?;
     b.connection.require_write()?;
     let r = b.repo(args)?;
-    let reference = ops::reference(&text(args, "ref")?.unwrap_or_default())?;
-    let variables = ops::parse_variables(&text(args, "variables")?.unwrap_or_default())?;
     let trigger = PipelineTrigger {
-        reference: reference.clone(),
-        variables,
+        reference: ops::reference(&text(args, "ref")?.unwrap_or_default())?,
+        variables: ops::parse_variables(&text(args, "variables")?.unwrap_or_default())?,
         workflow: text(args, "workflow")?,
     };
-    let host = client::Api::new(&b.connection)?.host;
-    let path = b.provider.get_repository(&mut b.transport, &r)?.path;
-    confirmed(
+    changes::trigger_pipeline(
         ctx,
-        args,
-        &format!("Start a pipeline on {reference} in {path} ({host})?"),
-    )?;
-    Ok(ops::trigger_pipeline(
         b.provider.as_ref(),
         &mut b.transport,
         &b.connection,
         &r,
+        confirm(args)?,
         &trigger,
-    )?)
+    )
 }
 
 fn wait_pipeline(_ctx: &mut Context<'_>, args: &Args<'_>) -> ActionResult {
