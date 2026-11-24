@@ -358,7 +358,10 @@ for name, change, want_ok, message in [
     else:
         failed += 1
         print(f"FAIL reviewed sources {name}: exit {rc}: {out.strip()}")
-RELEASED = next(e["path"] for e in POLICY["plugins"] if e["path"] not in PRIVILEGED)
+# A released plugin: not privileged and not held (a plugin held ahead of
+# the pin, such as deckpilot.git-providers, may come first in the list).
+RELEASED = next(e["path"] for e in POLICY["plugins"]
+                if e["path"] not in PRIVILEGED and e.get("held") is None)
 case("a privileged kind on a plugin that is not held", lambda r: (
      policy(lambda d: next(e for e in d["plugins"] if e["path"] == RELEASED)["permissions"].append("hostViews"))(r),
      manifest(lambda m: m["permissions"].append({"kind": "hostViews", "justification": "x"}), RELEASED)(r)),
