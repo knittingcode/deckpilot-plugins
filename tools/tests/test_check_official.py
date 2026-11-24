@@ -225,6 +225,9 @@ def ahead_member(pid="deckpilot.scripts", path="scripts", api="1.13", kinds=("sc
     AHEAD_OF_PIN, held ahead of the pin at `api`, declaring `kinds`."""
     def change(root):
         dst = root / path
+        # The committed plugin of that id, if there is one, is replaced.
+        policy(lambda d: d.update(plugins=[e for e in d["plugins"] if e["id"] != pid and e["path"] != path]))(root)
+        shutil.rmtree(dst, ignore_errors=True)
         shutil.copytree(root / FIXTURE, dst)
         cargo = (dst / "Cargo.toml").read_text()
         cargo = re.sub(r'(?m)^name = "[^"]+"', f'name = "{pid.replace(".", "-")}"', cargo, count=1)
