@@ -62,27 +62,37 @@ max_bytes() {
 }
 
 # get PATH [optional]: fetch BASE_URL/v1/PATH into the mirror. With
-# `optional`, a 404 returns 1; anything else that fails is fatal.
+# `optional`, a 404 returns 1; anything else that fails is fatal. The body
+# goes to a file outside the mirror and is moved in only on a 200, so a
+# file the live site does not serve leaves nothing behind, not even its
+# directory: the mirror is exactly the live registry, and a refresh
+# compares its storefront/ and media/ with the refreshed site's
+# (tools/publish-site.sh timestamp), where an empty storefront/ left by the
+# 404 of a seq without a storefront is a difference.
+part=$(mktemp "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/mirror-part.XXXXXX") || die "cannot create a temporary file"
+trap 'rm -f "$part"' EXIT
 get() {
   local path=$1 code max
   in_grammar "$path" || die "refusing to mirror $path"
   max=$(max_bytes "$path")
-  mkdir -p "$(dirname "$site/$path")"
   local attempt
   for attempt in 1 2 3 4 5 6; do
     local rc=0
-    code=$(curl -sS --proto "$proto" --max-filesize "$max" -o "$site/$path" -w '%{http_code}' \
+    code=$(curl -sS --proto "$proto" --max-filesize "$max" -o "$part" -w '%{http_code}' \
       "$base/v1/$path") || rc=$?
     # Over the size limit (curl: maximum file size exceeded) is not transient.
-    if [ "$rc" = 63 ]; then rm -f "$site/$path"; die "the live $path is over its $max-byte limit"; fi
+    if [ "$rc" = 63 ]; then rm -f "$part"; die "the live $path is over its $max-byte limit"; fi
     [ "$rc" = 0 ] || code=000
     case $code in
-      200) return 0 ;;
-      404) rm -f "$site/$path"; [ "${2:-}" = optional ] && return 1; die "$path is missing on the live site" ;;
+      # Written, not moved: the mirrored file has the usual mode, never
+      # the temporary file's 0600.
+      200) mkdir -p "$(dirname "$site/$path")" && cat "$part" > "$site/$path" && rm -f "$part" && return 0
+        die "cannot write $path into the mirror" ;;
+      404) rm -f "$part"; [ "${2:-}" = optional ] && return 1; die "$path is missing on the live site" ;;
       # Transient (Pages answers 503 while a deployment propagates, 429 when
       # rate limiting): retry with backoff; anything else fails closed.
-      000 | 429 | 5??) rm -f "$site/$path"; note "fetching $path: HTTP $code, retrying"; sleep $((attempt * 10)) ;;
-      *) rm -f "$site/$path"; die "fetching $path: HTTP $code" ;;
+      000 | 429 | 5??) rm -f "$part"; note "fetching $path: HTTP $code, retrying"; sleep $((attempt * 10)) ;;
+      *) rm -f "$part"; die "fetching $path: HTTP $code" ;;
     esac
   done
   die "fetching $path: HTTP $code after 6 attempts"
