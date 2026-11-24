@@ -62,6 +62,7 @@ with a new version of every official plugin; the tooling pin
 | `deckpilot.projects` | 0.1.1 (0.1.0) | `hostViews`, `profile`, `projectContext`, `resources` | released, exactly the reviewed policy |
 | `deckpilot.workflows` | 0.1.1 (0.1.0) | `hostViews` | released, exactly the reviewed policy |
 | `deckpilot.workspace` | 0.1.1 (0.1.0) | `openUrl` (`fromParams`), `profile`, `resources` | released, exactly the reviewed policy |
+| `deckpilot.git-providers` | 0.1.0 (new) | `connections`, `dialogs`, `openUrl` (`connections`) | **held ahead of the pin** (`hostApi` 1.14): built and tested, never packaged or released |
 
 The optional dependencies of Docker, Git and Workspace on
 `deckpilot.projects` (`>=0.1.0 <1.0.0`) are DeckPilot's, unchanged, and

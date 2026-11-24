@@ -1,0 +1,164 @@
+{
+  "outputs": {
+    "state": "State",
+    "providerStatus": "Provider status",
+    "pipelineId": "Pipeline",
+    "url": "Page",
+    "sha": "Commit",
+    "finishedAt": "Finished (ms)",
+    "durationSeconds": "Duration (s)",
+    "items": "Items",
+    "count": "Count",
+    "truncated": "List truncated",
+    "account": "Account",
+    "version": "Server version",
+    "canWrite": "Can make changes",
+    "excessScopes": "More permissions than needed",
+    "next": "Next page",
+    "path": "Path",
+    "firstUrl": "First page",
+    "result": "Result (JSON)",
+    "number": "Number",
+    "existing": "Was already open",
+    "opened": "Opened in the browser"
+  },
+  "params": {
+    "connection": "Connection",
+    "search": "Search",
+    "page": "Page",
+    "repository": "Repository",
+    "ref": "Branch, tag or commit",
+    "limit": "Most items",
+    "filter": "Which",
+    "state": "State",
+    "issue": "Issue",
+    "remoteUrl": "Git remote URL",
+    "id": "Extension",
+    "args": "Arguments (JSON)",
+    "changeRequest": "Pull or merge request",
+    "source": "Source branch",
+    "target": "Target branch",
+    "title": "Title",
+    "description": "Description",
+    "draft": "Draft",
+    "openAfter": "Open it afterwards",
+    "confirm": "Ask first",
+    "variables": "Pipeline variables (GitLab)",
+    "workflow": "Workflow file (GitHub Actions)",
+    "pipelineId": "Pipeline",
+    "pollSeconds": "Check every (seconds)"
+  },
+  "actions": {
+    "probe": {
+      "name": "Test the connection",
+      "description": "Signs in and finds what the connection's token can do."
+    },
+    "list-repositories": {
+      "name": "List repositories",
+      "description": "The repositories of a connection."
+    },
+    "get-repository": {
+      "name": "Repository",
+      "description": "One repository, by its id."
+    },
+    "list-branches": {
+      "name": "List branches",
+      "description": "The branches of a repository."
+    },
+    "list-commits": {
+      "name": "List commits",
+      "description": "The latest commits of a branch."
+    },
+    "list-change-requests": {
+      "name": "List pull or merge requests",
+      "description": "Open pull or merge requests: of a repository, yours, or waiting for your review."
+    },
+    "list-pipelines": {
+      "name": "List pipelines",
+      "description": "The latest pipelines of a repository."
+    },
+    "list-issues": {
+      "name": "List issues",
+      "description": "The issues of a repository."
+    },
+    "get-issue": {
+      "name": "Issue",
+      "description": "One issue of a repository."
+    },
+    "resolve-remote": {
+      "name": "Find a repository by its git remote",
+      "description": "The repository of this connection whose clone URL is the git remote, if any."
+    },
+    "extension": {
+      "name": "Provider extension",
+      "description": "A read-only operation only one provider has."
+    },
+    "open-repository": {
+      "name": "Open repository",
+      "description": "Opens a repository's page in the browser."
+    },
+    "open-change-requests": {
+      "name": "Open pull or merge requests",
+      "description": "Opens the pull or merge requests of a repository, or yours."
+    },
+    "open-issue": {
+      "name": "Open issue",
+      "description": "Opens an issue in the browser."
+    },
+    "pipeline-status": {
+      "name": "Pipeline status",
+      "description": "The latest pipeline of a branch or of a pull or merge request."
+    },
+    "create-change-request": {
+      "name": "Open a pull or merge request",
+      "description": "Opens a pull or merge request from a branch, or finds the one already open."
+    },
+    "trigger-pipeline": {
+      "name": "Start a pipeline",
+      "description": "Starts a pipeline on a branch (GitLab: with variables)."
+    },
+    "wait-pipeline": {
+      "name": "Wait for a pipeline",
+      "description": "Waits until a pipeline ends, at most ten minutes."
+    }
+  },
+  "category": "Git Providers",
+  "errors": {
+    "unauthorized": "The server refused the connection's token: reconnect it.",
+    "insufficient-scope": "The token lacks a permission this needs.",
+    "forbidden": "You may not access this.",
+    "not-found": "Not found, or the token cannot see it.",
+    "rate-limited": "The server's rate limit is reached; try again later.",
+    "provider-error": "The server answered with an error.",
+    "rejected": "The server refused the request.",
+    "invalid-response": "The server's answer is not what was expected.",
+    "invalid-repository": "Choose a repository of this connection.",
+    "invalid-ref": "Not a branch, tag or commit name.",
+    "invalid-variables": "A pipeline variable is not NAME=value.",
+    "unreachable": "Can't reach the server (network or VPN?).",
+    "redirect-refused": "The server redirected the request elsewhere, which is refused.",
+    "connection-missing": "The connection is not on this computer.",
+    "connection-disabled": "The connection is turned off.",
+    "read-only-connection": "The connection is read-only.",
+    "capability-unsupported": "This server or provider cannot do that.",
+    "needs-confirmation": "This action asks first, so it does not run unattended.",
+    "url-not-allowed": "Only pages of the connection's server can be opened.",
+    "timed-out": "The pipeline did not end in time.",
+    "cancelled": "Cancelled."
+  },
+  "plugin": {
+    "name": "Git Providers",
+    "description": "Repositories, pull and merge requests, pipelines and issues of the GitHub and GitLab servers you connect, each with its own token."
+  },
+  "permissions": {
+    "connections": "Talks to the GitHub and GitLab servers you connect, each with its own token, and nowhere else.",
+    "openUrl": "Opens repositories, pull or merge requests, pipelines and issues of your connections in the browser.",
+    "dialogs": "Asks you to confirm before it opens a merge request or starts a pipeline from a key."
+  },
+  "types": {
+    "github": "GitHub",
+    "ghes": "GitHub Enterprise Server",
+    "gitlab": "GitLab",
+    "gitlabSelf": "Self-managed GitLab"
+  }
+}

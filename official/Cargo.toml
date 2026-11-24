@@ -12,6 +12,7 @@ resolver = "3"
 members = [
     "docker",
     "git",
+    "git-providers",
     "github",
     "gitlab",
     "jira",
