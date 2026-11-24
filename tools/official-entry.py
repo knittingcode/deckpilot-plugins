@@ -132,8 +132,12 @@ MARKETPLACE_SERVES_BUNDLED = True
 OFFICIAL_REGISTRY_MIN_HOST = "0.11.0"
 # The plugins with plugin API 1.9 privileged kinds: bundled in DeckPilot
 # only, never a Marketplace entry, whatever official/plugins.json says.
+# So are the plugins held ahead of the pin (check-official.py AHEAD_OF_PIN;
+# tools/tests/test_official_entry.py holds the two lists together): DeckPilot
+# will bundle them, with the plugin API they need.
 BUNDLED_ONLY_IDS = frozenset({
     "deckpilot.docker", "deckpilot.git", "deckpilot.projects", "deckpilot.workflows", "deckpilot.workspace",
+    "deckpilot.git-providers", "deckpilot.scripts",
 })
 REGISTRY = ROOT / "registry"
 

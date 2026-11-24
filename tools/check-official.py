@@ -65,12 +65,31 @@ neither cargo nor the manifest schema does:
   hygiene* job); `--print-reviewed-sources` prints the file for the tree
   as it is, for a reviewed update.
 
+* Ahead of the pin (AHEAD_OF_PIN, fixed here, per id): a plugin whose
+  manifest needs a plugin API the pinned DeckPilot does not have yet, with
+  the new permission kinds of that API it may declare (deckpilot.scripts:
+  1.13, `scripts`; deckpilot.git-providers: 1.14, `connections`). Its
+  plugins.json entry must be `held` and carry `hostApi`, exactly its
+  AHEAD_OF_PIN level, and only while the pinned plugin API is lower (a pin
+  that reaches it fails until `hostApi` is removed, and the plugin is then
+  checked like any other). For it alone: it need not be one DeckPilot
+  bundles yet, engines.pluginApi must be exactly `^<hostApi>`
+  (engines.deckpilot is not compared with the pinned version), it is held
+  without a plugin API 1.9 privileged usage, and it has no contract at the
+  pin yet (one that exists is compared). Everything else applies; and the
+  kinds of AHEAD_OF_PIN are refused in every manifest but their own
+  plugin's while it is held ahead. It is `held` in --list, so it is never
+  packaged, signed, released or given a Marketplace entry; official.sh
+  requires the pinned packager to refuse it and its module to import only
+  the host ABI, within the package's module cap.
+
 --list prints `<path> <id> <version> <package> <kind>` per member, kind
 `plugin`, `held` (a plugin marked held) or `fixture`. Without --list, each
 held plugin is printed with its reason.
 --release ID fails unless ID is a released plugin (not held, not a fixture).
 `check-official.py --gate` (alone) prints `open` or `closed`
 (PRIVILEGED_GATE_OPEN).
+--ahead prints `<id> <hostApi>` for each plugin held ahead of the pin.
 """
 
 import argparse
@@ -101,6 +120,17 @@ HOST_VIEW_KINDS = frozenset({"workflows", "projects"})
 # approved (reviewed_reasons), and only once the pinned DeckPilot carries
 # that same record (check --deckpilot).
 PRIVILEGED_GATE_OPEN = True
+# Plugins that need a plugin API newer than the pinned DeckPilot's (see the
+# docstring, "Ahead of the pin"): id -> that API level and the permission
+# kinds new in it that only this plugin may declare (DeckPilot
+# design-projects-scripts.md P5, design-git-providers.md). Changing this is
+# a change of this checker, reviewed as tooling.
+AHEAD_OF_PIN = {
+    "deckpilot.git-providers": {"api": "1.14", "kinds": ["connections"]},
+    "deckpilot.scripts": {"api": "1.13", "kinds": ["scripts"]},
+}
+# Every such kind: refused in a manifest that is not its plugin, held ahead.
+AHEAD_ONLY_KINDS = frozenset(k for e in AHEAD_OF_PIN.values() for k in e["kinds"])
 # Process execution, ever: only these plugins, only these executables.
 PROCESS_ALLOW_LIST = {"deckpilot.git": ["git"], "deckpilot.docker": ["docker"]}
 # The reviewed privileged policy (DeckPilot privileged_policy.rs): its copy
@@ -539,6 +569,7 @@ def main():
     ap.add_argument("--deckpilot", type=Path)
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--release")
+    ap.add_argument("--ahead", action="store_true")
     if sys.argv[1:] == ["--gate"]:
         print("open" if PRIVILEGED_GATE_OPEN else "closed")
         return 0
@@ -579,6 +610,7 @@ def main():
         problem(f"official/plugins.json lists {path} twice")
 
     rows = []
+    ahead_rows = []
     held_reasons = []
     ids = set()
     for entry, kind in entries:
@@ -599,7 +631,25 @@ def main():
         if mid in ids:
             problem(f"{mid} is listed twice")
         ids.add(mid)
-        if kind == "plugin" and mid not in BUNDLED_PLUGIN_IDS:
+        held = entry.get("held")
+        host_api = entry.get("hostApi")
+        ahead = False
+        if host_api is not None:
+            if kind != "plugin" or held is None or (AHEAD_OF_PIN.get(mid) or {}).get("api") != host_api:
+                problem(f"{where}: `hostApi` is only for a held plugin of AHEAD_OF_PIN "
+                        f"(tools/check-official.py), at exactly its level")
+            elif api_ok(f"^{host_api}", args.plugin_api):
+                problem(f"{where}: the pinned DeckPilot's plugin API {args.plugin_api} has {host_api}; remove "
+                        "`hostApi`, the plugin is then checked like any other")
+            else:
+                ahead = True
+                ahead_rows.append((mid, host_api))
+        declared_kinds = {p.get("kind") for p in manifest.get("permissions", []) if isinstance(p, dict)}
+        own = set(AHEAD_OF_PIN[mid]["kinds"]) if ahead else set()
+        if (declared_kinds & AHEAD_ONLY_KINDS) - own:
+            problem(f"{where}: declares {sorted((declared_kinds & AHEAD_ONLY_KINDS) - own)}, kinds only their own "
+                    "plugin may declare while it is held ahead of the pin (AHEAD_OF_PIN)")
+        if kind == "plugin" and mid not in BUNDLED_PLUGIN_IDS and not ahead:
             problem(f"{where}: {mid} is not a plugin DeckPilot bundles; only those are released from official/")
         if kind == "fixture" and (mid in BUNDLED_PLUGIN_IDS or not mid.startswith("deckpilot.")):
             problem(f"{where}: a fixture is a deckpilot.* id that DeckPilot does not bundle, not {mid}")
@@ -611,17 +661,21 @@ def main():
         if cargo_version != manifest.get("version"):
             problem(f"{where}: Cargo.toml version {cargo_version} differs from manifest.json {manifest.get('version')}")
         engines = manifest.get("engines", {})
-        if not api_ok(engines.get("pluginApi"), args.plugin_api):
+        if ahead:
+            if engines.get("pluginApi") != f"^{host_api}":
+                problem(f"{where}: engines.pluginApi must be ^{host_api} (its `hostApi`), not {engines.get('pluginApi')}")
+            if not isinstance(engines.get("deckpilot"), str) or not engines["deckpilot"].strip():
+                problem(f"{where}: engines.deckpilot is missing")
+        elif not api_ok(engines.get("pluginApi"), args.plugin_api):
             problem(f"{where}: engines.pluginApi {engines.get('pluginApi')} is not satisfied by the pinned "
                     f"DeckPilot's plugin API {args.plugin_api}")
-        if not range_ok(engines.get("deckpilot", ""), args.app_version):
+        if not ahead and not range_ok(engines.get("deckpilot", ""), args.app_version):
             problem(f"{where}: engines.deckpilot {engines.get('deckpilot')} does not accept the pinned "
                     f"DeckPilot {args.app_version}")
-        held = entry.get("held")
         if held is not None:
             if kind != "plugin" or not isinstance(held, str) or not held.strip():
                 problem(f"{where}: `held` is a reason (text), for a plugin only")
-            elif not privileged_usages(manifest):
+            elif not privileged_usages(manifest) and not ahead:
                 problem(f"{where}: held, but nothing holds it (no privileged usage); remove `held`")
             else:
                 kind = "held"
@@ -631,7 +685,11 @@ def main():
             theirs = args.deckpilot / "plugins/first-party/test-fixtures" / Path(path).name
             compare_tree(where, directory, theirs)
         if kind != "fixture" and args.deckpilot:
-            compare_contract(where, directory, manifest, args.deckpilot / CONTRACTS / mid)
+            if ahead and not (args.deckpilot / CONTRACTS / mid / "manifest.json").is_file():
+                print(f"{where}: held ahead of the pin (plugin API {host_api}); the pinned DeckPilot has no "
+                      "contract for it yet", file=sys.stderr)
+            else:
+                compare_contract(where, directory, manifest, args.deckpilot / CONTRACTS / mid)
         rows.append((path, mid, manifest.get("version", ""), package, kind))
 
     if args.release is not None:
@@ -641,6 +699,10 @@ def main():
 
     if problems:
         return 1
+    if args.ahead:
+        for mid, api in ahead_rows:
+            print(f"{mid} {api}")
+        return 0
     if args.list:
         for row in rows:
             print(" ".join(row))
