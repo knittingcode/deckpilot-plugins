@@ -11,7 +11,9 @@ the script's RESERVED_PUBLISHERS and BUNDLED_PLUGIN_IDS (and those of
 tools/check-first-party.py) equal DeckPilot's.
 """
 
+import contextlib
 import importlib.util
+import io
 import json
 import os
 import re
@@ -240,6 +242,20 @@ class Maintainer(unittest.TestCase):
             self.assertIn(f"plugins/{pid}/build.json: {pid} is bundled with DeckPilot; it has no build recipe", err)
             self.assertIn(f"registry/plugins/{pid}/plugin.json: {pid} is bundled with DeckPilot only", err)
             self.assertIn(f"registry/plugins/{pid}/versions/0.1.0.json: {pid} is bundled with DeckPilot only", err)
+
+    def test_first_party_refuses_plugins_held_ahead_of_the_pin(self):
+        first_party = load_script(FIRST_PARTY_SCRIPT, "check_first_party")
+        for pid in AHEAD:
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp) / "first-party"
+                pdir = root / pid.split(".", 1)[1]
+                pdir.mkdir(parents=True)
+                (pdir / "manifest.json").write_text(json.dumps({"id": pid, "publisher": {"id": "deckpilot"}}))
+                first_party.problems.clear()
+                with contextlib.redirect_stderr(io.StringIO()):
+                    first_party.check_plugin(root, pdir, [])
+                self.assertTrue(any(f"{pid} is bundled with the application; its source is official/" in p
+                                    for p in first_party.problems), first_party.problems)
 
     def test_ahead_ids_are_check_officials(self):
         rules = load_script(SCRIPT.parent / "check-official.py", "check_official")
