@@ -308,10 +308,15 @@ pub fn check_variables(variables: &[(String, String)]) -> Result<(), Failure> {
                 format!("{name} is given twice"),
             ));
         }
-        if value.len() > MAX_VARIABLE_VALUE || value.chars().any(char::is_control) {
+        if value.len() > MAX_VARIABLE_VALUE
+            || value.chars().any(char::is_control)
+            || crate::errors::looks_like_secret(value)
+        {
             return Err(fail(
                 codes::INVALID_VARIABLES,
-                format!("the value of {name} is too long or has control characters"),
+                format!(
+                    "the value of {name} is too long, has control characters or looks like a secret"
+                ),
             ));
         }
     }

@@ -659,23 +659,6 @@ fn no_read_only_path_writes_and_review_fixes() {
         .unwrap_err();
     assert_eq!(e.code, codes::CAPABILITY_UNSUPPORTED);
     assert!(t.requests.is_empty());
-    for id in crate::EXTENSIONS {
-        let mut t = named(MockTransport::new(), CLOUD, "octo/site", web);
-        let _ = g.extension(&mut t, id, &repo(), &json!({"ref": "main"}));
-        assert!(t.requests.iter().all(|r| r.method == Method::Get), "{id}");
-        let gl = crate::adapters::gitlab::Gitlab::new(&ConnectionInfo {
-            type_id: "gitlab".into(),
-            api_base: "https://gitlab.com/api/v4".into(),
-            web_base: "https://gitlab.com".into(),
-            ..connection(CLOUD, web, true)
-        })
-        .unwrap();
-        let gl_repo = RepoRef::parse("gl:1", ProviderKind::Gitlab, ID).unwrap();
-        let mut t = MockTransport::new();
-        let _ = gl.extension(&mut t, id, &gl_repo, &json!({"changeRequest": 1}));
-        assert!(t.requests.iter().all(|r| r.method == Method::Get), "{id}");
-    }
-
     // Fine-grained tokens report no scopes: read until a write proves
     // otherwise.
     let mut t = MockTransport::new()
@@ -771,4 +754,129 @@ fn no_read_only_path_writes_and_review_fixes() {
             .collect::<Vec<_>>(),
         ["octo/site"]
     );
+}
+
+#[test]
+fn after_the_dispatch_nothing_fails_and_the_run_is_looked_for_again() {
+    let (c, g) = ghes();
+    let runs = format!(
+        "{GHES}/repos/team/app/actions/runs?event=workflow_dispatch&branch=main&actor=octocat&created=%3E%3D2026-11-24T21%3A04%3A55Z&per_page=10"
+    );
+    let base = || {
+        named(MockTransport::new(), GHES, "team/app", GHES_WEB)
+            .on(
+                Method::Get,
+                &format!("{GHES}/user"),
+                200,
+                r#"{"login":"octocat"}"#,
+            )
+            .on(
+                Method::Post,
+                &format!("{GHES}/repos/team/app/actions/workflows/ci.yml/dispatches"),
+                204,
+                "",
+            )
+    };
+    let trigger = PipelineTrigger {
+        reference: "main".into(),
+        variables: Vec::new(),
+        workflow: Some("ci.yml".into()),
+        inputs: Default::default(),
+    };
+    // The lookup fails (500): still a success, one POST, no id.
+    let mut t = base().on(Method::Get, &runs, 500, "");
+    t.clock = 1_795_554_300_000;
+    let out = ops::trigger_pipeline(&g, &mut t, &c, &repo(), &trigger).unwrap();
+    assert_eq!(text(&out, "pipelineId"), "");
+    assert_eq!(
+        t.requests
+            .iter()
+            .filter(|r| r.method == Method::Post)
+            .count(),
+        1
+    );
+    assert_eq!(t.slept, [2_000, 2_000]);
+
+    // Empty at first, then the run: its id.
+    let mut t = base()
+        .on(Method::Get, &runs, 200, r#"{"workflow_runs":[]}"#)
+        .on(
+            Method::Get,
+            &runs,
+            200,
+            r#"{"workflow_runs":[{"id":11,"status":"queued","created_at":"2026-11-24T21:05:04Z","actor":{"login":"octocat"}}]}"#,
+        );
+    t.clock = 1_795_554_300_000;
+    let out = ops::trigger_pipeline(&g, &mut t, &c, &repo(), &trigger).unwrap();
+    assert_eq!(text(&out, "pipelineId"), "11");
+    assert_eq!(
+        t.requests
+            .iter()
+            .filter(|r| r.method == Method::Post)
+            .count(),
+        1
+    );
+    assert_eq!(t.slept, [2_000]);
+}
+
+#[test]
+fn a_declined_confirmation_dispatches_nothing() {
+    use crate::changes::tests::{accepted, declined, key, mock_host, schedule};
+    let (c, g) = ghes();
+    let trigger = PipelineTrigger {
+        reference: "main".into(),
+        variables: Vec::new(),
+        workflow: Some("ci.yml".into()),
+        inputs: Default::default(),
+    };
+    let transport = || {
+        named(MockTransport::new(), GHES, "team/app", GHES_WEB)
+            .on(
+                Method::Get,
+                &format!("{GHES}/user"),
+                200,
+                r#"{"login":"octocat"}"#,
+            )
+            .on(
+                Method::Post,
+                &format!("{GHES}/repos/team/app/actions/workflows/ci.yml/dispatches"),
+                204,
+                "",
+            )
+    };
+    for (run, dialog, code) in [
+        (key(), declined(), codes::CANCELLED),
+        (schedule(), accepted(), codes::NEEDS_CONFIRMATION),
+    ] {
+        let mut host = mock_host(run, dialog);
+        let mut t = transport();
+        let e = crate::changes::trigger_pipeline(
+            &mut host.context(),
+            &g,
+            &mut t,
+            &c,
+            &repo(),
+            true,
+            &trigger,
+        )
+        .unwrap_err();
+        assert_eq!(e.code(), code);
+        assert!(t.requests.iter().all(|r| r.method == Method::Get));
+    }
+    // Secret-shaped inputs are refused before any write.
+    let secret = PipelineTrigger {
+        inputs: json!({"token": "ghp_fakefakefakefakefakefakefakefakefake"})
+            .as_object()
+            .unwrap()
+            .clone(),
+        ..trigger
+    };
+    let mut t = transport();
+    assert_eq!(
+        g.trigger_pipeline(&mut t, &repo(), &secret)
+            .unwrap_err()
+            .code,
+        codes::INVALID_VARIABLES
+    );
+    assert!(t.requests.iter().all(|r| r.method == Method::Get));
 }

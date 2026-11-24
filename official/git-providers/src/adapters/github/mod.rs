@@ -37,6 +37,10 @@ pub const EXTENSIONS: [&str; 2] = ["github.checks", "github.review-requests"];
 /// The API version header GitHub documents for REST v3.
 pub const API_VERSION: (&str, &str) = ("X-GitHub-Api-Version", "2022-11-28");
 pub const ACCEPT: (&str, &str) = ("Accept", "application/vnd.github+json");
+/// Lookups of the run a dispatch started, and the pause between them
+/// (well inside the action's 60 s).
+pub const LOOKUP_ATTEMPTS: u32 = 3;
+pub const LOOKUP_PAUSE_MS: u32 = 2_000;
 /// How far the agent's clock may be ahead of GitHub's when a dispatched
 /// run is recognized.
 pub const DISPATCH_SKEW_MS: u64 = 5_000;
@@ -501,19 +505,30 @@ impl Github {
             &json!({"ref": reference, "inputs": inputs}),
             &format!("a run of {workflow} on {reference}"),
         )?;
-        Ok(self
-            .dispatched_run(t, n, reference, actor.as_deref(), since)?
-            .unwrap_or(PipelineRecord {
-                id: String::new(),
-                state: PipelineState::Pending,
-                provider_status: "queued".into(),
-                reference: Some(reference.to_owned()),
-                sha: None,
-                web_url: None,
-                created_at: None,
-                finished_at: None,
-                duration_seconds: None,
-            }))
+        // The dispatch happened: from here on nothing fails the action.
+        // The run shows up after a moment, so it is looked for a few times;
+        // a failed or empty lookup is "queued" without an id.
+        let mut found = None;
+        for attempt in 0..LOOKUP_ATTEMPTS {
+            if attempt > 0 && t.sleep(LOOKUP_PAUSE_MS).is_err() {
+                break;
+            }
+            if let Ok(Some(run)) = self.dispatched_run(t, n, reference, actor.as_deref(), since) {
+                found = Some(run);
+                break;
+            }
+        }
+        Ok(found.unwrap_or(PipelineRecord {
+            id: String::new(),
+            state: PipelineState::Pending,
+            provider_status: "queued".into(),
+            reference: Some(reference.to_owned()),
+            sha: None,
+            web_url: None,
+            created_at: None,
+            finished_at: None,
+            duration_seconds: None,
+        }))
     }
 }
 
@@ -559,7 +574,11 @@ pub fn check_inputs(inputs: &Map<String, Value>) -> Result<(), Failure> {
                 .chars()
                 .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'));
         let value_ok = match value {
-            Value::String(s) => s.len() <= 1024 && !s.chars().any(char::is_control),
+            Value::String(s) => {
+                s.len() <= 1024
+                    && !s.chars().any(char::is_control)
+                    && !crate::errors::looks_like_secret(s)
+            }
             Value::Bool(_) | Value::Number(_) => true,
             _ => false,
         };
@@ -1178,8 +1197,8 @@ impl Provider for Github {
             // A change: never through this read-only, retry-safe action.
             "github.workflow-dispatch" => Err(fail(
                 codes::CAPABILITY_UNSUPPORTED,
-                "a workflow is started with trigger-pipeline, which needs “Allow changes” and \
-                 asks first",
+                "a workflow is started with trigger-pipeline (its `workflow` and `inputs`), \
+                 which needs “Allow changes” and asks first",
             )),
             _ => Err(fail(
                 codes::CAPABILITY_UNSUPPORTED,

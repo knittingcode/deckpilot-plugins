@@ -282,6 +282,9 @@ pub mod mock {
         /// request by [`MockTransport::request_ms`].
         pub clock: u64,
         pub request_ms: u64,
+        /// Answers every request no route names, any method (contract
+        /// tests that only watch what is sent).
+        pub fallback: Option<HttpReply>,
     }
 
     impl MockTransport {
@@ -371,6 +374,7 @@ pub mod mock {
                     .front()
                     .cloned()
                     .unwrap_or(Err(TransportError::Unsupported)),
+                None if self.fallback.is_some() => Ok(self.fallback.clone().unwrap_or_default()),
                 None => Err(TransportError::Denied(format!(
                     "no mock route for {} {}",
                     request.method.as_str(),

@@ -228,6 +228,7 @@ pub(crate) mod tests {
             reference: "main".into(),
             variables: Vec::new(),
             workflow: None,
+            inputs: Default::default(),
         }
     }
 

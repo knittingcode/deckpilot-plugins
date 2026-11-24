@@ -938,3 +938,21 @@ fn an_issue_page_is_built_never_taken_empty() {
         "https://gitlab.com/team/app/-/issues/5"
     );
 }
+
+#[test]
+fn secret_shaped_variable_values_are_refused() {
+    for value in [
+        "glpat-fakefakefakefakefake",
+        "ghp_fakefakefakefakefakefakefakefake",
+        "-----BEGIN OPENSSH PRIVATE KEY-----",
+    ] {
+        assert_eq!(
+            check_variables(&[("TOKEN".into(), value.into())])
+                .unwrap_err()
+                .code,
+            codes::INVALID_VARIABLES,
+            "{value}"
+        );
+    }
+    check_variables(&[("DEPLOY_ENV".into(), "staging".into())]).unwrap();
+}
