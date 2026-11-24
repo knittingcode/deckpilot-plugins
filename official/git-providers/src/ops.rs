@@ -328,6 +328,7 @@ pub fn wait_pipeline(
 ) -> Result<Output, Failure> {
     let poll = poll_seconds.clamp(POLL_SECONDS.0, POLL_SECONDS.1);
     let selector = PipelineSelector::Id(pipeline_id.trim().to_owned());
+    let started = t.now_ms();
     let mut waited = 0;
     loop {
         let record = p
@@ -337,7 +338,12 @@ pub fn wait_pipeline(
             let message = format!("pipeline {}: {}", record.id, record.state.as_str());
             return Ok(pipeline_output(Output::message(message), &record));
         }
-        if waited + poll > WAIT_BUDGET_SECONDS {
+        // The requests count too: the clock when there is one, else the
+        // sleeps alone.
+        if let (Some(start), Some(now)) = (started, t.now_ms()) {
+            waited = u32::try_from(now.saturating_sub(start) / 1_000).unwrap_or(u32::MAX);
+        }
+        if waited.saturating_add(poll) > WAIT_BUDGET_SECONDS {
             return Err(fail(
                 codes::TIMED_OUT,
                 format!(
@@ -404,6 +410,7 @@ pub fn resolve_remote(
     p: &dyn Provider,
     t: &mut dyn Transport,
     connection_host: &str,
+    web_prefix: &str,
     remote_url: &str,
 ) -> Result<Output, Failure> {
     let normalized = remote::normalize(remote_url).ok_or_else(|| {
@@ -418,7 +425,7 @@ pub fn resolve_remote(
         .next()
         .is_some_and(|h| h.eq_ignore_ascii_case(host))
     {
-        let path = remote::path_of(remote_url).unwrap_or_default();
+        let path = remote::project_path(remote_url, web_prefix).unwrap_or_default();
         p.repository_by_path(t, &path)?.filter(|repo| {
             remote::matches(
                 remote_url,

@@ -115,7 +115,7 @@ impl Api {
             })?
         };
         let next = match raw.link("next") {
-            Some(link) if self.api.contains(&link) => Some(link),
+            Some(link) if self.api.contains(&link) && !has_dot_segment(&link) => Some(link),
             Some(_) => {
                 return Err(fail(
                     codes::INVALID_RESPONSE,
@@ -222,7 +222,8 @@ impl Api {
             .unwrap_or_default();
         let status = reply.status;
         let exhausted = reply.number("x-ratelimit-remaining") == Some(0)
-            || reply.number("ratelimit-remaining") == Some(0);
+            || reply.number("ratelimit-remaining") == Some(0)
+            || reply.header("retry-after").is_some();
         if status == 429 || (status == 403 && exhausted) {
             let now = reply
                 .header("date")
@@ -258,7 +259,11 @@ impl Api {
                 ),
                 Some(ConnectionStatus::Unauthorized),
             ),
-            403 => (
+            // A token without a scope (GitLab `insufficient_scope`, GitHub's
+            // fine-grained "not accessible by personal access token"): the
+            // connection's problem. Any other 403 is this project's
+            // permission and leaves the connection alone.
+            403 if token_scope_refusal(&reply.body) => (
                 fail(
                     codes::INSUFFICIENT_SCOPE,
                     format!(
@@ -267,6 +272,13 @@ impl Api {
                     ),
                 ),
                 Some(ConnectionStatus::InsufficientScope),
+            ),
+            403 => (
+                fail(
+                    codes::FORBIDDEN,
+                    format!("you may not access {what} (403){detail}"),
+                ),
+                None,
             ),
             404 => (
                 fail(
@@ -299,6 +311,25 @@ impl Api {
             ),
         }
     }
+}
+
+/// Whether a 403's body says the token lacks a scope or permission, as
+/// opposed to the user lacking access to one project.
+fn token_scope_refusal(body: &str) -> bool {
+    let lower = body.to_ascii_lowercase();
+    lower.contains("insufficient_scope")
+        || lower.contains("not accessible by personal access token")
+        || lower.contains("not accessible by integration")
+}
+
+/// Whether a next-page link has a dot segment, raw or encoded (defence in
+/// depth: the API base check comes first).
+fn has_dot_segment(link: &str) -> bool {
+    let path = link.split(['?', '#']).next().unwrap_or_default();
+    path.split('/').any(|segment| {
+        let s = segment.to_ascii_lowercase().replace("%2e", ".");
+        s == "." || s == ".."
+    })
 }
 
 /// A branch, tag or commit name (git's rules, as the old plugins check).

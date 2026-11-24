@@ -67,18 +67,37 @@ fn actions_and_parameters_agree() {
         .map(|a| a["id"].as_str().unwrap())
         .collect();
     assert_eq!(internal, INTERNAL.into_iter().collect());
-    let extensions: BTreeSet<&str> = m["contributes"]["connectionTypes"]
+    let declared: BTreeSet<&str> = m["contributes"]["connectionTypes"]
         .as_array()
         .unwrap()
         .iter()
         .flat_map(|t| t["extensions"].as_array().unwrap())
         .map(|e| e.as_str().unwrap())
         .collect();
-    assert_eq!(extensions, EXTENSIONS.into_iter().collect());
+    // The `extension` action offers exactly the read-only extensions, each
+    // one a connection type declares.
+    let offered: BTreeSet<&str> = m["contributes"]["actions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["id"] == "extension")
+        .unwrap()["parameters"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["key"] == "id")
+        .unwrap()["kind"]["options"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|o| o.as_str().unwrap())
+        .collect();
+    assert_eq!(offered, EXTENSIONS.into_iter().collect());
+    assert!(offered.is_subset(&declared));
     assert!(
         crate::adapters::gitlab::EXTENSIONS
             .iter()
-            .all(|e| extensions.contains(e))
+            .all(|e| offered.contains(e))
     );
 }
 

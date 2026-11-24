@@ -10,6 +10,7 @@ use std::fmt;
 pub mod codes {
     pub const UNAUTHORIZED: &str = "unauthorized";
     pub const INSUFFICIENT_SCOPE: &str = "insufficient-scope";
+    pub const FORBIDDEN: &str = "forbidden";
     pub const NOT_FOUND: &str = "not-found";
     pub const RATE_LIMITED: &str = "rate-limited";
     pub const PROVIDER_ERROR: &str = "provider-error";
@@ -38,6 +39,7 @@ pub mod codes {
     pub const DECLARED: &[&str] = &[
         UNAUTHORIZED,
         INSUFFICIENT_SCOPE,
+        FORBIDDEN,
         NOT_FOUND,
         RATE_LIMITED,
         PROVIDER_ERROR,
