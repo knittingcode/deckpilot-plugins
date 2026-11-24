@@ -305,6 +305,8 @@ pub struct PipelineTrigger {
     pub variables: Vec<(String, String)>,
     /// GitHub only: the Actions workflow file (`ci.yml`) to dispatch.
     pub workflow: Option<String>,
+    /// GitHub only: the workflow's `workflow_dispatch` inputs.
+    pub inputs: serde_json::Map<String, Value>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

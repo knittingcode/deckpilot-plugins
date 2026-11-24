@@ -1,8 +1,9 @@
 //! `deckpilot.git-providers` ("Platformy Git"): repositories, change
 //! requests, pipelines and issues of the GitHub and GitLab servers the user
 //! connects (DeckPilot `design-git-providers.md`). One plugin, one
-//! [`Provider`](provider::Provider) trait, one adapter per provider; this
-//! version has the GitLab adapter.
+//! [`Provider`](provider::Provider) trait, one adapter per provider: GitLab
+//! (GitLab.com and self-managed) and GitHub (GitHub.com and GitHub
+//! Enterprise Server).
 //!
 //! **Connections, plugin API 1.14.** Every action takes a `connection`:
 //! the id of a server the user connected in the app, with its own token.
@@ -189,6 +190,7 @@ pub fn plugin() -> Plugin {
                 .param(Param::text("ref").required().max_length(250))
                 .param(Param::text("variables").max_length(60_000))
                 .param(Param::text("workflow").max_length(255))
+                .param(Param::text("inputs").max_length(4096))
                 .param(Param::boolean("confirm").default(true)),
         )
         .action(
@@ -515,6 +517,18 @@ fn trigger_pipeline(ctx: &mut Context<'_>, args: &Args<'_>) -> ActionResult {
         reference: ops::reference(&text(args, "ref")?.unwrap_or_default())?,
         variables: ops::parse_variables(&text(args, "variables")?.unwrap_or_default())?,
         workflow: text(args, "workflow")?,
+        inputs: match text(args, "inputs")? {
+            None => serde_json::Map::new(),
+            Some(raw) => match serde_json::from_str::<serde_json::Value>(&raw) {
+                Ok(serde_json::Value::Object(map)) => map,
+                _ => {
+                    return Err(PluginError::new(
+                        codes::INVALID_VARIABLES,
+                        "workflow inputs are a JSON object of names and values",
+                    ));
+                }
+            },
+        },
     };
     changes::trigger_pipeline(
         ctx,

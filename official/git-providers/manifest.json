@@ -1757,6 +1757,16 @@
             "required": false
           },
           {
+            "key": "inputs",
+            "label": "t:params.inputs",
+            "kind": {
+              "type": "code",
+              "language": "json",
+              "maxLength": 4096
+            },
+            "required": false
+          },
+          {
             "key": "confirm",
             "label": "t:params.confirm",
             "kind": {

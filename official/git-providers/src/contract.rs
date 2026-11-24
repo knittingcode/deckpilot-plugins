@@ -194,3 +194,140 @@ fn no_token_shaped_text_in_the_package() {
         }
     }
 }
+
+/// Runs the operation behind a read-only or opening action, with
+/// placeholder arguments. Every such action of the manifest must be here.
+fn run_read_only(
+    id: &str,
+    p: &dyn crate::provider::Provider,
+    t: &mut crate::transport::mock::MockTransport,
+    r: &crate::provider::RepoRef,
+) {
+    use crate::ops;
+    use crate::provider::{CrFilter, IssueQuery, PipelineSelector, RepoPage};
+    let _ = match id {
+        "probe" => ops::probe(p, t).map(drop),
+        "list-repositories" => ops::list_repositories(p, t, Some("a".into()), 1).map(drop),
+        "get-repository" => ops::get_repository(p, t, r).map(drop),
+        "list-branches" => ops::list_branches(p, t, r, None).map(drop),
+        "list-commits" => ops::list_commits(p, t, r, Some("main".into()), 5).map(drop),
+        "list-change-requests" => {
+            for filter in [CrFilter::Open, CrFilter::Mine, CrFilter::Review] {
+                let _ = ops::list_change_requests(p, t, Some(r), filter, 5);
+                let _ = ops::list_change_requests(p, t, None, filter, 5);
+            }
+            Ok(())
+        }
+        "list-pipelines" => ops::list_pipelines(p, t, r, None, 5).map(drop),
+        "list-issues" => ops::list_issues(p, t, r, &IssueQuery::default()).map(drop),
+        "get-issue" => ops::get_issue(p, t, r, 1).map(drop),
+        "resolve-remote" => {
+            ops::resolve_remote(p, t, "gitlab.com", "", "git@gitlab.com:a/b.git").map(drop)
+        }
+        "extension" => {
+            for ext in EXTENSIONS {
+                let _ = ops::extension(
+                    p,
+                    t,
+                    ext,
+                    r,
+                    &serde_json::json!({"ref": "main", "changeRequest": 1}),
+                );
+            }
+            // The one that changes something is refused here.
+            let _ = ops::extension(
+                p,
+                t,
+                "github.workflow-dispatch",
+                r,
+                &serde_json::json!({"workflow": "ci.yml", "ref": "main"}),
+            );
+            Ok(())
+        }
+        "open-repository" | "open-change-requests" => {
+            ops::repository_page(p, t, r, RepoPage::Changes).map(drop)
+        }
+        "open-issue" => ops::issue_page(p, t, r, 1).map(drop),
+        "pipeline-status" => {
+            let _ = ops::pipeline_status(p, t, r, &PipelineSelector::ChangeRequest(1));
+            ops::pipeline_status(p, t, r, &PipelineSelector::Ref("main".into())).map(drop)
+        }
+        "wait-pipeline" => ops::wait_pipeline(p, t, r, "1", 10).map(drop),
+        other => panic!("{other}: a read-only or opening action the contract test does not run"),
+    };
+}
+
+#[test]
+fn no_read_only_or_opening_action_sends_anything_but_get() {
+    use crate::provider::{ConnectionInfo, ConnectionStatus, Deployment, ProviderKind, RepoRef};
+    use crate::transport::mock::MockTransport;
+    use crate::transport::{HttpReply, Method};
+    let id = "cn_01JD7Q0000000000000000000A";
+    let connection = |type_id: &str, api: &str, web: &str| ConnectionInfo {
+        id: id.into(),
+        type_id: type_id.into(),
+        deployment: Deployment::Cloud,
+        api_base: api.into(),
+        web_base: web.into(),
+        // Even a connection that may make changes.
+        methods: vec![Method::Get, Method::Post, Method::Put],
+        status: ConnectionStatus::Ok,
+        capabilities: None,
+    };
+    let providers: Vec<(Box<dyn crate::provider::Provider>, RepoRef)> = vec![
+        (
+            crate::adapters::for_connection(&connection(
+                "gitlab",
+                "https://gitlab.com/api/v4",
+                "https://gitlab.com",
+            ))
+            .unwrap(),
+            RepoRef::parse("gl:1", ProviderKind::Gitlab, id).unwrap(),
+        ),
+        (
+            crate::adapters::for_connection(&connection(
+                "github",
+                "https://api.github.com",
+                "https://github.com",
+            ))
+            .unwrap(),
+            RepoRef::parse("gh:1", ProviderKind::Github, id).unwrap(),
+        ),
+    ];
+    let m = manifest();
+    let mut ran = 0;
+    for action in m["contributes"]["actions"].as_array().unwrap() {
+        let effect = action["node"]["effect"].as_str().unwrap();
+        if effect == "modifies" {
+            continue;
+        }
+        let name = action["id"].as_str().unwrap();
+        for (p, r) in &providers {
+            // Answers everything (objects, arrays, empty): only what is
+            // sent matters here.
+            for body in [
+                "{}",
+                "[]",
+                r#"{"id":1,"full_name":"a/b","path_with_namespace":"a/b","status":"running","workflow_runs":[],"items":[],"check_runs":[]}"#,
+            ] {
+                let mut t = MockTransport::new();
+                t.fallback = Some(HttpReply {
+                    status: 200,
+                    headers: Vec::new(),
+                    body: body.into(),
+                });
+                run_read_only(name, p.as_ref(), &mut t, r);
+                assert!(
+                    t.requests.iter().all(|q| q.method == Method::Get),
+                    "{name} sent {:?}",
+                    t.requests
+                        .iter()
+                        .map(|q| (q.method, q.url.clone()))
+                        .collect::<Vec<_>>()
+                );
+                ran += 1;
+            }
+        }
+    }
+    assert!(ran >= 15 * 2 * 3, "{ran}");
+}

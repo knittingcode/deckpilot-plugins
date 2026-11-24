@@ -45,6 +45,7 @@
     "confirm": "Najpierw zapytaj",
     "variables": "Zmienne potoku (GitLab)",
     "workflow": "Plik workflow (GitHub Actions)",
+    "inputs": "Dane wejściowe workflow (GitHub, JSON)",
     "pipelineId": "Potok",
     "pollSeconds": "Sprawdzaj co (sekundy)"
   },

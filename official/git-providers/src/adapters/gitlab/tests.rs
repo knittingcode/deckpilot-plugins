@@ -531,6 +531,7 @@ fn triggering_a_pipeline_checks_its_variables() {
         reference: "main".into(),
         variables: ops::parse_variables("DEPLOY_ENV=staging\nDRY_RUN=1").unwrap(),
         workflow: None,
+        inputs: Default::default(),
     };
     let out = ops::trigger_pipeline(&g, &mut t, &c, &repo(), &trigger).unwrap();
     assert_eq!(
@@ -936,4 +937,22 @@ fn an_issue_page_is_built_never_taken_empty() {
         ops::issue_page(&g, &mut t, &repo(), 5).unwrap(),
         "https://gitlab.com/team/app/-/issues/5"
     );
+}
+
+#[test]
+fn secret_shaped_variable_values_are_refused() {
+    for value in [
+        "glpat-fakefakefakefakefake",
+        "ghp_fakefakefakefakefakefakefakefake",
+        concat!("-----BEGIN OPENSSH PRIVATE", " KEY-----"),
+    ] {
+        assert_eq!(
+            check_variables(&[("TOKEN".into(), value.into())])
+                .unwrap_err()
+                .code,
+            codes::INVALID_VARIABLES,
+            "{value}"
+        );
+    }
+    check_variables(&[("DEPLOY_ENV".into(), "staging".into())]).unwrap();
 }

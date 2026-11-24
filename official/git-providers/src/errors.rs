@@ -93,6 +93,30 @@ impl fmt::Display for Failure {
 
 impl std::error::Error for Failure {}
 
+/// Whether a value a user typed into a pipeline variable or workflow input
+/// looks like a secret (a token of a known shape, a private key): such
+/// values are refused, as the `noSecrets` rule of `pairs` parameters does,
+/// so a key or a workflow never carries one to CI logs.
+pub fn looks_like_secret(value: &str) -> bool {
+    const PREFIXES: [&str; 11] = [
+        "ghp_",
+        "gho_",
+        "ghu_",
+        "ghs_",
+        "ghr_",
+        "github_pat_",
+        "glpat-",
+        "gloas-",
+        "glptt-",
+        "glrt-",
+        "xoxb-",
+    ];
+    let v = value.trim();
+    PREFIXES.iter().any(|p| v.starts_with(p))
+        || v.contains("-----BEGIN")
+        || (v.len() == 20 && v.starts_with("AKIA") && v.bytes().all(|b| b.is_ascii_alphanumeric()))
+}
+
 pub fn fail(code: &'static str, message: impl Into<String>) -> Failure {
     Failure::new(code, message)
 }

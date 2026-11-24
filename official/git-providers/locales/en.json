@@ -45,6 +45,7 @@
     "confirm": "Ask first",
     "variables": "Pipeline variables (GitLab)",
     "workflow": "Workflow file (GitHub Actions)",
+    "inputs": "Workflow inputs (GitHub, JSON)",
     "pipelineId": "Pipeline",
     "pollSeconds": "Check every (seconds)"
   },
