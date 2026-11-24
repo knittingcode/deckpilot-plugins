@@ -915,3 +915,26 @@ fn review_fixes_scopes_forbidden_urls_variables_prefix_and_budget() {
     );
     assert!(t.requests.len() < 10, "{}", t.requests.len());
 }
+
+#[test]
+fn an_issue_page_is_built_never_taken_empty() {
+    let (_, g) = cloud();
+    let base = "https://gitlab.com/api/v4/projects/4711";
+    let mut t = MockTransport::new()
+        .on(
+            Method::Get,
+            &format!("{base}/issues/5"),
+            200,
+            r#"{"iid":5,"title":"Bug","state":"opened"}"#,
+        )
+        .on(
+            Method::Get,
+            base,
+            200,
+            &project(4711, "team/app", "https://gitlab.com").to_string(),
+        );
+    assert_eq!(
+        ops::issue_page(&g, &mut t, &repo(), 5).unwrap(),
+        "https://gitlab.com/team/app/-/issues/5"
+    );
+}

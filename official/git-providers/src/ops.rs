@@ -403,6 +403,19 @@ pub fn repository_page(
     })
 }
 
+/// The page of issue `number`: read first (it exists, and is not a pull
+/// request), then built for this server, never an empty or foreign link.
+pub fn issue_page(
+    p: &dyn Provider,
+    t: &mut dyn Transport,
+    r: &RepoRef,
+    number: u64,
+) -> Result<String, Failure> {
+    p.get_issue(t, r, number)?;
+    let path = p.get_repository(t, r)?.path;
+    p.web_url(&WebTarget::Issue { path, number })
+}
+
 /// `resolve-remote`: the repository whose clone URL is `remote_url`, found
 /// by its path and returned only when a clone URL matches (0 or 1
 /// records). The remote's user name or password is never sent.
