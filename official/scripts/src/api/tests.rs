@@ -1,0 +1,235 @@
+//! The marshallers alone: what each op accepts, refuses and sends.
+
+use serde_json::json;
+
+use super::*;
+
+const L: Flavor = Flavor::Linux;
+
+#[test]
+fn only_known_ops_are_dispatched() {
+    for op in OPS {
+        // Each known op is recognised (its arguments may still be refused).
+        let r = dispatch(op, json!({}), L);
+        if let Err(f) = &r {
+            assert!(
+                !f.message
+                    .as_deref()
+                    .unwrap_or("")
+                    .contains("is not an operation"),
+                "{op}"
+            );
+        }
+    }
+    for op in [
+        "script.load",
+        "script.poll",
+        "tool.run",
+        "credentials.has",
+        "http.fetch",
+        "fs.chmod",
+        "",
+    ] {
+        let f = dispatch(op, json!({}), L).unwrap_err();
+        assert_eq!(f.code, "invalidArgument", "{op}");
+    }
+}
+
+#[test]
+fn unknown_fields_are_refused() {
+    let f = dispatch(
+        "fs.exists",
+        json!({ "path": { "path": "/a" }, "follow": true }),
+        L,
+    )
+    .unwrap_err();
+    assert_eq!(f.code, "invalidArgument");
+    let f = dispatch("process.run", json!({ "command": "git", "shell": true }), L).unwrap_err();
+    assert_eq!(f.code, "invalidArgument");
+    let f = dispatch(
+        "fs.exists",
+        json!({ "path": { "path": "/a", "repository": "cms" } }),
+        L,
+    )
+    .unwrap_err();
+    assert_eq!(f.code, "invalidArgument");
+}
+
+#[test]
+fn repository_keys_follow_the_core_grammar() {
+    for ok in ["cms", "a", "web_2", "a234567890123456789012345678901"] {
+        assert!(valid_repository_key(ok), "{ok}");
+    }
+    for bad in [
+        "",
+        "Cms",
+        "2web",
+        "a-b",
+        "a.b",
+        "../x",
+        "a234567890123456789012345678901234",
+    ] {
+        assert!(!valid_repository_key(bad), "{bad}");
+    }
+}
+
+#[test]
+fn repository_relative_paths_are_normalized_and_contained() {
+    use fs::repository_relative as rel;
+    assert_eq!(rel("p", "cms", "a\\b/./c/").unwrap(), "a/b/c");
+    assert_eq!(rel("p", "cms", "a/../b").unwrap(), "b");
+    assert_eq!(rel("p", "cms", "").unwrap(), "");
+    for bad in [
+        "..",
+        "a/../../b",
+        "/etc",
+        "\\x",
+        "C:\\x",
+        "file.txt:stream",
+        "a/../..",
+    ] {
+        let f = rel("p", "cms", bad).unwrap_err();
+        assert_eq!(f.repository.as_deref(), Some("cms"), "{bad}");
+    }
+}
+
+#[test]
+fn process_limits() {
+    let many: Vec<String> = (0..=process::MAX_ARGS).map(|i| i.to_string()).collect();
+    assert!(dispatch("process.run", json!({ "command": "git", "args": many }), L).is_err());
+    let long = "x".repeat(process::MAX_ARG + 1);
+    assert!(
+        dispatch(
+            "process.run",
+            json!({ "command": "git", "args": [long] }),
+            L
+        )
+        .is_err()
+    );
+    let stdin = "y".repeat(process::MAX_STDIN + 1);
+    assert!(
+        dispatch(
+            "process.run",
+            json!({ "command": "git", "stdin": stdin }),
+            L
+        )
+        .is_err()
+    );
+    assert!(dispatch("process.run", json!({ "command": "-c" }), L).is_err());
+    assert!(dispatch("process.run", json!({ "command": "/usr/bin/git" }), L).is_ok());
+    assert!(
+        dispatch(
+            "process.run",
+            json!({ "command": "C:\\Git\\git.exe" }),
+            Flavor::Windows
+        )
+        .is_ok()
+    );
+    for name in [
+        "LD_PRELOAD",
+        "ld_preload",
+        "DYLD_LIBRARY_PATH",
+        "DECKPILOT_TOKEN",
+        "GIT_CONFIG_GLOBAL",
+        "GIT_SSH_COMMAND",
+        "GIT_EXEC_PATH",
+        "DOCKER_HOST",
+        "NODE_OPTIONS",
+        "PYTHONPATH",
+        "ComSpec",
+    ] {
+        let f = dispatch(
+            "process.run",
+            json!({ "command": "git", "env": { name: "x" } }),
+            L,
+        )
+        .unwrap_err();
+        assert_eq!(f.code, "notGranted", "{name}");
+    }
+    assert!(
+        dispatch(
+            "process.run",
+            json!({ "command": "git", "env": { "CI": "1", "_X1": "y" } }),
+            L
+        )
+        .is_ok()
+    );
+}
+
+#[test]
+fn shells_are_a_closed_list() {
+    assert!(
+        dispatch(
+            "shell.run",
+            json!({ "shell": "bash", "script": "echo hi" }),
+            L
+        )
+        .is_ok()
+    );
+    for bad in ["fish", "/bin/sh", "sh -c", ""] {
+        assert!(
+            dispatch("shell.run", json!({ "shell": bad, "script": "x" }), L).is_err(),
+            "{bad}"
+        );
+    }
+}
+
+#[test]
+fn read_and_write_bounds() {
+    let p = json!({ "path": "/a" });
+    assert!(dispatch("fs.readFile", json!({ "path": p, "maxBytes": 0 }), L).is_err());
+    assert!(
+        dispatch(
+            "fs.readFile",
+            json!({ "path": p, "maxBytes": fs::MAX_FILE + 1 }),
+            L
+        )
+        .is_err()
+    );
+    assert_eq!(
+        dispatch("fs.readFile", json!({ "path": p }), L).unwrap(),
+        json!({ "path": { "path": "/a" }, "encoding": "utf8", "maxBytes": fs::MAX_FILE })
+    );
+    assert!(
+        dispatch(
+            "fs.writeFile",
+            json!({ "path": p, "content": "not base64!", "encoding": "base64" }),
+            L
+        )
+        .is_err()
+    );
+    assert!(
+        dispatch(
+            "fs.writeFile",
+            json!({ "path": p, "content": "aGk=", "encoding": "base64" }),
+            L
+        )
+        .is_ok()
+    );
+    assert!(dispatch("fs.list", json!({ "path": p, "recursive": true }), L).is_err());
+}
+
+#[test]
+fn confirmation_tokens_and_sleep() {
+    assert!(dispatch("script.confirm", json!({ "token": "tok-1" }), L).is_ok());
+    assert!(dispatch("script.confirm", json!({ "token": "" }), L).is_err());
+    assert!(dispatch("script.confirm", json!({ "token": "a b" }), L).is_err());
+    assert!(
+        dispatch(
+            "fs.remove",
+            json!({ "path": { "path": "/a" }, "confirmation": "x\ny" }),
+            L
+        )
+        .is_err()
+    );
+    assert!(
+        dispatch(
+            "script.sleep",
+            json!({ "ms": confirm::MAX_SLEEP_MS + 1 }),
+            L
+        )
+        .is_err()
+    );
+    assert!(dispatch("project.repositories", json!({ "project": "../x" }), L).is_err());
+    assert!(dispatch("project.repositories", json!({ "project": null }), L).is_ok());
+}

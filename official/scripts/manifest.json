@@ -1,0 +1,119 @@
+{
+  "$schema": "https://knittingcode.github.io/deckpilot-plugins/v1/schemas/plugin-manifest.schema.json",
+  "manifestVersion": 1,
+  "id": "deckpilot.scripts",
+  "name": "t:plugin.name",
+  "version": "0.1.0",
+  "publisher": {
+    "id": "deckpilot",
+    "name": "DeckPilot",
+    "url": "https://github.com/knittingcode/deckpilot"
+  },
+  "description": "t:plugin.description",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/knittingcode/deckpilot-plugins",
+    "directory": "official/scripts"
+  },
+  "license": "Apache-2.0 AND MIT",
+  "keywords": ["scripts", "javascript", "automation"],
+  "categories": ["productivity"],
+  "engines": { "deckpilot": ">=0.16.0 <1.0.0", "pluginApi": "^1.13", "sdk": "0.1.0" },
+  "runtime": { "kind": "wasm", "abi": 1, "limits": { "continuousMs": 2000 }, "hostCalls": 4096 },
+  "entry": "src/lib.rs",
+  "icons": { "128": "assets/icon-128.png" },
+  "defaultLocale": "en",
+  "locales": ["en", "pl"],
+  "permissions": [
+    {
+      "kind": "scripts",
+      "fs": true,
+      "process": true,
+      "shell": true,
+      "justification": "t:permissions.scripts"
+    },
+    {
+      "kind": "hostViews",
+      "justification": "t:permissions.hostViews"
+    }
+  ],
+  "contributes": {
+    "actions": [
+      {
+        "id": "run",
+        "name": "t:actions.run.name",
+        "description": "t:actions.run.description",
+        "category": "t:category",
+        "contexts": ["key", "gesture", "sequence", "workflow"],
+        "parameters": [
+          {
+            "key": "script",
+            "label": "t:params.script.label",
+            "description": "t:params.script.description",
+            "required": true,
+            "kind": { "type": "script" }
+          },
+          {
+            "key": "inputs",
+            "label": "t:params.inputs.label",
+            "description": "t:params.inputs.description",
+            "required": false,
+            "kind": { "type": "code", "language": "json" }
+          }
+        ],
+        "node": {
+          "version": 1,
+          "icon": "code",
+          "outputs": [
+            { "key": "result", "label": "t:outputs.result", "kind": "text", "always": false },
+            { "key": "outcomes", "label": "t:outputs.outcomes", "kind": "text", "always": false }
+          ],
+          "timeoutMs": 600000,
+          "retrySafe": false,
+          "idempotent": false,
+          "cancellable": true,
+          "effect": "modifies"
+        },
+        "controls": {
+          "key": ["click", "double-click", "long-press", "press"],
+          "encoder": ["click", "press"]
+        }
+      },
+      {
+        "id": "check",
+        "name": "t:actions.check.name",
+        "description": "t:actions.check.description",
+        "category": "t:category",
+        "contexts": [],
+        "parameters": [
+          {
+            "key": "source",
+            "label": "t:params.source.label",
+            "description": "t:params.source.description",
+            "required": true,
+            "kind": { "type": "code", "language": "javascript" }
+          }
+        ],
+        "node": {
+          "version": 1,
+          "icon": "code",
+          "outputs": [],
+          "timeoutMs": 5000,
+          "retrySafe": true,
+          "idempotent": true,
+          "cancellable": true,
+          "effect": "readOnly"
+        }
+      }
+    ],
+    "navigation": [
+      {
+        "id": "scripts",
+        "label": "t:navigation.scripts",
+        "icon": "assets/icon-128.png",
+        "view": "scripts"
+      }
+    ],
+    "views": [{ "id": "scripts", "kind": "scripts", "context": "profile" }]
+  }
+}

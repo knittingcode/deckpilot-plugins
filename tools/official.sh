@@ -13,6 +13,8 @@
 #                  .work/official/packages.
 # repro            two clean builds in fresh target directories; every
 #                  module and package must be byte-identical.
+# compare-crates   the crates compare builds (every member but those held
+#                  ahead of the pin), one per line.
 # compare          DeckPilot's plugins/first-party/build.sh at the pinned
 #                  commit, for every member: identical or not (informational:
 #                  the SDK's git source is hashed into the build, so modules
@@ -167,11 +169,67 @@ build() {
   local args=()
   for crate in "${crates[@]}"; do args+=(--package "$crate"); done
   local sep=$'\x1f'
+  # C code (QuickJS in deckpilot.scripts, through rquickjs-sys) is compiled
+  # by the pinned clang (wasm_c_toolchain), archived by the Rust toolchain's
+  # own llvm-ar, with no C flags from the environment and its paths mapped
+  # like the Rust ones. Only a build of such a crate needs that toolchain.
+  local c_env=() crate
+  for crate in "${crates[@]}"; do
+    case " $C_CRATES " in *" $crate "*) c_env=(c) ;; esac
+  done
+  if [ ${#c_env[@]} -gt 0 ]; then
+    wasm_c_toolchain
+    c_env=(CC_wasm32_unknown_unknown="$WASM_CC" AR_wasm32_unknown_unknown="$WASM_AR"
+      CFLAGS_wasm32_unknown_unknown="-ffile-prefix-map=$OFF=/deckpilot/plugins -ffile-prefix-map=$cargo_home=/cargo -ffile-prefix-map=$target=/target")
+  fi
   rm -rf "$target"
   (cd "$OFF" &&
     env -u RUSTFLAGS -u RUSTC_WRAPPER -u RUSTC_WORKSPACE_WRAPPER -u CARGO_BUILD_TARGET \
+      -u CFLAGS -u CPPFLAGS -u TARGET_CFLAGS -u TARGET_CC -u TARGET_AR \
+      -u CC_wasm32_unknown_unknown -u AR_wasm32_unknown_unknown -u CFLAGS_wasm32_unknown_unknown \
+      "${c_env[@]}" \
       CARGO_ENCODED_RUSTFLAGS="--remap-path-prefix=$OFF=/deckpilot/plugins${sep}--remap-path-prefix=$cargo_home=/cargo${sep}--remap-path-prefix=$checkout/=" \
       cargo build --locked "${args[@]}" --target "$WASM_TARGET" --profile guest --target-dir "$target")
+}
+
+# The clang major version that compiles C for wasm32 (QuickJS): CI installs
+# it from Ubuntu's signed archive (tools/wasm-c-toolchain.sh). Another
+# compiler builds other bytes, so a release build uses exactly this one.
+WASM_CLANG_MAJOR=19
+# Exactly that compiler: the Ubuntu 24.04 package version CI installs, and
+# the first line of its --version. When Ubuntu replaces the package, CI fails
+# closed until both are updated here (a reviewed change, like a toolchain pin).
+WASM_CLANG_APT_VERSION=1:19.1.1-1ubuntu1~24.04.2
+WASM_CLANG_VERSION_LINE="Ubuntu clang version 19.1.1 (1ubuntu1~24.04.2)"
+# The members that compile C for wasm32 (their package names).
+C_CRATES="deckpilot-scripts"
+
+# wasm_c_toolchain: WASM_CC, a clang $WASM_CLANG_MAJOR with the wasm32
+# backend (DECKPILOT_WASM_CC overrides it for local builds, which are then
+# not comparable with CI's), and WASM_AR, the llvm-ar of the pinned Rust
+# toolchain (component llvm-tools), deterministic by default.
+wasm_c_toolchain() {
+  WASM_CC=${DECKPILOT_WASM_CC:-}
+  if [ -n "$WASM_CC" ] && [ -n "${CI:-}" ]; then
+    die "DECKPILOT_WASM_CC is for local builds only; CI builds with the pinned clang-$WASM_CLANG_MAJOR"
+  fi
+  if [ -z "$WASM_CC" ]; then
+    WASM_CC=$(command -v "clang-$WASM_CLANG_MAJOR" || true)
+    [ -n "$WASM_CC" ] || die "no clang-$WASM_CLANG_MAJOR to compile C for wasm32 (tools/wasm-c-toolchain.sh --install; locally DECKPILOT_WASM_CC=clang)"
+    [ "$("$WASM_CC" --version | head -1)" = "$WASM_CLANG_VERSION_LINE" ] \
+      || die "$WASM_CC is not $WASM_CLANG_VERSION_LINE (tools/official.sh WASM_CLANG_VERSION_LINE): $("$WASM_CC" --version | head -1)"
+  fi
+  local probe
+  probe=$(mktemp -d)
+  printf 'int f(void){return 0;}\n' >"$probe/p.c"
+  "$WASM_CC" --target=wasm32-unknown-unknown -c "$probe/p.c" -o "$probe/p.o" 2>/dev/null \
+    || { rm -rf "$probe"; die "$WASM_CC cannot compile for wasm32-unknown-unknown"; }
+  rm -rf "$probe"
+  local sysroot host
+  sysroot=$(cd "$REPO_ROOT" && rustc --print sysroot)
+  host=$(cd "$REPO_ROOT" && rustc -vV | sed -n 's/^host: //p')
+  WASM_AR=$sysroot/lib/rustlib/$host/bin/llvm-ar
+  [ -x "$WASM_AR" ] || die "no llvm-ar in the pinned Rust toolchain: rustup component add llvm-tools"
 }
 
 module_of() { echo "$1/$WASM_TARGET/guest/${2//-/_}.wasm"; }
@@ -294,15 +352,33 @@ repro() {
   summary "" "Two clean builds produced byte-identical modules and packages."
 }
 
+# compare_crates: the crates compare builds. Every member but those held
+# ahead of the pin: DeckPilot has no build of them to compare with, and they
+# may need the C toolchain (C_CRATES), which official-release.yml's
+# `checks` job, where compare also runs, does not install.
+compare_crates() {
+  local ahead id crate
+  ahead=" $(list --ahead | cut -d' ' -f1 | tr '\n' ' ') "
+  while read -r _ id _ crate _; do
+    [[ $ahead == *" $id "* ]] || echo "$crate"
+  done < <(list --list)
+}
+
 compare() {
   [ -x "$DECKPILOT_DIR/plugins/first-party/build.sh" ] || die "no pinned DeckPilot checkout; run tools/build-cli.sh"
   note "DeckPilot's plugins/first-party/build.sh at $DECKPILOT_COMMIT"
   "$DECKPILOT_DIR/plugins/first-party/build.sh" --test-fixtures \
     --out "$OUT/deckpilot" --target-dir "$OUT/deckpilot-target" >&2
-  [ -d "$OUT/target-guest" ] || build "$OUT/target-guest"
+  local crates=()
+  mapfile -t crates < <(compare_crates)
+  [ -d "$OUT/target-guest" ] || build "$OUT/target-guest" "${crates[@]}"
   summary "" "| Member | Here | DeckPilot build.sh | |" "| --- | --- | --- | --- |"
   local path id version crate kind ours theirs
   while read -r path id version crate kind; do
+    if [[ " ${crates[*]} " != *" $crate "* ]]; then
+      note "$id: held ahead of the pin; DeckPilot has no build of it to compare with"
+      continue
+    fi
     ours=$(sha "$(module_of "$OUT/target-guest" "$crate")")
     theirs=$OUT/deckpilot/bundled/$id/plugin.wasm
     if [ ! -f "$theirs" ]; then
@@ -858,6 +934,7 @@ case $what in
   package) package ;;
   repro) repro ;;
   compare) compare ;;
+  compare-crates) compare_crates ;;
   sign-test) sign_test ;;
   all) check; run_tests; package; repro; compare; sign_test ;;
   fetch-deckpilot) fetch_deckpilot "$DECKPILOT_DIR" ;;

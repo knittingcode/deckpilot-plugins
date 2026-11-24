@@ -18,6 +18,7 @@ members = [
     "jira",
     "notifications",
     "projects",
+    "scripts",
     "test-fixtures/example-default",
     "workflows",
     "workspace",
