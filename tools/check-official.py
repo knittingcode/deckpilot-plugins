@@ -645,7 +645,9 @@ def main():
                 ahead = True
                 ahead_rows.append((mid, host_api))
         declared_kinds = {p.get("kind") for p in manifest.get("permissions", []) if isinstance(p, dict)}
-        own = set(AHEAD_OF_PIN[mid]["kinds"]) if ahead else set()
+        # Keyed by id: once the pin reaches its API (and `hostApi` is
+        # removed) the plugin still declares its own kinds.
+        own = set(AHEAD_OF_PIN.get(mid, {}).get("kinds", ())) if kind == "plugin" else set()
         if (declared_kinds & AHEAD_ONLY_KINDS) - own:
             problem(f"{where}: declares {sorted((declared_kinds & AHEAD_ONLY_KINDS) - own)}, kinds only their own "
                     "plugin may declare while it is held ahead of the pin (AHEAD_OF_PIN)")

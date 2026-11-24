@@ -228,8 +228,11 @@ cp -R "$root/tools" "$copy/tools"
 rsync -a --exclude target "$root/official/" "$copy/official/"
 jq --arg ids "$privileged" '(.plugins[] | select(.id as $i | ($ids | split(" ")) | index($i))) += {held: "held by the test"}' \
   "$root/official/plugins.json" > "$copy/official/plugins.json"
-held=$(jq -r '.plugins[] | select(.held != null) | .id' "$copy/official/plugins.json")
+held=$(jq -r '.plugins[] | select(.held != null and .hostApi == null) | .id' "$copy/official/plugins.json")
 [ "$(echo $held)" = "$privileged" ] && ok "the copy holds the five privileged plugins" || bad "the copy holds: $held"
+# Plugins held ahead of the pin (check-official.py AHEAD_OF_PIN) are refused
+# the same way.
+held="$held $(jq -r '.plugins[] | select(.held != null and .hostApi != null) | .id' "$copy/official/plugins.json")"
 for hid in $held; do
   hpath=$(jq -r --arg id "$hid" '.plugins[] | select(.id == $id) | .path' "$copy/official/plugins.json")
   hversion=$(jq -r .version "$copy/official/$hpath/manifest.json")
