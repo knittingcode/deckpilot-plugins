@@ -187,6 +187,13 @@ otherwise:
 Its release removes `hostApi` and `held` once the pinned DeckPilot has the
 API, its contract and, for a privileged plugin, its reviewed policy entry.
 
+The `ahead_refused` step of `tools/official.sh` runs only when an ahead
+plugin is a member, so it was added untested in CI. Its first run is the CI
+of `deckpilot.scripts` (P5, #95). That PR's review confirms the *Build,
+test, check and package official plugins* log shows `deckpilot.scripts: held
+ahead of the pin; module … bytes, only the host ABI imported, package
+--first-party refused, as required`.
+
 `deckpilot.scripts` (`scripts/`) is one: the Scripts runtime, QuickJS-NG
 compiled into its wasm module ([its README](scripts/README.md)). Its C code
 is compiled with clang 19 from Ubuntu's archive and the pinned Rust
