@@ -254,6 +254,10 @@ pub trait Transport {
     /// Waits (at most 30 s per call); cancelling the run ends it with
     /// [`TransportError::Cancelled`].
     fn sleep(&mut self, ms: u32) -> Result<(), TransportError>;
+
+    /// The agent's clock (Unix ms, `time.now`), to count a time budget
+    /// that includes the requests; `None` when it cannot be read.
+    fn now_ms(&mut self) -> Option<u64>;
 }
 
 /// A scripted transport for unit tests: routes by method and URL, records
@@ -274,6 +278,10 @@ pub mod mock {
         pub slept: Vec<u32>,
         /// `sleep` answers this once it is set (a cancelled run).
         pub cancel_sleep_after: Option<usize>,
+        /// A fake clock (Unix ms): a sleep advances it by its length, a
+        /// request by [`MockTransport::request_ms`].
+        pub clock: u64,
+        pub request_ms: u64,
     }
 
     impl MockTransport {
@@ -350,6 +358,7 @@ pub mod mock {
     impl Transport for MockTransport {
         fn send(&mut self, request: &HttpRequest) -> Result<HttpReply, TransportError> {
             self.requests.push(request.clone());
+            self.clock += self.request_ms;
             let route = self
                 .routes
                 .iter_mut()
@@ -376,10 +385,15 @@ pub mod mock {
 
         fn sleep(&mut self, ms: u32) -> Result<(), TransportError> {
             self.slept.push(ms);
+            self.clock += u64::from(ms);
             match self.cancel_sleep_after {
                 Some(n) if self.slept.len() > n => Err(TransportError::Cancelled),
                 _ => Ok(()),
             }
+        }
+
+        fn now_ms(&mut self) -> Option<u64> {
+            Some(self.clock)
         }
     }
 }

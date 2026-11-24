@@ -19,7 +19,8 @@
     "firstUrl": "Pierwsza strona",
     "result": "Wynik (JSON)",
     "number": "Numer",
-    "existing": "Był już otwarty"
+    "existing": "Był już otwarty",
+    "opened": "Otwarto w przeglądarce"
   },
   "params": {
     "connection": "Połączenie",
@@ -90,7 +91,7 @@
     },
     "extension": {
       "name": "Rozszerzenie dostawcy",
-      "description": "Operacja, którą ma tylko jeden dostawca."
+      "description": "Operacja tylko do odczytu, którą ma tylko jeden dostawca."
     },
     "open-repository": {
       "name": "Otwórz repozytorium",
@@ -125,6 +126,7 @@
   "errors": {
     "unauthorized": "Serwer odrzucił token połączenia: połącz ponownie.",
     "insufficient-scope": "Tokenowi brakuje potrzebnego uprawnienia.",
+    "forbidden": "Nie masz dostępu do tego.",
     "not-found": "Nie znaleziono albo token tego nie widzi.",
     "rate-limited": "Osiągnięto limit zapytań serwera; spróbuj później.",
     "provider-error": "Serwer odpowiedział błędem.",

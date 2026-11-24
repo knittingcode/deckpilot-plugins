@@ -19,7 +19,8 @@
     "firstUrl": "First page",
     "result": "Result (JSON)",
     "number": "Number",
-    "existing": "Was already open"
+    "existing": "Was already open",
+    "opened": "Opened in the browser"
   },
   "params": {
     "connection": "Connection",
@@ -90,7 +91,7 @@
     },
     "extension": {
       "name": "Provider extension",
-      "description": "An operation only one provider has."
+      "description": "A read-only operation only one provider has."
     },
     "open-repository": {
       "name": "Open repository",
@@ -125,6 +126,7 @@
   "errors": {
     "unauthorized": "The server refused the connection's token: reconnect it.",
     "insufficient-scope": "The token lacks a permission this needs.",
+    "forbidden": "You may not access this.",
     "not-found": "Not found, or the token cannot see it.",
     "rate-limited": "The server's rate limit is reached; try again later.",
     "provider-error": "The server answered with an error.",

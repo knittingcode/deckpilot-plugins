@@ -1166,9 +1166,7 @@
               "options": [
                 "github.checks",
                 "github.review-requests",
-                "github.workflow-dispatch",
                 "gitlab.review-requests",
-                "gitlab.pipeline-variables",
                 "gitlab.approvals"
               ]
             },
@@ -1671,6 +1669,12 @@
               "label": "t:outputs.existing",
               "kind": "boolean",
               "always": true
+            },
+            {
+              "key": "opened",
+              "label": "t:outputs.opened",
+              "kind": "boolean",
+              "always": false
             }
           ],
           "timeoutMs": 60000,
@@ -1914,6 +1918,7 @@
     "errorCodes": {
       "unauthorized": "t:errors.unauthorized",
       "insufficient-scope": "t:errors.insufficient-scope",
+      "forbidden": "t:errors.forbidden",
       "not-found": "t:errors.not-found",
       "rate-limited": "t:errors.rate-limited",
       "provider-error": "t:errors.provider-error",

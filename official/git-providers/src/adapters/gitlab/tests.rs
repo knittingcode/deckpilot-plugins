@@ -420,7 +420,7 @@ fn review_requests_follow_the_version_gate() {
         .on(me.0, &me.1, 200, me.2)
         .on(
             Method::Get,
-            &format!("{SELF_API}/projects/4711/merge_requests?state=opened&order_by=updated_at&sort=desc&per_page=20"),
+            &format!("{SELF_API}/projects/4711/merge_requests?state=opened&order_by=updated_at&sort=desc&per_page=100"),
             200,
             r#"[{"iid":1,"title":"A","state":"opened","work_in_progress":true,"reviewers":[{"username":"ada"}]},
                 {"iid":2,"title":"B","state":"opened","reviewers":[{"username":"bob"}]}]"#,
@@ -692,6 +692,7 @@ fn a_git_remote_is_resolved_only_when_a_clone_url_matches() {
         &g,
         &mut t,
         "code.example.com:8443",
+        "/gitlab",
         "git@code.example.com:team/app.git",
     )
     .unwrap();
@@ -707,6 +708,7 @@ fn a_git_remote_is_resolved_only_when_a_clone_url_matches() {
         &g,
         &mut t,
         "code.example.com:8443",
+        "/gitlab",
         "https://ada:fake-password@code.example.com/team/app.git",
     )
     .unwrap();
@@ -721,6 +723,7 @@ fn a_git_remote_is_resolved_only_when_a_clone_url_matches() {
         &g,
         &mut t,
         "code.example.com:8443",
+        "/gitlab",
         "git@github.com:team/app.git",
     )
     .unwrap();
@@ -740,6 +743,7 @@ fn a_git_remote_is_resolved_only_when_a_clone_url_matches() {
         &g,
         &mut t,
         "code.example.com:8443",
+        "/gitlab",
         "git@code.example.com:team/app.git",
     )
     .unwrap();
@@ -772,4 +776,141 @@ fn records_carry_no_secret_and_list_repositories_pages() {
     for marker in ["token", "PRIVATE-TOKEN", "Authorization"] {
         assert!(!text.contains(marker), "{marker}");
     }
+}
+
+#[test]
+fn review_fixes_scopes_forbidden_urls_variables_prefix_and_budget() {
+    // Unknown scopes: read, never a claimed write.
+    let (_, g) = self_managed(None);
+    let mut t = MockTransport::new()
+        .on(
+            Method::Get,
+            &format!("{SELF_API}/version"),
+            200,
+            r#"{"version":"15.4.6"}"#,
+        )
+        .on(
+            Method::Get,
+            &format!("{SELF_API}/user"),
+            200,
+            r#"{"id":42,"username":"ada"}"#,
+        );
+    let probe = g.probe(&mut t).unwrap();
+    assert!(!probe.capabilities.pipeline_trigger);
+    assert_eq!(
+        probe.capabilities.change_requests,
+        crate::provider::Access::Read
+    );
+    assert!(
+        !probe
+            .capabilities
+            .extensions
+            .contains("gitlab.pipeline-variables")
+    );
+
+    // A 403 that is the project's permission leaves the connection alone;
+    // one with Retry-After is a rate limit.
+    let (_, g) = cloud();
+    let url = "https://gitlab.com/api/v4/projects/4711";
+    let mut t = MockTransport::new().on(Method::Get, url, 403, r#"{"message":"403 Forbidden"}"#);
+    assert_eq!(
+        g.get_repository(&mut t, &repo()).unwrap_err().code,
+        codes::FORBIDDEN
+    );
+    assert!(t.reports.is_empty());
+    let mut t = MockTransport::new().on_with(Method::Get, url, 403, &[("retry-after", "5")], "{}");
+    assert_eq!(
+        g.get_repository(&mut t, &repo()).unwrap_err().code,
+        codes::RATE_LIMITED
+    );
+
+    // Dot segments in a next link, even encoded.
+    let (_, g) = self_managed(Some("16.0.0"));
+    let mut t = MockTransport::new().on_with(
+        Method::Get,
+        &format!("{SELF_API}/projects/4711/merge_requests?state=opened&order_by=updated_at&sort=desc&per_page=20"),
+        200,
+        &[("link", &format!("<{SELF_API}/projects/%2e%2e/x?page=2>; rel=\"next\""))],
+        "[]",
+    );
+    assert_eq!(
+        g.list_change_requests(
+            &mut t,
+            Some(&repo()),
+            &CrQuery {
+                filter: CrFilter::Open,
+                limit: 20
+            }
+        )
+        .unwrap_err()
+        .code,
+        codes::INVALID_RESPONSE
+    );
+
+    // A merge request without web_url: its page from references.full.
+    let mut t = MockTransport::new().on(
+        Method::Get,
+        &format!("{SELF_API}/projects/4711/merge_requests?state=opened&order_by=updated_at&sort=desc&per_page=20"),
+        200,
+        r#"[{"iid":3,"title":"Fix","state":"opened","references":{"full":"team/app!3"}}]"#,
+    );
+    let list = g
+        .list_change_requests(
+            &mut t,
+            Some(&repo()),
+            &CrQuery {
+                filter: CrFilter::Open,
+                limit: 20,
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        list[0].web_url,
+        "https://code.example.com:8443/gitlab/team/app/-/merge_requests/3"
+    );
+
+    // GitLab's own variables are refused.
+    for name in ["CI_COMMIT_REF_NAME", "GITLAB_USER_ID"] {
+        assert_eq!(
+            check_variables(&[(name.into(), "x".into())])
+                .unwrap_err()
+                .code,
+            codes::INVALID_VARIABLES,
+            "{name}"
+        );
+    }
+
+    // An https remote on a server under /gitlab keeps the prefix in its URL.
+    let web = "https://code.example.com:8443/gitlab";
+    let mut repo_json = project(4711, "team/app", web);
+    repo_json["http_url_to_repo"] = json!(format!("{web}/team/app.git"));
+    let mut t = MockTransport::new().on(
+        Method::Get,
+        &format!("{SELF_API}/projects/team%2Fapp"),
+        200,
+        &repo_json.to_string(),
+    );
+    let out = ops::resolve_remote(
+        &g,
+        &mut t,
+        "code.example.com:8443",
+        "/gitlab",
+        "https://code.example.com:8443/gitlab/team/app.git",
+    )
+    .unwrap();
+    assert_eq!(items(&out)[0]["id"], "gl:4711");
+
+    // The wait budget counts the requests' time too.
+    let (_, g) = cloud();
+    let url = "https://gitlab.com/api/v4/projects/4711/pipelines/555";
+    let mut t = MockTransport::new().on(Method::Get, url, 200, r#"{"id":555,"status":"running"}"#);
+    t.request_ms = 60_000;
+    let e = ops::wait_pipeline(&g, &mut t, &repo(), "555", 30).unwrap_err();
+    assert_eq!(e.code, codes::TIMED_OUT);
+    assert!(
+        t.clock <= u64::from(ops::WAIT_BUDGET_SECONDS + 90) * 1_000,
+        "{}",
+        t.clock
+    );
+    assert!(t.requests.len() < 10, "{}", t.requests.len());
 }

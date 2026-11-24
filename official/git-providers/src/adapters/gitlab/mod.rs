@@ -27,12 +27,12 @@ use crate::records::{
 use crate::transport::{Method, Transport};
 use compat::{Gates, Version};
 
-/// Extensions (the manifest's `connectionTypes[gitlab].extensions`).
-pub const EXTENSIONS: [&str; 3] = [
-    "gitlab.review-requests",
-    "gitlab.pipeline-variables",
-    "gitlab.approvals",
-];
+/// Extensions the `extension` action runs. Pipeline variables
+/// (`gitlab.pipeline-variables` of the manifest's connection type) are a
+/// parameter of `trigger-pipeline`, not an extension call.
+pub const EXTENSIONS: [&str; 2] = ["gitlab.review-requests", "gitlab.approvals"];
+/// Variable name prefixes GitLab reserves for itself.
+pub const RESERVED_VARIABLE_PREFIXES: [&str; 2] = ["CI_", "GITLAB_"];
 /// Most pipeline variables one trigger sends.
 pub const MAX_VARIABLES: usize = 50;
 /// Longest pipeline variable value, in bytes.
@@ -119,6 +119,11 @@ impl Gitlab {
             web_url: self
                 .api
                 .web_link(json.get("web_url").and_then(Value::as_str))
+                .or_else(|| {
+                    let path = reference_path(json, '!')?;
+                    self.web_url(&WebTarget::ChangeRequest { path, number: iid })
+                        .ok()
+                })
                 .unwrap_or_default(),
             repository: json
                 .get("project_id")
@@ -166,6 +171,10 @@ impl Gitlab {
             web_url: self
                 .api
                 .web_link(json.get("web_url").and_then(Value::as_str))
+                .or_else(|| {
+                    let path = reference_path(json, '#')?;
+                    self.web_url(&WebTarget::Issue { path, number: iid }).ok()
+                })
                 .unwrap_or_default(),
             updated_at: json
                 .get("updated_at")
@@ -226,6 +235,13 @@ impl Gitlab {
     }
 }
 
+/// The project path of `references.full` (`group/proj!3`, `group/proj#5`).
+fn reference_path(json: &Value, marker: char) -> Option<String> {
+    let full = json.get("references")?.get("full")?.as_str()?;
+    let (path, _) = full.rsplit_once(marker)?;
+    Some(path.to_owned())
+}
+
 fn invalid(what: &str) -> Failure {
     fail(
         codes::INVALID_RESPONSE,
@@ -275,6 +291,15 @@ pub fn check_variables(variables: &[(String, String)]) -> Result<(), Failure> {
                     "“{}” is not a variable name (capital letters, digits and _)",
                     clean(name, 64)
                 ),
+            ));
+        }
+        if RESERVED_VARIABLE_PREFIXES
+            .iter()
+            .any(|prefix| name.starts_with(prefix))
+        {
+            return Err(fail(
+                codes::INVALID_VARIABLES,
+                format!("{name} is one of GitLab's own variables (CI_*, GITLAB_*)"),
             ));
         }
         if !seen.insert(name.as_str()) {
@@ -334,7 +359,12 @@ impl Provider for Gitlab {
         } else {
             (None, None)
         };
-        let write = scopes.as_ref().is_none_or(|s| s.iter().any(|x| x == "api"));
+        // Only what the token is known to allow: unknown scopes (an old
+        // GitLab, a 404 on the token endpoint) read, and a 403 on first
+        // use of a change says what is missing.
+        let write = scopes
+            .as_ref()
+            .is_some_and(|s| s.iter().any(|x| x == "api"));
         let access = if write {
             Access::ReadWrite
         } else {
@@ -532,6 +562,10 @@ impl Provider for Gitlab {
                     query.push(("reviewer_username", me));
                 } else {
                     reviewer_filter = Some(me);
+                    // Every open one is read and filtered: full pages.
+                    if let Some(size) = query.iter_mut().find(|(k, _)| *k == "per_page") {
+                        size.1 = "100".into();
+                    }
                 }
                 if r.is_none() {
                     query.push(("scope", "all".into()));
@@ -888,10 +922,6 @@ impl Provider for Gitlab {
                 )?;
                 Ok(json!({ "items": items }))
             }
-            "gitlab.pipeline-variables" => Err(fail(
-                codes::CAPABILITY_UNSUPPORTED,
-                "pipeline variables are given to trigger-pipeline",
-            )),
             _ => Err(fail(
                 codes::CAPABILITY_UNSUPPORTED,
                 format!("GitLab has no extension “{}”", clean(id, 64)),

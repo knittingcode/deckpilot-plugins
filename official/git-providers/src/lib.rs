@@ -54,13 +54,13 @@ pub const INTERNAL: [&str; 11] = [
     "extension",
 ];
 
-/// The extensions an `extension` call may name.
-pub const EXTENSIONS: [&str; 6] = [
+/// The extensions an `extension` call may name: read-only ones only.
+/// Changes (a workflow dispatch, pipeline variables) go through
+/// `trigger-pipeline`, which needs "Allow changes" and asks first.
+pub const EXTENSIONS: [&str; 4] = [
     "github.checks",
     "github.review-requests",
-    "github.workflow-dispatch",
     "gitlab.review-requests",
-    "gitlab.pipeline-variables",
     "gitlab.approvals",
 ];
 
@@ -390,11 +390,12 @@ fn get_issue(_ctx: &mut Context<'_>, args: &Args<'_>) -> ActionResult {
 fn resolve_remote(_ctx: &mut Context<'_>, args: &Args<'_>) -> ActionResult {
     let mut b = bind(args)?;
     let remote: String = args.get("remoteUrl")?;
-    let host = client::Api::new(&b.connection)?.host;
+    let api = client::Api::new(&b.connection)?;
     Ok(ops::resolve_remote(
         b.provider.as_ref(),
         &mut b.transport,
-        &host,
+        &api.host,
+        api.web.path(),
         &remote,
     )?)
 }
@@ -523,11 +524,12 @@ fn create_change_request(ctx: &mut Context<'_>, args: &Args<'_>) -> ActionResult
     };
     let title = text(args, "title")?.unwrap_or_default();
     let host = client::Api::new(&b.connection)?.host;
+    let path = b.provider.get_repository(&mut b.transport, &r)?.path;
     confirmed(
         ctx,
         args,
         &format!(
-            "Open a {} from {source} into {target} on {host}?",
+            "Open a {} from {source} into {target} in {path} on {host}?",
             if b.provider.kind() == provider::ProviderKind::Gitlab {
                 "merge request"
             } else {
@@ -544,10 +546,13 @@ fn create_change_request(ctx: &mut Context<'_>, args: &Args<'_>) -> ActionResult
     };
     let output =
         ops::create_change_request(b.provider.as_ref(), &mut b.transport, &b.connection, &r, &c)?;
+    // The change already happened: a page that cannot be opened is told,
+    // never a failure of the action.
     if args.get::<Option<bool>>("openAfter")?.unwrap_or(false)
         && let Some(deckpilot_plugin_sdk::ParamValue::String(url)) = output.data().get("url")
     {
-        ctx.open_url(url.clone())?;
+        let opened = !url.is_empty() && ctx.open_url(url.clone()).is_ok();
+        return Ok(output.with("opened", opened));
     }
     Ok(output)
 }
@@ -564,10 +569,11 @@ fn trigger_pipeline(ctx: &mut Context<'_>, args: &Args<'_>) -> ActionResult {
         workflow: text(args, "workflow")?,
     };
     let host = client::Api::new(&b.connection)?.host;
+    let path = b.provider.get_repository(&mut b.transport, &r)?.path;
     confirmed(
         ctx,
         args,
-        &format!("Start a pipeline on {reference} ({host})?"),
+        &format!("Start a pipeline on {reference} in {path} ({host})?"),
     )?;
     Ok(ops::trigger_pipeline(
         b.provider.as_ref(),

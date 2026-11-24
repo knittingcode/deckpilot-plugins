@@ -64,6 +64,23 @@ pub fn path_of(remote: &str) -> Option<String> {
     normalize(remote).and_then(|n| n.split_once('/').map(|(_, p)| p.to_owned()))
 }
 
+/// [`path_of`] for a server under a path prefix (`/gitlab`): an https
+/// remote names the project under the prefix, an ssh one does not.
+pub fn project_path(remote: &str, web_prefix: &str) -> Option<String> {
+    let path = path_of(remote)?;
+    let prefix = web_prefix.trim_matches('/');
+    if prefix.is_empty() {
+        return Some(path);
+    }
+    match path
+        .strip_prefix(prefix)
+        .and_then(|rest| rest.strip_prefix('/'))
+    {
+        Some(rest) if remote.trim().starts_with("https://") => Some(rest.to_owned()),
+        _ => Some(path),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -105,6 +122,23 @@ mod tests {
         ));
         assert_eq!(
             path_of("git@gitlab.example.com:team/app.git").as_deref(),
+            Some("team/app")
+        );
+        // A server under /gitlab: the https remote has the prefix, ssh not.
+        assert_eq!(
+            project_path(
+                "https://code.example.com:8443/gitlab/team/app.git",
+                "/gitlab"
+            )
+            .as_deref(),
+            Some("team/app")
+        );
+        assert_eq!(
+            project_path("git@code.example.com:team/app.git", "/gitlab").as_deref(),
+            Some("team/app")
+        );
+        assert_eq!(
+            project_path("https://code.example.com/team/app.git", "").as_deref(),
             Some("team/app")
         );
     }

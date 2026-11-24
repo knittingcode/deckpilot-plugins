@@ -172,6 +172,13 @@ impl Transport for HostTransport {
     fn sleep(&mut self, ms: u32) -> Result<(), TransportError> {
         call(&json!({"op": "time.sleep", "args": {"ms": ms.clamp(1, 30_000)}})).map(drop)
     }
+
+    fn now_ms(&mut self) -> Option<u64> {
+        call(&json!({"op": "time.now", "args": {}}))
+            .ok()?
+            .get("unixMs")?
+            .as_u64()
+    }
 }
 
 #[cfg(test)]
