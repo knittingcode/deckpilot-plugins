@@ -531,6 +531,7 @@ fn triggering_a_pipeline_checks_its_variables() {
         reference: "main".into(),
         variables: ops::parse_variables("DEPLOY_ENV=staging\nDRY_RUN=1").unwrap(),
         workflow: None,
+        inputs: Default::default(),
     };
     let out = ops::trigger_pipeline(&g, &mut t, &c, &repo(), &trigger).unwrap();
     assert_eq!(

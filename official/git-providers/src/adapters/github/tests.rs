@@ -408,21 +408,47 @@ fn workflow_runs_are_pipelines() {
 #[test]
 fn starting_a_pipeline_dispatches_a_workflow() {
     let (c, g) = ghes();
-    let mut t = named(MockTransport::new(), GHES, "team/app", GHES_WEB)
-        .on(Method::Post, &format!("{GHES}/repos/team/app/actions/workflows/ci.yml/dispatches"), 204, "")
-        .on(
-            Method::Get,
-            &format!("{GHES}/repos/team/app/actions/runs?branch=main&per_page=1&event=workflow_dispatch"),
-            200,
-            &format!(r#"{{"workflow_runs":[{{"id":7,"status":"queued","head_branch":"main","html_url":"{GHES_WEB}/team/app/actions/runs/7"}}]}}"#),
-        );
+    let now = 1_795_554_300_000; // 2026-11-24T21:05:00Z
+    let runs = format!(
+        "{GHES}/repos/team/app/actions/runs?event=workflow_dispatch&branch=main&actor=octocat&created=%3E%3D2026-11-24T21%3A04%3A55Z&per_page=10"
+    );
+    let base = || {
+        named(MockTransport::new(), GHES, "team/app", GHES_WEB)
+            .on(
+                Method::Get,
+                &format!("{GHES}/user"),
+                200,
+                r#"{"login":"octocat"}"#,
+            )
+            .on(
+                Method::Post,
+                &format!("{GHES}/repos/team/app/actions/workflows/ci.yml/dispatches"),
+                204,
+                "",
+            )
+    };
     let trigger = PipelineTrigger {
         reference: "main".into(),
         variables: Vec::new(),
         workflow: Some("ci.yml".into()),
+        inputs: json!({"env": "staging"}).as_object().unwrap().clone(),
     };
+    // The run of this dispatch: created since, by the same actor; an
+    // older run and someone else's are never taken for it.
+    let mut t = base().on(
+        Method::Get,
+        &runs,
+        200,
+        &format!(
+            r#"{{"workflow_runs":[
+                {{"id":9,"status":"queued","created_at":"2026-11-24T21:05:03Z","actor":{{"login":"mallory"}}}},
+                {{"id":8,"status":"queued","created_at":"2026-11-24T21:05:02Z","actor":{{"login":"octocat"}},"html_url":"{GHES_WEB}/team/app/actions/runs/8"}},
+                {{"id":6,"status":"completed","conclusion":"success","created_at":"2026-11-24T20:00:00Z","actor":{{"login":"octocat"}}}}]}}"#
+        ),
+    );
+    t.clock = now;
     let out = ops::trigger_pipeline(&g, &mut t, &c, &repo(), &trigger).unwrap();
-    assert_eq!(text(&out, "pipelineId"), "7");
+    assert_eq!(text(&out, "pipelineId"), "8");
     assert_eq!(text(&out, "state"), "pending");
     let post = t
         .requests
@@ -430,10 +456,40 @@ fn starting_a_pipeline_dispatches_a_workflow() {
         .find(|r| r.method == Method::Post)
         .unwrap();
     let body: Value = serde_json::from_str(post.body.as_deref().unwrap()).unwrap();
-    assert_eq!(body, json!({"ref": "main", "inputs": {}}));
+    assert_eq!(body, json!({"ref": "main", "inputs": {"env": "staging"}}));
+    assert_eq!(
+        t.requests
+            .iter()
+            .filter(|r| r.method == Method::Post)
+            .count(),
+        1
+    );
+
+    // Only an older run there: queued without an id, never the old run.
+    let mut t = base().on(
+        Method::Get,
+        &runs,
+        200,
+        r#"{"workflow_runs":[{"id":6,"status":"completed","conclusion":"success","created_at":"2026-11-24T20:00:00Z","actor":{"login":"octocat"}}]}"#,
+    );
+    t.clock = now;
+    let out = ops::trigger_pipeline(&g, &mut t, &c, &repo(), &trigger).unwrap();
+    assert_eq!(text(&out, "pipelineId"), "");
+    assert_eq!(text(&out, "providerStatus"), "queued");
+
+    // A read-only connection: no request at all.
+    let read_only = connection(GHES, GHES_WEB, false);
+    let mut t = base();
+    assert_eq!(
+        ops::trigger_pipeline(&g, &mut t, &read_only, &repo(), &trigger)
+            .unwrap_err()
+            .code,
+        codes::READ_ONLY_CONNECTION
+    );
+    assert!(t.requests.is_empty());
 
     // No workflow, variables (GitLab's), or a bad workflow name: refused
-    // before any request.
+    // before any write.
     for bad in [
         PipelineTrigger {
             workflow: None,
@@ -448,7 +504,7 @@ fn starting_a_pipeline_dispatches_a_workflow() {
             ..trigger.clone()
         },
     ] {
-        let mut t = named(MockTransport::new(), GHES, "team/app", GHES_WEB);
+        let mut t = base();
         assert!(
             g.trigger_pipeline(&mut t, &repo(), &bad).is_err(),
             "{bad:?}"
@@ -575,13 +631,144 @@ fn issues_leave_out_pull_requests_and_remotes_resolve() {
         &cloud_repo.to_string(),
     );
     let out =
-        ops::resolve_remote(&g, &mut t, "github.com", "git@github.com:octo/site.git").unwrap();
+        ops::resolve_remote(&g, &mut t, "github.com", "", "git@github.com:octo/site.git").unwrap();
     assert_eq!(items(&out)[0]["id"], "gh:123456789");
     // The API host of GitHub.com is not where remotes point: matched on the
     // web host.
     let mut t = MockTransport::new();
     let out =
-        ops::resolve_remote(&g, &mut t, "github.com", "git@gitlab.com:octo/site.git").unwrap();
+        ops::resolve_remote(&g, &mut t, "github.com", "", "git@gitlab.com:octo/site.git").unwrap();
     assert!(items(&out).is_empty());
     assert!(t.requests.is_empty());
+}
+
+#[test]
+fn no_read_only_path_writes_and_review_fixes() {
+    // Every extension the `extension` action offers, on both providers,
+    // sends GET only; a dispatch through it is refused before any request.
+    let g = cloud();
+    let web = "https://github.com";
+    let mut t = named(MockTransport::new(), CLOUD, "octo/site", web);
+    let e = g
+        .extension(
+            &mut t,
+            "github.workflow-dispatch",
+            &repo(),
+            &json!({"workflow": "ci.yml", "ref": "main"}),
+        )
+        .unwrap_err();
+    assert_eq!(e.code, codes::CAPABILITY_UNSUPPORTED);
+    assert!(t.requests.is_empty());
+    for id in crate::EXTENSIONS {
+        let mut t = named(MockTransport::new(), CLOUD, "octo/site", web);
+        let _ = g.extension(&mut t, id, &repo(), &json!({"ref": "main"}));
+        assert!(t.requests.iter().all(|r| r.method == Method::Get), "{id}");
+        let gl = crate::adapters::gitlab::Gitlab::new(&ConnectionInfo {
+            type_id: "gitlab".into(),
+            api_base: "https://gitlab.com/api/v4".into(),
+            web_base: "https://gitlab.com".into(),
+            ..connection(CLOUD, web, true)
+        })
+        .unwrap();
+        let gl_repo = RepoRef::parse("gl:1", ProviderKind::Gitlab, ID).unwrap();
+        let mut t = MockTransport::new();
+        let _ = gl.extension(&mut t, id, &gl_repo, &json!({"changeRequest": 1}));
+        assert!(t.requests.iter().all(|r| r.method == Method::Get), "{id}");
+    }
+
+    // Fine-grained tokens report no scopes: read until a write proves
+    // otherwise.
+    let mut t = MockTransport::new()
+        .on(
+            Method::Get,
+            &format!("{CLOUD}/user"),
+            200,
+            r#"{"login":"octocat"}"#,
+        )
+        .on(Method::Get, &format!("{CLOUD}/meta"), 200, "{}");
+    let probe = g.probe(&mut t).unwrap();
+    assert!(!probe.capabilities.pipeline_trigger);
+    assert_eq!(probe.capabilities.pipelines, crate::provider::Access::Read);
+    assert!(
+        !probe
+            .capabilities
+            .extensions
+            .contains("github.workflow-dispatch")
+    );
+
+    // A 403 with Retry-After is a rate limit (GitHub's secondary limit).
+    let mut t = MockTransport::new().on_with(
+        Method::Get,
+        &format!("{CLOUD}/repositories/123456789"),
+        403,
+        &[("retry-after", "30")],
+        r#"{"message":"You have exceeded a secondary rate limit"}"#,
+    );
+    let e = g.get_repository(&mut t, &repo()).unwrap_err();
+    assert_eq!((e.code, e.retryable), (codes::RATE_LIMITED, true));
+    assert!(t.reports.is_empty());
+
+    // A ref with `/` is one encoded segment or query value.
+    let mut t = named(MockTransport::new(), CLOUD, "octo/site", web)
+        .on(
+            Method::Get,
+            &format!("{CLOUD}/repos/octo/site/commits?per_page=20&sha=feature%2Fx"),
+            200,
+            "[]",
+        )
+        .on(
+            Method::Get,
+            &format!("{CLOUD}/repos/octo/site/commits/feature%2Fx/check-runs?per_page=100"),
+            200,
+            r#"{"check_runs":[]}"#,
+        )
+        .on(
+            Method::Get,
+            &format!("{CLOUD}/repos/octo/site/commits/feature%2Fx/status"),
+            200,
+            r#"{"statuses":[]}"#,
+        );
+    ops::list_commits(&g, &mut t, &repo(), Some("feature/x".into()), 20).unwrap();
+    let checks = g
+        .extension(
+            &mut t,
+            "github.checks",
+            &repo(),
+            &json!({"ref": "feature/x"}),
+        )
+        .unwrap();
+    assert_eq!(checks["state"], "none");
+
+    // A search reads past the first page.
+    let page2 = format!("{CLOUD}/user/repos?sort=updated&direction=desc&per_page=100&page=2");
+    let mut t = MockTransport::new()
+        .on_with(
+            Method::Get,
+            &format!("{CLOUD}/user/repos?sort=updated&direction=desc&per_page=100"),
+            200,
+            &[("link", &format!("<{page2}>; rel=\"next\""))],
+            &json!([repository("octo/other", web)]).to_string(),
+        )
+        .on(
+            Method::Get,
+            &page2,
+            200,
+            &json!([repository("octo/site", web)]).to_string(),
+        );
+    let page = g
+        .list_repositories(
+            &mut t,
+            &crate::provider::RepoQuery {
+                search: Some("SITE".into()),
+                page: crate::provider::PageQuery::default(),
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        page.items
+            .iter()
+            .map(|r| r.path.as_str())
+            .collect::<Vec<_>>(),
+        ["octo/site"]
+    );
 }

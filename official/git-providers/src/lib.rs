@@ -190,6 +190,7 @@ pub fn plugin() -> Plugin {
                 .param(Param::text("ref").required().max_length(250))
                 .param(Param::text("variables").max_length(60_000))
                 .param(Param::text("workflow").max_length(255))
+                .param(Param::text("inputs").max_length(4096))
                 .param(Param::boolean("confirm").default(true)),
         )
         .action(
@@ -568,6 +569,18 @@ fn trigger_pipeline(ctx: &mut Context<'_>, args: &Args<'_>) -> ActionResult {
         reference: reference.clone(),
         variables,
         workflow: text(args, "workflow")?,
+        inputs: match text(args, "inputs")? {
+            None => serde_json::Map::new(),
+            Some(raw) => match serde_json::from_str::<serde_json::Value>(&raw) {
+                Ok(serde_json::Value::Object(map)) => map,
+                _ => {
+                    return Err(PluginError::new(
+                        codes::INVALID_VARIABLES,
+                        "workflow inputs are a JSON object of names and values",
+                    ));
+                }
+            },
+        },
     };
     let host = client::Api::new(&b.connection)?.host;
     let path = b.provider.get_repository(&mut b.transport, &r)?.path;

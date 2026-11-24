@@ -30,15 +30,16 @@ use crate::records::{
 };
 use crate::transport::{HttpRequest, Method, Transport};
 
-/// Extensions (the manifest's `connectionTypes[github].extensions`).
-pub const EXTENSIONS: [&str; 3] = [
-    "github.checks",
-    "github.review-requests",
-    "github.workflow-dispatch",
-];
+/// Extensions the `extension` action runs: read-only ones. A workflow
+/// dispatch (`github.workflow-dispatch` of the manifest's connection type)
+/// is `trigger-pipeline`, which needs "Allow changes" and asks first.
+pub const EXTENSIONS: [&str; 2] = ["github.checks", "github.review-requests"];
 /// The API version header GitHub documents for REST v3.
 pub const API_VERSION: (&str, &str) = ("X-GitHub-Api-Version", "2022-11-28");
 pub const ACCEPT: (&str, &str) = ("Accept", "application/vnd.github+json");
+/// How far the agent's clock may be ahead of GitHub's when a dispatched
+/// run is recognized.
+pub const DISPATCH_SKEW_MS: u64 = 5_000;
 /// Most workflow inputs one dispatch sends (GitHub's own limit is 25).
 pub const MAX_INPUTS: usize = 25;
 /// Classic token scopes beyond what DeckPilot ever needs.
@@ -413,6 +414,66 @@ impl Github {
         }))
     }
 
+    /// The run a dispatch started: dispatched on `reference` by `actor`,
+    /// created at or after `since` (the agent's clock, a few seconds of
+    /// skew allowed). Without a clock or such a run: `None`, and the caller
+    /// answers "queued" without an id rather than a previous run.
+    fn dispatched_run(
+        &self,
+        t: &mut dyn Transport,
+        n: &Named,
+        reference: &str,
+        actor: Option<&str>,
+        since: Option<u64>,
+    ) -> Result<Option<PipelineRecord>, Failure> {
+        let (Some(actor), Some(since)) = (actor, since) else {
+            return Ok(None);
+        };
+        let from = since.saturating_sub(DISPATCH_SKEW_MS);
+        let created = format!(">={}", crate::records::iso(from));
+        let what = format!("the runs of {}/{}@{reference}", n.owner, n.name);
+        let reply = self.get(
+            t,
+            self.repo_url(
+                n,
+                &["actions", "runs"],
+                &[
+                    ("event", "workflow_dispatch"),
+                    ("branch", reference),
+                    ("actor", actor),
+                    ("created", &created),
+                    ("per_page", "10"),
+                ],
+            ),
+            &what,
+        )?;
+        let runs = reply
+            .json
+            .get("workflow_runs")
+            .and_then(Value::as_array)
+            .ok_or_else(|| invalid(&what))?;
+        // The oldest run created since the dispatch, by this actor.
+        let mut best: Option<(u64, &Value)> = None;
+        for run in runs {
+            let created = run
+                .get("created_at")
+                .and_then(Value::as_str)
+                .and_then(timestamp);
+            let by = run
+                .get("actor")
+                .and_then(|a| a.get("login"))
+                .and_then(Value::as_str);
+            if let Some(created) = created
+                && created >= from
+                && by == Some(actor)
+                && best.is_none_or(|(b, _)| created < b)
+            {
+                best = Some((created, run));
+            }
+        }
+        best.map(|(_, run)| self.run(run)).transpose()
+    }
+
     fn dispatch(
         &self,
         t: &mut dyn Transport,
@@ -424,6 +485,15 @@ impl Github {
         let workflow = check_workflow(workflow)?;
         let reference = check_ref(reference)?;
         check_inputs(inputs)?;
+        // Who dispatches and when, to recognize the run it starts: GitHub
+        // answers 204 without it.
+        let actor = self
+            .get(t, self.api.endpoint(&["user"], &[]), "the signed-in user")?
+            .json
+            .get("login")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+        let since = t.now_ms();
         self.send_json(
             t,
             Method::Post,
@@ -431,9 +501,8 @@ impl Github {
             &json!({"ref": reference, "inputs": inputs}),
             &format!("a run of {workflow} on {reference}"),
         )?;
-        // 204 without the run: the newest dispatched run of the ref.
         Ok(self
-            .latest_run(t, n, reference, Some("workflow_dispatch"))?
+            .dispatched_run(t, n, reference, actor.as_deref(), since)?
             .unwrap_or(PipelineRecord {
                 id: String::new(),
                 state: PipelineState::Pending,
@@ -616,7 +685,7 @@ impl Provider for Github {
         // marks the connection `insufficientScope`).
         let write = scopes
             .as_ref()
-            .is_none_or(|s| s.iter().any(|x| x == "repo" || x == "public_repo"));
+            .is_some_and(|s| s.iter().any(|x| x == "repo" || x == "public_repo"));
         let access = if write {
             Access::ReadWrite
         } else {
@@ -648,6 +717,32 @@ impl Provider for Github {
         t: &mut dyn Transport,
         q: &RepoQuery,
     ) -> Result<Page<RepositoryRecord>, Failure> {
+        // A search reads every page (at most 500 repositories) and filters
+        // here: /user/repos cannot search.
+        if let Some(search) = q.search.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+            let list = self.api.list(
+                t,
+                self.api.endpoint(
+                    &["user", "repos"],
+                    &[
+                        ("sort", "updated"),
+                        ("direction", "desc"),
+                        ("per_page", "100"),
+                    ],
+                ),
+                None,
+                "your repositories",
+                500,
+            )?;
+            let mut items = Vec::new();
+            for repo in &list.items {
+                let record = self.repository(repo)?;
+                if matches_search(&record.path, Some(search)) {
+                    items.push(record);
+                }
+            }
+            return Ok(Page { items, next: None });
+        }
         let page = q.page.page.max(1).to_string();
         let size = per_page(q.page.per_page);
         let reply = self.get(
@@ -957,7 +1052,7 @@ impl Provider for Github {
             )
         })?;
         let n = self.named(t, r)?;
-        self.dispatch(t, &n, workflow, &p.reference, &Map::new())
+        self.dispatch(t, &n, workflow, &p.reference, &p.inputs)
     }
 
     fn list_issues(
@@ -1080,30 +1175,12 @@ impl Provider for Github {
                 let items = self.search_pulls(t, "review-requested:@me", Some(&n), limit)?;
                 Ok(json!({ "items": items }))
             }
-            "github.workflow-dispatch" => {
-                let workflow = args
-                    .get("workflow")
-                    .and_then(Value::as_str)
-                    .ok_or_else(|| {
-                        fail(codes::INVALID_PARAMETERS, "choose the workflow file to run")
-                    })?;
-                let reference = args.get("ref").and_then(Value::as_str).ok_or_else(|| {
-                    fail(codes::INVALID_REF, "choose the branch or tag to run on")
-                })?;
-                let inputs = match args.get("inputs") {
-                    None | Some(Value::Null) => Map::new(),
-                    Some(Value::Object(map)) => map.clone(),
-                    Some(_) => {
-                        return Err(fail(
-                            codes::INVALID_VARIABLES,
-                            "workflow inputs are an object of names and values",
-                        ));
-                    }
-                };
-                let n = self.named(t, r)?;
-                let run = self.dispatch(t, &n, workflow, reference, &inputs)?;
-                Ok(serde_json::to_value(run).unwrap_or(Value::Null))
-            }
+            // A change: never through this read-only, retry-safe action.
+            "github.workflow-dispatch" => Err(fail(
+                codes::CAPABILITY_UNSUPPORTED,
+                "a workflow is started with trigger-pipeline, which needs “Allow changes” and \
+                 asks first",
+            )),
             _ => Err(fail(
                 codes::CAPABILITY_UNSUPPORTED,
                 format!("GitHub has no extension “{}”", clean(id, 64)),

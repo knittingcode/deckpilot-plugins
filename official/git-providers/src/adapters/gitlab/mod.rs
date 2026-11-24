@@ -761,10 +761,10 @@ impl Provider for Gitlab {
         r: &RepoRef,
         p: &PipelineTrigger,
     ) -> Result<PipelineRecord, Failure> {
-        if p.workflow.is_some() {
+        if p.workflow.is_some() || !p.inputs.is_empty() {
             return Err(fail(
                 codes::CAPABILITY_UNSUPPORTED,
-                "GitLab has no workflow files to choose: leave the workflow empty",
+                "GitLab has no workflow files or inputs: leave them empty and use variables",
             ));
         }
         let reference = check_ref(&p.reference)?;
