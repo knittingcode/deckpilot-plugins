@@ -184,7 +184,10 @@ stale and keep running installed plugins.
 Every run, scheduled or dispatched, ends with the **freshness monitor**
 (`tools/check-freshness.sh`). It fails when the live timestamp has less
 than 5 days left, or when a published `<id>--v<version>` release is not in
-the live index. A failed scheduled run is reported by GitHub to the
+the live index. The releases of the plugins DeckPilot bundles only
+(`BUNDLED_ONLY_IDS` in `tools/official-entry.py`: docker, git, projects,
+workflows, workspace; *Official release*, never in the registry) are not
+expected there. A failed scheduled run is reported by GitHub to the
 workflow's owner (by e-mail, by default).
 
 ### Recovery

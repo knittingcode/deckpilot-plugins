@@ -8,8 +8,11 @@
 #     branch, record (first and appended), refusal to record an older state,
 #     API failures;
 #   - tools/check-freshness.sh: enough validity, too little, expired, a
-#     published release missing from the index, drafts ignored; a storefront
+#     published release missing from the index, drafts and the releases of
+#     plugins DeckPilot bundles only ignored; a storefront
 #     whose images or documents are not all served as pinned.
+#   - a seq without a storefront: no storefront/ or media/ in the mirror
+#     (a 404 leaves no empty directory behind);
 #   - the storefront in the mirror (docs/storefront.md): the live seq's
 #     storefront, its documents and images, byte for byte, and nothing of an
 #     older seq (an unsigned older storefront pinning HTML as an image is
@@ -26,8 +29,9 @@
 #
 # --with-cli (needs tools/build-cli.sh; validate.yml's registry job): also a
 # real timestamp-only refresh (tools/publish-site.sh timestamp, throwaway
-# keys) of a signed site with a storefront keeps storefront/ and media/
-# byte for byte, and its mirror (what the refresh deploys) too.
+# keys) of a signed site without a storefront changes only the timestamp,
+# and of one with a storefront keeps storefront/ and media/ byte for byte,
+# and its mirror (what the refresh deploys) too.
 #
 #   tools/tests/test-registry-freshness.sh [--with-cli]
 set -euo pipefail
@@ -84,6 +88,14 @@ expect_mirror() { # expect_mirror NAME WANT(live|none|fail) [MIN_STATE] [ERROR_T
 
 stamp 3 2026-11-18T08:13:05.707494018Z
 expect_mirror "no floor: the live registry is mirrored" live
+# A seq without a storefront (storefront/3.json is a 404) leaves no trace:
+# not even an empty storefront/, which the refresh's byte-for-byte check
+# of storefront/ counted as a difference from the refreshed site, so every
+# timestamp refresh of the live seq 4 failed from 2026-11-23.
+if [ ! -e "$work/m/site/v1/storefront" ] && [ ! -e "$work/m/site/v1/media" ] &&
+  [ -z "$(find "$work/m/site/v1" -type d -empty)" ]; then
+  ok "no storefront: no storefront/ or media/ and no empty directory in the mirror"
+else bad "no storefront: the mirror has $(cd "$work/m/site/v1" && find . -type d | tr '\n' ' ')"; fi
 state 3 2026-11-18T08:13:05.707494018Z
 expect_mirror "the live timestamp is the recorded one" live "$work/state.json"
 state 3 2026-11-17T23:00:03.065623453Z
@@ -344,6 +356,20 @@ if monitor 2026-11-18T10:00:00Z; then bad "monitor misses an unpublished release
 elif grep -q "deckpilot.memory--v0.3.0 is not in the live index" "$work/err"; then ok "monitor: a release missing from the index fails"; else bad "monitor missing release: $(tail -1 "$work/err")"; fi
 releases '[{tag_name: "deckpilot.memory--v0.3.0", draft: true}, {tag_name: "deckpilot.memory--v0.2.0", draft: false}]'
 if monitor 2026-11-18T10:00:00Z; then ok "monitor: a draft release is not expected in the index"; else bad "monitor draft ($(tail -1 "$work/err"))"; fi
+# The plugins DeckPilot bundles only (official-release.yml; never in the
+# registry): the release of deckpilot.docker--v0.1.1 and the four others
+# failed every monitor run from 2026-11-22. A bundled plugin the registry
+# serves (deckpilot.github) is still expected.
+releases '[{tag_name: "deckpilot.docker--v0.1.1", draft: false}, {tag_name: "deckpilot.git--v0.1.1", draft: false}, {tag_name: "deckpilot.projects--v0.1.1", draft: false}, {tag_name: "deckpilot.workflows--v0.1.1", draft: false}, {tag_name: "deckpilot.workspace--v0.1.1", draft: false}, {tag_name: "deckpilot.memory--v0.2.0", draft: false}]'
+if monitor 2026-11-18T10:00:00Z; then ok "monitor: a bundled-only plugin's release is not expected in the index"; else bad "monitor bundled-only ($(tail -1 "$work/err"))"; fi
+releases '[{tag_name: "deckpilot.github--v0.2.1", draft: false}, {tag_name: "deckpilot.memory--v0.2.0", draft: false}]'
+if monitor 2026-11-18T10:00:00Z; then bad "monitor misses a registry-served official plugin's release"
+elif grep -q "deckpilot.github--v0.2.1 is not in the live index" "$work/err"; then ok "monitor: a registry-served official plugin's release missing from the index fails"
+else bad "monitor official release: $(tail -1 "$work/err")"; fi
+releases '[{tag_name: "deckpilot.dockerx--v0.1.1", draft: false}, {tag_name: "deckpilot.memory--v0.2.0", draft: false}]'
+if monitor 2026-11-18T10:00:00Z; then bad "monitor exempts an id that only starts with a bundled-only one"
+elif grep -q "deckpilot.dockerx--v0.1.1 is not in the live index" "$work/err"; then ok "monitor: only the exact bundled-only ids are exempt"
+else bad "monitor id prefix: $(tail -1 "$work/err")"; fi
 
 # The storefront of the live seq (seq 4, from the mirror tests above).
 releases '[{tag_name: "deckpilot.memory--v0.2.0", draft: false}]'
@@ -370,8 +396,24 @@ if [ "$with_cli" = 1 ]; then
   site_start
   repo=$work/cli-repo
   site_repo "$repo"
+  # The live registry of 2026-11-23: a seq without a storefront. Its
+  # refresh failed ("the refreshed site's storefront/ is not the live one
+  # byte for byte") on the empty storefront/ the mirror left.
+  if site_publish "$repo" index "$work/cli-off"; then ok "cli: a signed site without a storefront (seq 1)"
+  else bad "cli: publication without a storefront: $(tail -3 "$work/cli-off.log" | tr '\n' ' ')"; fi
+  site_serve "$work/cli-off"
+  if site_publish "$repo" timestamp "$work/cli-off-ts"; then ok "cli: the timestamp refresh of a seq without a storefront"
+  else bad "cli: refresh without a storefront: $(tail -3 "$work/cli-off-ts.log" | tr '\n' ' ')"; fi
+  off=$work/cli-off/site/v1 offts=$work/cli-off-ts/site/v1
+  if [ ! -e "$offts/storefront" ] && [ ! -e "$offts/media" ] &&
+    diff <(cd "$off" && find . -type f ! -name 'timestamp.json*' | sort | xargs shasum -a 256) \
+      <(cd "$offts" && find . -type f ! -name 'timestamp.json*' | sort | xargs shasum -a 256) > /dev/null &&
+    [ "$(jq .seq "$offts/timestamp.json")" = 1 ] && ! cmp -s "$off/timestamp.json" "$offts/timestamp.json"; then
+    ok "cli: ... only timestamp.json changed, no storefront/ or media/"
+  else bad "cli: the refresh without a storefront changed more than the timestamp"; fi
+  site_serve "$work/cli-off-ts"
   site_storefront "$repo"
-  if site_publish "$repo" index "$work/cli-on" REGISTRY_STOREFRONT_ENABLED=true; then ok "cli: a signed site with a storefront (seq 1)"
+  if site_publish "$repo" index "$work/cli-on" REGISTRY_STOREFRONT_ENABLED=true; then ok "cli: a signed site with a storefront (seq 2)"
   else bad "cli: publication: $(tail -3 "$work/cli-on.log" | tr '\n' ' ')"; fi
   site_serve "$work/cli-on"
   if site_publish "$repo" timestamp "$work/cli-ts"; then ok "cli: the timestamp refresh (publish-site.sh timestamp)"

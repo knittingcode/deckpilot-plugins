@@ -8,9 +8,11 @@
 #     refreshes are failing or not running (a missed schedule, a disabled
 #     workflow, a broken secret), long before clients see it expire;
 #   - a published plugin release (`<id>--v<version>`, not a draft, not a
-#     registry-only `registry--v…` tag) is not in the live index: its
-#     publish.yml run failed or was cancelled (a newer run of the
-#     registry-pages concurrency group replaces a pending one);
+#     registry-only `registry--v…` tag, not a plugin DeckPilot bundles
+#     only: official-entry.py BUNDLED_ONLY_IDS, never in the registry) is
+#     not in the live index: its publish.yml run failed or was cancelled
+#     (a newer run of the registry-pages concurrency group replaces a
+#     pending one);
 #   - the live seq has a storefront (storefront/<seq>.json,
 #     docs/storefront.md) but its signature, a listing or editorial
 #     document it pins, or an image one of those pins is not served with
@@ -60,9 +62,24 @@ while IFS=$'\t' read -r id detail; do
   fetch "$detail" "$tmp/detail.json"
   jq -r --arg id "$id" '.versions[].version | "\($id)--v\(.)"' "$tmp/detail.json"
 done < <(jq -r '.plugins[] | [.id, .detail.path] | @tsv' "$tmp/index.json") | sort > "$tmp/listed"
+# The plugins DeckPilot bundles only (a privileged kind: official-entry.py
+# BUNDLED_ONLY_IDS) are released by official-release.yml and never served
+# by the registry (publish.yml does not run on their tags, resolve-tag.sh
+# refuses them, the sign job's gate refuses them): their releases are not
+# expected in the index. Every other release is, the official plugins the
+# registry serves included.
+bundled_only=$(python3 -I -c '
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("e", sys.argv[1])
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+print("\n".join(sorted(m.BUNDLED_ONLY_IDS)))' "$REPO_ROOT/tools/official-entry.py") && [ -n "$bundled_only" ] ||
+  die "the bundled-only plugin ids cannot be read from tools/official-entry.py"
 "$gh" api --paginate "repos/$repo/releases?per_page=100" \
-  --jq '.[] | select(.draft | not) | .tag_name | select(test("^[a-z][a-z0-9.-]{3,56}--v[0-9]") and (startswith("registry--") | not))' | sort > "$tmp/released" ||
+  --jq '.[] | select(.draft | not) | .tag_name | select(test("^[a-z][a-z0-9.-]{3,56}--v[0-9]") and (startswith("registry--") | not))' > "$tmp/tags" ||
   die "cannot list the releases"
+while IFS= read -r tag; do
+  grep -qxF -- "${tag%%--v*}" <<< "$bundled_only" || printf '%s\n' "$tag"
+done < "$tmp/tags" | sort > "$tmp/released"
 missing=$(comm -23 "$tmp/released" "$tmp/listed")
 for tag in $missing; do
   problem "the release $tag is not in the live index: its publication did not complete. Re-run publish.yml on the tag (docs/publishing.md, Recovery)"
