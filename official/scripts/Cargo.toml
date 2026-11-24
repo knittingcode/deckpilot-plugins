@@ -1,0 +1,21 @@
+[package]
+name = "deckpilot-scripts"
+description = "DeckPilot's first-party Scripts plugin: user JavaScript in a sandboxed QuickJS runtime"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+deckpilot-plugin-sdk.workspace = true
+deckpilot-plugin-guest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+rquickjs = { version = "=0.14.0", default-features = false, features = ["std", "disable-assertions"] }
+
+[lints]
+workspace = true

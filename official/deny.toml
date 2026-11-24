@@ -1,0 +1,56 @@
+# cargo-deny policy for official/Cargo.lock (the plugins DeckPilot bundles,
+# official/README.md), run by official.yml's *Dependency policy* job with
+# cargo-deny 0.21.0, DeckPilot's version (its advisories.yml).
+#
+# It exists for deckpilot.scripts, whose module statically includes C code
+# (QuickJS-NG and the wasi-libc archive vendored by rquickjs-sys, design
+# §4.1 / T17), but it holds every member:
+#
+# * advisories: every RustSec advisory fails, unmaintained and unsound
+#   notices included; an ignore needs a reason and a review date.
+# * licenses: only the permissive licenses below. QuickJS-NG and rquickjs
+#   are MIT; the wasi-libc archive (MIT OR Apache-2.0 WITH LLVM-exception
+#   OR Apache-2.0) is part of rquickjs-sys, so cargo-deny sees it as
+#   rquickjs-sys's MIT, and its notices are in official/scripts/LICENSE.
+# * sources: crates.io, and git only from knittingcode/deckpilot (the SDK
+#   pin; tools/check-official.py holds its exact revision).
+# * bans: rquickjs is pinned to exactly 0.14.0 in official/scripts/Cargo.toml;
+#   a second copy of it, or of its sys crate, fails.
+
+[graph]
+all-features = false
+
+[advisories]
+unmaintained = "all"
+unsound = "all"
+yanked = "deny"
+ignore = []
+
+[licenses]
+confidence-threshold = 0.93
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "MIT",
+    "MIT-0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+allow-wildcard-paths = true
+deny = [
+    { name = "rquickjs", deny-multiple-versions = true },
+    { name = "rquickjs-core", deny-multiple-versions = true },
+    { name = "rquickjs-sys", deny-multiple-versions = true },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = ["https://github.com/knittingcode/deckpilot"]

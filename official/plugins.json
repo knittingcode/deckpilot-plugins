@@ -38,6 +38,13 @@
       "permissions": ["hostViews", "profile", "projectContext", "resources"]
     },
     {
+      "path": "scripts",
+      "id": "deckpilot.scripts",
+      "permissions": ["hostViews", "scripts"],
+      "held": "needs plugin API 1.13 (the `scripts` permission, the `script` parameter kind, the `scripts` view), which no DeckPilot has yet: its host bridge (P6) and bundling (P8) come first, then its security review and release (P9). Release blocker: the vendored wasi-libc libc.a and QuickJS-NG sources of rquickjs-sys 0.14.0 must be recorded as reviewed code first (scripts/README.md)",
+      "hostApi": "1.13"
+    },
+    {
       "path": "workflows",
       "id": "deckpilot.workflows",
       "permissions": ["hostViews"]
