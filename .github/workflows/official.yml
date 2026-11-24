@@ -41,6 +41,8 @@ jobs:
         run: tools/build-cli.sh
       - name: Tests of the official/ rules (and the privileged-kinds mirror against DeckPilot's manifests)
         run: python3 -I tools/tests/test_check_official.py
+      - name: Tests of the module import check (only the host ABI)
+        run: python3 -I tools/tests/test_check_wasm_imports.py
       - name: Layout, SDK pin, permission policy, compatibility, fixtures equal DeckPilot's
         run: tools/official.sh check
       - name: Unit tests, formatting, clippy

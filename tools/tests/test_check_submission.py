@@ -11,7 +11,9 @@ the script's RESERVED_PUBLISHERS and BUNDLED_PLUGIN_IDS (and those of
 tools/check-first-party.py) equal DeckPilot's.
 """
 
+import contextlib
 import importlib.util
+import io
 import json
 import os
 import re
@@ -43,7 +45,10 @@ BUNDLED = ("deckpilot.docker", "deckpilot.git", "deckpilot.github", "deckpilot.g
            "deckpilot.notifications", "deckpilot.projects", "deckpilot.workflows", "deckpilot.workspace")
 # The official plugins the registry may serve, and the privileged ones it never serves.
 OFFICIAL_MARKETPLACE = ("deckpilot.github", "deckpilot.gitlab", "deckpilot.jira", "deckpilot.notifications")
-BUNDLED_ONLY = ("deckpilot.docker", "deckpilot.git", "deckpilot.projects", "deckpilot.workflows", "deckpilot.workspace")
+BUNDLED_ONLY = ("deckpilot.docker", "deckpilot.git", "deckpilot.projects", "deckpilot.workflows", "deckpilot.workspace",
+                "deckpilot.git-providers", "deckpilot.scripts")
+# Held ahead of the pin (tools/check-official.py AHEAD_OF_PIN): bundled-only.
+AHEAD = ("deckpilot.git-providers", "deckpilot.scripts")
 
 
 def deckpilot_list(source_rs, name):
@@ -216,10 +221,47 @@ class Maintainer(unittest.TestCase):
         self.assertEqual(status, 1)
         for pid in BUNDLED:
             self.assertIn(f"plugins/{pid}/build.json: {pid} is bundled with DeckPilot; it has no build recipe", err)
-        for pid in BUNDLED_ONLY:
+        for pid in (p for p in BUNDLED_ONLY if p not in AHEAD):
             self.assertIn(f"registry/plugins/{pid}/plugin.json: {pid} is bundled with DeckPilot only", err)
         for pid in OFFICIAL_MARKETPLACE:
             self.assertIn(f"registry/plugins/{pid}/versions/0.9.0.json: no candidate entry", err)
+
+    def test_plugins_held_ahead_of_the_pin_are_never_a_recipe_or_a_registry_entry(self):
+        # Even the owner, even with a candidate entry: a recipe, a listing,
+        # a version record are all refused, so no tag of theirs can be signed
+        # into the index.
+        self.add_first_party()
+        for pid in AHEAD:
+            self.repo.write(f"official/marketplace/{pid}/versions/0.1.0.json", {"version": "0.1.0"})
+            self.repo.write(f"registry/plugins/{pid}/plugin.json", {"id": pid})
+            self.repo.write(f"registry/plugins/{pid}/versions/0.1.0.json", {"version": "0.1.0"})
+            self.repo.write(f"plugins/{pid}/build.json", {"id": pid})
+        status, err = self.repo.check(author=OWNER, author_id=OWNER_ID)
+        self.assertEqual(status, 1)
+        for pid in AHEAD:
+            self.assertIn(f"plugins/{pid}/build.json: {pid} is bundled with DeckPilot; it has no build recipe", err)
+            self.assertIn(f"registry/plugins/{pid}/plugin.json: {pid} is bundled with DeckPilot only", err)
+            self.assertIn(f"registry/plugins/{pid}/versions/0.1.0.json: {pid} is bundled with DeckPilot only", err)
+
+    def test_first_party_refuses_plugins_held_ahead_of_the_pin(self):
+        first_party = load_script(FIRST_PARTY_SCRIPT, "check_first_party")
+        for pid in AHEAD:
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp) / "first-party"
+                pdir = root / pid.split(".", 1)[1]
+                pdir.mkdir(parents=True)
+                (pdir / "manifest.json").write_text(json.dumps({"id": pid, "publisher": {"id": "deckpilot"}}))
+                first_party.problems.clear()
+                with contextlib.redirect_stderr(io.StringIO()):
+                    first_party.check_plugin(root, pdir, [])
+                self.assertTrue(any(f"{pid} is bundled with the application; its source is official/" in p
+                                    for p in first_party.problems), first_party.problems)
+
+    def test_ahead_ids_are_check_officials(self):
+        rules = load_script(SCRIPT.parent / "check-official.py", "check_official")
+        self.assertEqual(set(load_script().AHEAD_IDS), set(rules.AHEAD_OF_PIN))
+        self.assertEqual(set(load_script(FIRST_PARTY_SCRIPT, "check_first_party").AHEAD_IDS), set(rules.AHEAD_OF_PIN))
+        self.assertEqual(set(AHEAD), set(rules.AHEAD_OF_PIN))
 
     def test_owner_may_promote_an_official_candidate(self):
         self.add_first_party()

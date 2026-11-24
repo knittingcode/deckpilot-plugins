@@ -28,7 +28,9 @@ REVIEWED = [e for e in POLICY["plugins"] if e["path"] in PRIVILEGED]
 # The held plugins of the committed plugins.json (source on main, never
 # packaged, signed, released or listed): none since all five are released.
 # The held cases hold one in their copy of official/ (hold below).
-HELD = [e for e in POLICY["plugins"] if e.get("held") is not None]
+HELD = [e for e in POLICY["plugins"] if e.get("held") is not None and "hostApi" not in e]
+# Plugins held ahead of the pin (check-official.py AHEAD_OF_PIN) are not
+# counted: the pinned DeckPilot has no contract for them.
 H = "docker"
 HELD_REASON = "held by tools/tests/test_check_official.py"
 
@@ -47,6 +49,8 @@ def contracts_of(official, dp):
     plugin's release files but the module, as the pinned DeckPilot keeps
     them for the release it bundles."""
     for e in POLICY["plugins"]:
+        if "hostApi" in e:
+            continue
         src, dst = Path(official) / e["path"], dp / "plugins/first-party/contracts" / e["id"]
         dst.mkdir(parents=True)
         for name in ("manifest.json", "LICENSE"):
@@ -207,6 +211,97 @@ case("a plugin without a contract at the pin fails, never skipped", lambda r: No
 case("no contracts at all (a DeckPilot before #392) fails", lambda r: None, False, "has no contract",
      deckpilot=lambda dp: shutil.rmtree(dp / "plugins/first-party/contracts"))
 case("a held fixture", policy(lambda d: d["fixtures"][0].update(held="x")), False, "for a plugin only")
+
+# Held ahead of the pin (AHEAD_OF_PIN): a plugin whose plugin API the
+# pinned DeckPilot lacks. Each case adds a synthetic member (a copy of the
+# fixture under an AHEAD_OF_PIN id) to its copy of official/, so these
+# rules are tested without either plugin's source.
+AHEAD_REASON = "needs a plugin API the pin lacks (tools/tests/test_check_official.py)"
+
+
+def ahead_member(pid="deckpilot.scripts", path="scripts", api="1.13", kinds=("scripts",), held=True,
+                 host_api=None, edit=None):
+    """Adds a synthetic member to the copy: the fixture under an id of
+    AHEAD_OF_PIN, held ahead of the pin at `api`, declaring `kinds`."""
+    def change(root):
+        dst = root / path
+        # The committed plugin of that id, if there is one, is replaced.
+        policy(lambda d: d.update(plugins=[e for e in d["plugins"] if e["id"] != pid and e["path"] != path]))(root)
+        shutil.rmtree(dst, ignore_errors=True)
+        shutil.copytree(root / FIXTURE, dst)
+        cargo = (dst / "Cargo.toml").read_text()
+        cargo = re.sub(r'(?m)^name = "[^"]+"', f'name = "{pid.replace(".", "-")}"', cargo, count=1)
+        (dst / "Cargo.toml").write_text(cargo)
+
+        def m(man):
+            man["id"] = pid
+            man["engines"]["pluginApi"] = f"^{api}"
+            man.setdefault("permissions", []).extend({"kind": k, "justification": "x"} for k in kinds)
+            if edit:
+                edit(man)
+        edit_json(dst / "manifest.json", m)
+        ws = root / "Cargo.toml"
+        text = ws.read_text()
+        block = re.search(r"(?ms)^members = \[(.*?)\]", text)
+        names = sorted(set(re.findall(r'"([^"]+)"', block.group(1))) | {path})
+        text = text[:block.start()] + "members = [\n" + "".join(f'    "{n}",\n' for n in names) + "]" + text[block.end():]
+        ws.write_text(text)
+        kinds_now = sorted({p["kind"] for p in json.loads((dst / "manifest.json").read_text())["permissions"]})
+        entry = {"path": path, "id": pid, "permissions": kinds_now}
+        if held:
+            entry["held"] = AHEAD_REASON
+        if host_api != "":
+            entry["hostApi"] = host_api or api
+        policy(lambda d: d["plugins"].append(entry))(root)
+    return change
+
+
+def then(*changes):
+    return lambda root: [c(root) for c in changes]
+
+
+GP = dict(pid="deckpilot.git-providers", path="git-providers", api="1.14", kinds=("connections",))
+case("held ahead of the pin: checked, no contract at the pin", ahead_member(), True,
+     r"(?s)(?=.*official/scripts: held ahead of the pin \(plugin API 1\.13\))(?=.*held: deckpilot\.scripts 0\.1\.0: "
+     + re.escape(AHEAD_REASON) + ")", deckpilot=lambda dp: None)
+case("held ahead of the pin: deckpilot.git-providers at 1.14", ahead_member(**GP), True, r"held: deckpilot\.git-providers")
+case("--ahead lists them", then(ahead_member(), ahead_member(**GP)), True,
+     r"(?sm)(?=.*^deckpilot\.scripts 1\.13$)(?=.*^deckpilot\.git-providers 1\.14$)", extra=["--ahead"])
+case("--list marks it held", ahead_member(), True, r"(?m)^scripts deckpilot\.scripts 0\.1\.0 deckpilot-scripts held$",
+     extra=["--list"])
+case("--release refuses it", ahead_member(), False, "not a released official plugin", extra=["--release", "deckpilot.scripts"])
+case("ahead of the pin but not held", ahead_member(held=False), False, "`hostApi` is only")
+case("ahead of the pin at another level", ahead_member(host_api="1.14"), False, "`hostApi` is only")
+case("ahead of the pin: an id the table does not name", ahead_member(pid="deckpilot.other", path="other", kinds=()),
+     False, "`hostApi` is only")
+case("ahead of the pin: a released plugin", held_entry(lambda e: e.update(hostApi="1.13")), False, "`hostApi` is only")
+case("without hostApi it is an unbundled plugin with an unknown API", ahead_member(host_api=""), False,
+     "not a plugin DeckPilot bundles")
+case("a pin that reaches its API", ahead_member(), False, "remove `hostApi`", extra=["--plugin-api", "1.13"])
+# Once the pin reaches its API and `hostApi` is removed, the plugin keeps its
+# own kinds: whatever else refuses it then, never "kinds only their own".
+case("a pin that reaches its API: its own kinds stay its own", ahead_member(host_api=""), False,
+     r"^(?![\s\S]*kinds only their own)[\s\S]*not a plugin DeckPilot bundles", extra=["--plugin-api", "1.13"])
+case("a pin that reaches its API: another plugin's kinds stay refused",
+     ahead_member(host_api="", kinds=("scripts", "connections")), False, r"declares \['connections'\], kinds only their own",
+     extra=["--plugin-api", "1.13"])
+case("ahead of the pin: engines.pluginApi is exactly its level",
+     ahead_member(edit=lambda m: m["engines"].update(pluginApi="^1.9")), False, r"must be \^1\.13")
+case("ahead of the pin: the permission policy still applies",
+     then(ahead_member(), policy(lambda d: d["plugins"][-1]["permissions"].remove("notifications"))), False,
+     "a change of permissions is a reviewed policy change")
+case("ahead of the pin: no process execution through tools",
+     ahead_member(kinds=("scripts", "tools"), edit=lambda m: m["permissions"][-1].update(tools=[{"executable": "git"}])),
+     False, r"process execution \(`tools`\) is only for")
+case("its kinds on any other plugin",
+     then(manifest(lambda m: m["permissions"].append({"kind": "scripts", "fs": True, "justification": "x"})),
+          policy(lambda d: d["fixtures"][0]["permissions"].append("scripts"))), False, "kinds only their own plugin")
+case("another ahead plugin's kind", ahead_member(**{**GP, "kinds": ("connections", "scripts")}), False,
+     r"declares \['scripts'\], kinds only their own plugin")
+case("ahead of the pin: a contract at the pin is compared", ahead_member(), False, "differs from DeckPilot's",
+     deckpilot=lambda dp: (shutil.copytree(ROOT / "official" / FIXTURE, dp / "plugins/first-party/contracts/deckpilot.scripts"),
+                           edit_json(dp / "plugins/first-party/contracts/deckpilot.scripts/manifest.json",
+                                     lambda m: m.update(id="deckpilot.scripts"))))
 
 # The reviewed code of the privileged plugins (official/reviewed-sources.json).
 def write(rel, text):

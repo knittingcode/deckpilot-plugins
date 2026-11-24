@@ -158,6 +158,42 @@ no plugin on main is held. Until a plugin's release is in DeckPilot's
 `artifacts.json`, DeckPilot keeps bundling its own build of the version it
 shipped.
 
+### Held ahead of the pin
+
+A plugin may need a plugin API that no DeckPilot has yet: `deckpilot.scripts`
+needs 1.13 (the `scripts` permission) and `deckpilot.git-providers` needs
+1.14 (the `connections` permission). `tools/check-official.py` fixes each
+id's level and new permission kinds (`AHEAD_OF_PIN`). The plugin's
+`plugins.json` entry is `held` with `hostApi`, exactly that level, accepted
+only while the pinned plugin API is lower; a pin that reaches it fails until
+`hostApi` is removed. For such a plugin alone:
+
+- it need not be bundled by the pinned DeckPilot yet;
+- `engines.pluginApi` is exactly `^<hostApi>`;
+- it is held without a plugin API 1.9 privileged usage;
+- it has no contract at the pin yet (one that exists is compared).
+
+Everything else applies. Its new permission kinds are refused in every other
+manifest. It is `held` in every step, and its source is not trusted to say
+otherwise:
+
+- `package`, `repro` and `fresh-build` build its module and hold it to
+  three rules: it imports only the host ABI (`tools/check-wasm-imports.py`),
+  it is within the 4 MiB cap, and it is byte-identical across builds;
+- the pinned `package --first-party` must refuse its manifest;
+- nothing is signed or released, and `official-entry.py` never lists it
+  (`BUNDLED_ONLY_IDS`).
+
+Its release removes `hostApi` and `held` once the pinned DeckPilot has the
+API, its contract and, for a privileged plugin, its reviewed policy entry.
+
+The `ahead_refused` step of `tools/official.sh` runs only when an ahead
+plugin is a member, so it was added untested in CI. Its first run is the CI
+of `deckpilot.scripts` (P5, #95). That PR's review confirms the *Build,
+test, check and package official plugins* log shows `deckpilot.scripts: held
+ahead of the pin; module … bytes, only the host ABI imported, package
+--first-party refused, as required`.
+
 ## The reviewed privileged policy
 
 `official/privileged-policy.json` is a byte copy of DeckPilot's

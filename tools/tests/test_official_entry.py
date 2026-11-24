@@ -282,9 +282,9 @@ case("registry record: only engines.deckpilot changes",
 case("registry record: not add-version's format", lambda: E.registry_record(json.dumps(REC)), "format")
 for pid in sorted(E.BUNDLED_ONLY_IDS):
     case(f"never promoted: {pid}", lambda pid=pid: E.check_eligible(pid, OFFICIAL), "bundled in DeckPilot only")
-case("bundled-only ids are exactly the privileged policies",
-     lambda: expect({p for p, v in OFFICIAL.items() if v["kind"] == "plugin" and set(v["permissions"]) & E.RULES.PRIVILEGED_KINDS},
-                    set(E.BUNDLED_ONLY_IDS)))
+case("bundled-only ids are exactly the privileged policies and the plugins held ahead of the pin",
+     lambda: expect({p for p, v in OFFICIAL.items() if v["kind"] == "plugin" and set(v["permissions"]) & E.RULES.PRIVILEGED_KINDS}
+                    | set(E.RULES.AHEAD_OF_PIN), set(E.BUNDLED_ONLY_IDS)))
 for pid in ("deckpilot.github", "deckpilot.gitlab", "deckpilot.jira", "deckpilot.notifications"):
     case(f"eligible: {pid}", lambda pid=pid: E.check_eligible(pid, OFFICIAL))
 case("eligible: a privileged kind in the policy",

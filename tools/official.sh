@@ -28,6 +28,10 @@
 #                  production key is pinned. Keys are scratch.
 # all              check, test, package, repro, compare, sign-test.
 #
+# A plugin held ahead of the pin (check-official.py AHEAD_OF_PIN: its plugin
+# API is newer than the pinned DeckPilot's) is held, and package checks its
+# module instead of its manifest (ahead_refused).
+#
 # A `held` plugin (plugins.json: its source is on main while a plugin API
 # 1.9 privileged kind keeps it from a release) is checked, tested, built
 # and compared like any other, but never packaged, signed or released:
@@ -178,12 +182,17 @@ package_all() {
   require_cli
   rm -rf "$out"
   mkdir -p "$out"
-  local path id version crate kind
+  local path id version crate kind ahead
+  ahead=" $(list --ahead | cut -d' ' -f1 | tr '\n' ' ') "
   while read -r path id version crate kind; do
     [ -z "$only" ] || [ "$id" = "$only" ] || continue
     local dir=$OFF/$path module
     module=$(module_of "$target" "$crate")
     [ -f "$module" ] || die "the build produced no $(basename "$module")"
+    if [ "$kind" = held ] && [[ $ahead == *" $id "* ]]; then
+      ahead_refused "$dir" "$module" "$out/$id-$version.dpplugin" "$id"
+      continue
+    fi
     "$SCHEMA_CHECK" --schemas "$REPO_ROOT/schemas" \
       "https://knittingcode.github.io/deckpilot-plugins/v1/schemas/plugin-manifest.schema.json" \
       "$dir/manifest.json" >&2 || die "$dir/manifest.json does not match the manifest schema"
@@ -193,6 +202,31 @@ package_all() {
     fi
     "$CLI" package --plugin-dir "$dir" --module "$module" --out "$out/$id-$version.dpplugin" --first-party >&2
   done < <(list --list)
+}
+
+# The package's cap on plugin.wasm (DeckPilot
+# crates/deckpilot-plugin-package/src/wasm.rs).
+MAX_MODULE=$((4 * 1024 * 1024))
+
+# ahead_refused DIR MODULE OUT ID: a plugin held ahead of the pin
+# (check-official.py AHEAD_OF_PIN) needs a plugin API the pinned DeckPilot
+# lacks, so its manifest is neither the pinned schema's nor the pinned
+# packager's. Its module is still held to what a package would require of
+# it: the guest ABI's one import (no WASI, no `env.*`), within the 4 MiB
+# cap. The packager must refuse it and write nothing.
+ahead_refused() {
+  local dir=$1 module=$2 pkg=$3 id=$4 log bytes
+  python3 -I "$REPO_ROOT/tools/check-wasm-imports.py" "$module" >&2 || die "$id: the module imports more than the host ABI"
+  bytes=$(size "$module")
+  [ "$bytes" -le "$MAX_MODULE" ] || die "$id: the module is $bytes bytes, over the package's $MAX_MODULE"
+  log=$(mktemp)
+  if "$CLI" package --plugin-dir "$dir" --module "$module" --out "$pkg" --first-party >"$log" 2>&1; then
+    rm -f "$pkg" "$log"
+    die "$id is held ahead of the pin, but the pinned package --first-party accepted it: the pin reached its plugin API? (remove hostApi in plugins.json)"
+  fi
+  rm -f "$log"
+  [ ! -e "$pkg" ] || die "$id: a refused package left $pkg behind"
+  note "$id: held ahead of the pin; module $bytes bytes, only the host ABI imported, package --first-party refused, as required"
 }
 
 # held_refused DIR MODULE OUT ID: the packager must refuse a held plugin,
