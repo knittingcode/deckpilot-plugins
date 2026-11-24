@@ -278,6 +278,13 @@ case("ahead of the pin: a released plugin", held_entry(lambda e: e.update(hostAp
 case("without hostApi it is an unbundled plugin with an unknown API", ahead_member(host_api=""), False,
      "not a plugin DeckPilot bundles")
 case("a pin that reaches its API", ahead_member(), False, "remove `hostApi`", extra=["--plugin-api", "1.13"])
+# Once the pin reaches its API and `hostApi` is removed, the plugin keeps its
+# own kinds: whatever else refuses it then, never "kinds only their own".
+case("a pin that reaches its API: its own kinds stay its own", ahead_member(host_api=""), False,
+     r"^(?![\s\S]*kinds only their own)[\s\S]*not a plugin DeckPilot bundles", extra=["--plugin-api", "1.13"])
+case("a pin that reaches its API: another plugin's kinds stay refused",
+     ahead_member(host_api="", kinds=("scripts", "connections")), False, r"declares \['connections'\], kinds only their own",
+     extra=["--plugin-api", "1.13"])
 case("ahead of the pin: engines.pluginApi is exactly its level",
      ahead_member(edit=lambda m: m["engines"].update(pluginApi="^1.9")), False, r"must be \^1\.13")
 case("ahead of the pin: the permission policy still applies",

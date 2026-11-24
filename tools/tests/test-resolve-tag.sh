@@ -20,6 +20,25 @@ expect_fail() {
 for id in docker git github gitlab jira notifications projects workflows workspace; do
   expect_fail "deckpilot.$id--v9.9.9" "is a plugin DeckPilot bundles"
 done
+# Held ahead of the pin (tools/check-official.py AHEAD_OF_PIN): DeckPilot
+# will bundle them; never a registry publication either.
+for id in git-providers scripts; do
+  expect_fail "deckpilot.$id--v0.1.0" "is a plugin DeckPilot bundles"
+done
+# publish.yml's tag filter leaves out every one of them (resolve-tag.sh
+# refuses them in any case).
+ids=$(python3 -I -c '
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("c", sys.argv[1])
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+print(" ".join(sorted(m.BUNDLED_PLUGIN_IDS | set(m.AHEAD_OF_PIN))))' "$root/tools/check-official.py")
+for pid in $ids; do
+  if grep -qxF -- "      - \"!$pid--v*\"" "$root/.github/workflows/publish.yml"; then
+    echo "ok   publish.yml leaves out $pid"; passed=$((passed + 1))
+  else
+    echo "FAIL publish.yml does not leave out $pid--v*"; failed=$((failed + 1))
+  fi
+done
 expect_fail "deckpilot.publisher-test--v1" "is a publisher key test tag"
 expect_fail "deckpilot.publisher-test--v42" "is a publisher key test tag"
 expect_fail "v1.0.0" "is not a publication tag"

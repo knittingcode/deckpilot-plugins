@@ -23,13 +23,14 @@ version=${tag#*--v}
 # publication, whatever publish.yml's tag filter says.
 [ "$id" != deckpilot.publisher-test ] ||
   die "$tag is a publisher key test tag (official-test-sign.yml): never a registry publication"
-# The plugins DeckPilot bundles are never registry publications, whatever
-# publish.yml's tag filter says: official-release.yml releases them.
+# The plugins DeckPilot bundles, and those held ahead of the pin (which it
+# will bundle), are never registry publications, whatever publish.yml's tag
+# filter says: official-release.yml releases them.
 bundled=$(python3 -I -c '
 import importlib.util, sys
 spec = importlib.util.spec_from_file_location("c", sys.argv[1])
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
-print("\n".join(sorted(m.BUNDLED_PLUGIN_IDS)))' "$REPO_ROOT/tools/check-official.py") || die "the bundled plugin ids cannot be read"
+print("\n".join(sorted(m.BUNDLED_PLUGIN_IDS | set(m.AHEAD_OF_PIN))))' "$REPO_ROOT/tools/check-official.py") || die "the bundled plugin ids cannot be read"
 [ -n "$bundled" ] || die "the bundled plugin ids are empty"
 if grep -qxF -- "$id" <<<"$bundled"; then
   die "$id is a plugin DeckPilot bundles: the registry never publishes it (official-release.yml releases it)"

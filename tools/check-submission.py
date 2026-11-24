@@ -112,11 +112,30 @@ BUNDLED_PLUGIN_IDS = frozenset({
 })
 # The official plugins the signed index may serve (no plugin API 1.9
 # privileged kind), and the ones bundled in DeckPilot only. Together exactly
-# BUNDLED_PLUGIN_IDS; tools/official-entry.py has the same BUNDLED_ONLY_IDS.
+# BUNDLED_PLUGIN_IDS and AHEAD_IDS; tools/official-entry.py has the same
+# BUNDLED_ONLY_IDS.
 OFFICIAL_MARKETPLACE_IDS = frozenset({
     "deckpilot.github", "deckpilot.gitlab", "deckpilot.jira", "deckpilot.notifications",
 })
-BUNDLED_ONLY_IDS = BUNDLED_PLUGIN_IDS - OFFICIAL_MARKETPLACE_IDS
+
+
+def _ahead_of_pin_ids():
+    """The ids of tools/check-official.py's AHEAD_OF_PIN: plugins DeckPilot
+    will bundle, held ahead of the pin (a plugin API the pinned DeckPilot
+    lacks). Imported from that file (its main never runs), so the list is
+    kept in one place."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("check_official_rules",
+                                                  Path(__file__).resolve().parent / "check-official.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return frozenset(module.AHEAD_OF_PIN)
+
+
+AHEAD_IDS = _ahead_of_pin_ids()
+# The plugins held ahead of the pin are bundled-only too: never a recipe,
+# never a registry entry.
+BUNDLED_ONLY_IDS = (BUNDLED_PLUGIN_IDS - OFFICIAL_MARKETPLACE_IDS) | AHEAD_IDS
 PLUGIN_PATH = re.compile(r"^(?:registry/plugins|plugins)/([^/]+)/")
 SEMVER_CORE = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$")
 VERSION_PATH = re.compile(r"^registry/plugins/([^/]+)/versions/([^/]+)\.json$")
@@ -390,14 +409,14 @@ def main():
     # candidate entry.
     for status, path in changes:
         m = PLUGIN_PATH.match(path)
-        if status == "D" or not m or m.group(1) not in BUNDLED_PLUGIN_IDS:
+        if status == "D" or not m or m.group(1) not in BUNDLED_PLUGIN_IDS | AHEAD_IDS:
             continue
         pid = m.group(1)
         if path.startswith("plugins/"):
             problem(f"{path}: {pid} is bundled with DeckPilot; it has no build recipe here (official/)")
         elif pid in BUNDLED_ONLY_IDS:
-            problem(f"{path}: {pid} is bundled with DeckPilot only (privileged kinds); the registry never "
-                    "serves it")
+            why = "a plugin API ahead of the pin" if pid in AHEAD_IDS else "privileged kinds"
+            problem(f"{path}: {pid} is bundled with DeckPilot only ({why}); the registry never serves it")
         elif not maintainer:
             problem(f"{path}: {pid} is an official plugin; only a maintainer promotes it")
         else:

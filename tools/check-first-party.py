@@ -40,6 +40,22 @@ BUNDLED_PLUGIN_IDS = frozenset({
     "deckpilot.docker", "deckpilot.git", "deckpilot.github", "deckpilot.gitlab", "deckpilot.jira",
     "deckpilot.notifications", "deckpilot.projects", "deckpilot.workflows", "deckpilot.workspace",
 })
+
+def _ahead_of_pin_ids():
+    """The ids of tools/check-official.py's AHEAD_OF_PIN: plugins DeckPilot
+    will bundle, held ahead of the pin (a plugin API the pinned DeckPilot
+    lacks). Imported from that file (its main never runs), so the list is
+    kept in one place."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("check_official_rules",
+                                                  Path(__file__).resolve().parent / "check-official.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return frozenset(module.AHEAD_OF_PIN)
+
+
+AHEAD_IDS = _ahead_of_pin_ids()
+
 problems = []
 
 
@@ -137,7 +153,7 @@ def check_plugin(root, pdir, members):
     pid = manifest.get("id")
     if pid != f"{PUBLISHER}.{name}":
         problem(f"{pdir}/manifest.json: id {pid!r} is not {PUBLISHER}.{name}")
-    if pid in BUNDLED_PLUGIN_IDS:
+    if pid in BUNDLED_PLUGIN_IDS | AHEAD_IDS:
         problem(f"{pdir}: {pid} is bundled with the application; its source is official/, not first-party/")
     if manifest.get("publisher", {}).get("id") != PUBLISHER:
         problem(f"{pdir}/manifest.json: publisher.id is not {PUBLISHER!r}")
