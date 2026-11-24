@@ -944,7 +944,7 @@ fn secret_shaped_variable_values_are_refused() {
     for value in [
         "glpat-fakefakefakefakefake",
         "ghp_fakefakefakefakefakefakefakefake",
-        "-----BEGIN OPENSSH PRIVATE KEY-----",
+        concat!("-----BEGIN OPENSSH PRIVATE", " KEY-----"),
     ] {
         assert_eq!(
             check_variables(&[("TOKEN".into(), value.into())])

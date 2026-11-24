@@ -880,3 +880,28 @@ fn a_declined_confirmation_dispatches_nothing() {
     );
     assert!(t.requests.iter().all(|r| r.method == Method::Get));
 }
+
+#[test]
+fn variables_on_github_point_to_the_inputs() {
+    let (_, g) = ghes();
+    let mut t = MockTransport::new();
+    let e = g
+        .trigger_pipeline(
+            &mut t,
+            &repo(),
+            &PipelineTrigger {
+                reference: "main".into(),
+                variables: vec![("A".into(), "1".into())],
+                workflow: Some("ci.yml".into()),
+                inputs: Default::default(),
+            },
+        )
+        .unwrap_err();
+    assert!(
+        e.message.contains("trigger-pipeline's `inputs`"),
+        "{}",
+        e.message
+    );
+    assert!(!e.message.contains("extension"), "{}", e.message);
+    assert!(t.requests.is_empty());
+}

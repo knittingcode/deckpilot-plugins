@@ -1060,8 +1060,8 @@ impl Provider for Github {
         if !p.variables.is_empty() {
             return Err(fail(
                 codes::CAPABILITY_UNSUPPORTED,
-                "GitHub has no pipeline variables: give workflow inputs to the \
-                 github.workflow-dispatch extension",
+                "GitHub has no pipeline variables: give the workflow's inputs in \
+                 trigger-pipeline's `inputs` instead",
             ));
         }
         let workflow = p.workflow.as_deref().ok_or_else(|| {
