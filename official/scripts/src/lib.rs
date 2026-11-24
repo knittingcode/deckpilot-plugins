@@ -25,6 +25,10 @@
 //! so this plugin is `held` in `official/plugins.json` and not released
 //! (`../README.md`).
 #![deny(unsafe_code)]
+// ScriptFault (a script error's code, message, repository, command, path)
+// is the error of every marshaller and bridge call; it is only built on
+// the error path, so its size is not worth boxing everywhere.
+#![allow(clippy::result_large_err)]
 
 pub mod api;
 pub mod bridge;
@@ -226,14 +230,15 @@ fn finish(report: Report) -> ActionResult {
                         .unwrap_or_else(|| format!("repository \"{}\" failed", o.repository))
                 })
                 .collect();
+            let text = format!(
+                "{} of {} repositories failed: {}",
+                failed.len(),
+                report.outcomes.len(),
+                names.join("; ")
+            );
             Err(PluginError::new(
                 "repository-failed",
-                format!(
-                    "{} of {} repositories failed: {}",
-                    failed.len(),
-                    report.outcomes.len(),
-                    names.join("; ")
-                ),
+                api::log::cut(&text, 4 * runtime::MAX_ERROR_TEXT),
             ))
         }
         Ending::Done(value) => {

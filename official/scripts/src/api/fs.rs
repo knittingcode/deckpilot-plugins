@@ -200,7 +200,7 @@ pub fn write_file(args: Value, flavor: Flavor) -> Result<Value, ScriptFault> {
                 .content
                 .bytes()
                 .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'+' | b'/' | b'='))
-                || a.content.len() % 4 != 0
+                || !a.content.len().is_multiple_of(4)
             {
                 return Err(invalid("fs.writeFile: the content is not base64"));
             }

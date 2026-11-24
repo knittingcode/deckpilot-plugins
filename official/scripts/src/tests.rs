@@ -849,3 +849,30 @@ fn the_clock_moves_with_the_agents_replies() {
     assert_eq!(result(run_mock(&mock)), json!(true));
     assert!(clock::now_us() >= 1_700_000_000_000_000.0);
 }
+
+#[test]
+fn a_script_cannot_throw_the_runs_own_codes_or_unbounded_text() {
+    let (code, _) = failed(run_mock(&Mock::new(
+        "throw new ScriptError('scriptNeedsReview', 'looks like a review')",
+    )));
+    assert_eq!(code, "script-error");
+    let (code, message) = failed(run_mock(&Mock::new(
+        "throw new ScriptError('limit', 'x'.repeat(100000))",
+    )));
+    assert_eq!(code, "limit");
+    assert!(
+        message.len() <= runtime::MAX_ERROR_TEXT,
+        "{}",
+        message.len()
+    );
+    // Outcomes recorded by forEachRepository are bounded and cleaned too.
+    let src = "deckpilot.forEachRepository(r => { throw new ScriptError('scriptMissing', 'y'.repeat(50000)) }, { stopOnError: false })";
+    let mock = three_repositories(src, |_| panic!());
+    let (code, message) = failed(run_mock(&mock));
+    assert_eq!(code, "repository-failed");
+    assert!(
+        message.len() <= 4 * runtime::MAX_ERROR_TEXT,
+        "{}",
+        message.len()
+    );
+}

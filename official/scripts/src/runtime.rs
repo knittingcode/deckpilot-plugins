@@ -29,6 +29,39 @@ use crate::api::{self, Flavor};
 use crate::bridge::{ScriptFault, Session, limits};
 
 const PRELUDE: &str = include_str!("prelude.js");
+/// The `ErrorCode`s a script may throw (`deckpilot.d.ts`). The run's own
+/// codes (`scriptNeedsReview`, `scriptMissing`, …) are not among them, so
+/// a script cannot make its key show another state.
+pub const SCRIPT_CODES: &[&str] = &[
+    "notGranted",
+    "outsideScope",
+    "protectedPath",
+    "symlinkEscape",
+    "notFound",
+    "exists",
+    "tooLarge",
+    "commandNotFound",
+    "gitUnavailable",
+    "dockerUnavailable",
+    "dockerDaemonDown",
+    "nonZeroExit",
+    "timedOut",
+    "cancelled",
+    "needsConfirmation",
+    "notUserInitiated",
+    "limit",
+    "invalidArgument",
+    "noProject",
+    "noDefaultRepository",
+    "scriptError",
+    "syntaxError",
+    "unsupported",
+    "unavailable",
+    "hostError",
+];
+/// The longest message, repository, command or path of a script's error.
+pub const MAX_ERROR_TEXT: usize = 2048;
+
 /// The name scripts' stack traces and syntax errors show.
 pub const SCRIPT_FILE: &str = "script.js";
 
@@ -153,7 +186,7 @@ fn compile_only<'js>(ctx: &Ctx<'js>, source: &str) -> Result<(), CaughtError<'js
     unsafe { qjs::JS_FreeValue(ctx.as_raw().as_ptr(), value) };
     if failed {
         let e: rquickjs::Result<()> = Err(rquickjs::Error::Exception);
-        return e.catch(ctx).map_err(|e| e);
+        return e.catch(ctx);
     }
     Ok(())
 }
@@ -339,8 +372,17 @@ fn fault_of(e: CaughtError<'_>) -> ScriptFault {
             let obj = ex.as_object();
             let message = ex.message().unwrap_or_default();
             let name: String = obj.get("name").unwrap_or_else(|_| "Error".into());
-            let code: Option<String> = obj.get("code").ok().flatten();
-            let text = |key: &str| obj.get::<_, Option<String>>(key).ok().flatten();
+            let code: Option<String> = obj
+                .get::<_, Option<String>>("code")
+                .ok()
+                .flatten()
+                .filter(|c| SCRIPT_CODES.contains(&c.as_str()));
+            let text = |key: &str| {
+                obj.get::<_, Option<String>>(key)
+                    .ok()
+                    .flatten()
+                    .map(|t| api::log::cut(&t, MAX_ERROR_TEXT).to_owned())
+            };
             let (line, _) = place(ex.stack().as_deref().unwrap_or(""), obj);
             let at = line
                 .map(|l| format!(" (script.js line {l})"))
@@ -363,7 +405,7 @@ fn fault_of(e: CaughtError<'_>) -> ScriptFault {
             };
             ScriptFault {
                 code,
-                message: Some(message),
+                message: Some(api::log::cut(&message, MAX_ERROR_TEXT).to_owned()),
                 repository: text("repository"),
                 command: text("command"),
                 path: text("path"),
@@ -436,7 +478,25 @@ fn install_natives(
 
     let s = Rc::clone(shared);
     let record = Function::new(ctx.clone(), move |outcome: String| {
-        if let Ok(o) = serde_json::from_str::<Outcome>(&outcome) {
+        if let Ok(mut o) = serde_json::from_str::<Outcome>(&outcome) {
+            o.repository = api::log::cut(&o.repository, 64).to_owned();
+            if let Some(e) = &mut o.error {
+                if !SCRIPT_CODES.contains(&e.code.as_str()) {
+                    e.code = "scriptError".into();
+                }
+                for v in [
+                    &mut e.message,
+                    &mut e.repository,
+                    &mut e.command,
+                    &mut e.path,
+                ]
+                .into_iter()
+                .flatten()
+                {
+                    *v = api::log::cut(v, MAX_ERROR_TEXT).to_owned();
+                }
+                e.confirmation = None;
+            }
             let mut s = s.borrow_mut();
             if s.outcomes.len() < 4096 {
                 s.outcomes.push(o);

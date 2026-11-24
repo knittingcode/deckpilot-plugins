@@ -247,7 +247,7 @@ pub fn resolve(f: Flavor, base: &str, parts: &[String]) -> Result<String, String
     })
 }
 
-fn trim_trailing<'a>(f: Flavor, rest: &'a str) -> &'a str {
+fn trim_trailing(f: Flavor, rest: &str) -> &str {
     rest.trim_end_matches(|c| f.is_sep(c))
 }
 
