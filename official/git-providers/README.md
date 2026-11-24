@@ -12,8 +12,9 @@ Repositories, pull and merge requests, pipelines and issues of the GitHub
 and GitLab servers you connect: GitHub.com, GitHub Enterprise Server,
 GitLab.com and self-managed GitLab on any port or path prefix
 (`https://code.example.com:8443/gitlab`). One plugin, one provider trait
-(`src/provider.rs`), one adapter per provider (`src/adapters/`). This
-version has the GitLab adapter; GitHub follows.
+(`src/provider.rs`), one adapter per provider (`src/adapters/`). There are
+two adapters: GitLab and GitHub (GitHub Actions runs are its pipelines;
+starting one dispatches a workflow file).
 
 ## Connections and tokens
 

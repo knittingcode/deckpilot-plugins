@@ -1,8 +1,9 @@
 //! `deckpilot.git-providers` ("Platformy Git"): repositories, change
 //! requests, pipelines and issues of the GitHub and GitLab servers the user
 //! connects (DeckPilot `design-git-providers.md`). One plugin, one
-//! [`Provider`](provider::Provider) trait, one adapter per provider; this
-//! version has the GitLab adapter.
+//! [`Provider`](provider::Provider) trait, one adapter per provider: GitLab
+//! (GitLab.com and self-managed) and GitHub (GitHub.com and GitHub
+//! Enterprise Server).
 //!
 //! **Connections, plugin API 1.14.** Every action takes a `connection`:
 //! the id of a server the user connected in the app, with its own token.
