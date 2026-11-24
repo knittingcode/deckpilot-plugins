@@ -134,6 +134,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "deckpilot-git-providers"
+version = "0.1.0"
+dependencies = [
+ "deckpilot-first-party-support",
+ "deckpilot-plugin-guest",
+ "deckpilot-plugin-sdk",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "deckpilot-github"
 version = "0.2.1"
 dependencies = [

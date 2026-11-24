@@ -1,0 +1,1937 @@
+{
+  "$schema": "https://knittingcode.github.io/deckpilot-plugins/v1/schemas/plugin-manifest.schema.json",
+  "manifestVersion": 1,
+  "id": "deckpilot.git-providers",
+  "name": "t:plugin.name",
+  "version": "0.1.0",
+  "publisher": {
+    "id": "deckpilot",
+    "name": "DeckPilot",
+    "url": "https://github.com/knittingcode/deckpilot"
+  },
+  "description": "t:plugin.description",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/knittingcode/deckpilot-plugins",
+    "directory": "official/git-providers"
+  },
+  "license": "Apache-2.0",
+  "keywords": [
+    "gitlab",
+    "github",
+    "merge-requests",
+    "pipelines"
+  ],
+  "categories": [
+    "developer-tools"
+  ],
+  "engines": {
+    "deckpilot": ">=0.16.0 <1.0.0",
+    "pluginApi": "^1.14",
+    "sdk": "0.1.0"
+  },
+  "runtime": {
+    "kind": "wasm",
+    "abi": 1
+  },
+  "entry": "src/lib.rs",
+  "icons": {
+    "128": "assets/icon-128.png"
+  },
+  "defaultLocale": "en",
+  "locales": [
+    "en",
+    "pl"
+  ],
+  "permissions": [
+    {
+      "kind": "connections",
+      "types": [
+        "github",
+        "gitlab"
+      ],
+      "methods": [
+        "GET",
+        "POST",
+        "PUT"
+      ],
+      "privateNetwork": true,
+      "justification": "t:permissions.connections"
+    },
+    {
+      "kind": "openUrl",
+      "hosts": [],
+      "connections": true,
+      "justification": "t:permissions.openUrl"
+    },
+    {
+      "kind": "dialogs",
+      "justification": "t:permissions.dialogs"
+    }
+  ],
+  "contributes": {
+    "connectionTypes": [
+      {
+        "id": "github",
+        "label": "t:types.github",
+        "cloud": {
+          "api": "https://api.github.com",
+          "web": "https://github.com"
+        },
+        "selfHosted": {
+          "apiPath": "/api/v3",
+          "label": "t:types.ghes"
+        },
+        "auth": [
+          {
+            "method": "pat",
+            "scheme": "bearer",
+            "setupUrl": {
+              "cloud": "https://github.com/settings/personal-access-tokens/new",
+              "selfHosted": "{web}/settings/tokens/new"
+            }
+          }
+        ],
+        "extensions": [
+          "github.checks",
+          "github.review-requests",
+          "github.workflow-dispatch"
+        ]
+      },
+      {
+        "id": "gitlab",
+        "label": "t:types.gitlab",
+        "cloud": {
+          "api": "https://gitlab.com/api/v4",
+          "web": "https://gitlab.com"
+        },
+        "selfHosted": {
+          "apiPath": "/api/v4",
+          "label": "t:types.gitlabSelf"
+        },
+        "auth": [
+          {
+            "method": "pat",
+            "scheme": "header",
+            "headerName": "PRIVATE-TOKEN",
+            "setupUrl": {
+              "cloud": "https://gitlab.com/-/user_settings/personal_access_tokens",
+              "selfHosted": "{web}/-/user_settings/personal_access_tokens"
+            }
+          }
+        ],
+        "extensions": [
+          "gitlab.review-requests",
+          "gitlab.pipeline-variables",
+          "gitlab.approvals"
+        ]
+      }
+    ],
+    "recordSchemas": [
+      {
+        "id": "probe",
+        "fields": [
+          {
+            "key": "account",
+            "kind": "text"
+          },
+          {
+            "key": "version",
+            "kind": "text"
+          },
+          {
+            "key": "expiresAt",
+            "kind": "timestamp"
+          },
+          {
+            "key": "canWrite",
+            "kind": "boolean"
+          },
+          {
+            "key": "excessScopes",
+            "kind": "text"
+          },
+          {
+            "key": "capabilities",
+            "kind": "text"
+          }
+        ]
+      },
+      {
+        "id": "repository",
+        "fields": [
+          {
+            "key": "id",
+            "kind": "text"
+          },
+          {
+            "key": "path",
+            "kind": "text"
+          },
+          {
+            "key": "name",
+            "kind": "text"
+          },
+          {
+            "key": "defaultBranch",
+            "kind": "text"
+          },
+          {
+            "key": "visibility",
+            "kind": "state"
+          },
+          {
+            "key": "archived",
+            "kind": "boolean"
+          },
+          {
+            "key": "webUrl",
+            "kind": "url"
+          },
+          {
+            "key": "httpUrl",
+            "kind": "text"
+          },
+          {
+            "key": "sshUrl",
+            "kind": "text"
+          },
+          {
+            "key": "description",
+            "kind": "text",
+            "sensitive": true
+          },
+          {
+            "key": "updatedAt",
+            "kind": "timestamp"
+          }
+        ]
+      },
+      {
+        "id": "branch",
+        "fields": [
+          {
+            "key": "name",
+            "kind": "text"
+          },
+          {
+            "key": "sha",
+            "kind": "text"
+          },
+          {
+            "key": "default",
+            "kind": "boolean"
+          },
+          {
+            "key": "protected",
+            "kind": "boolean"
+          }
+        ]
+      },
+      {
+        "id": "commit",
+        "fields": [
+          {
+            "key": "sha",
+            "kind": "text"
+          },
+          {
+            "key": "title",
+            "kind": "text",
+            "sensitive": true
+          },
+          {
+            "key": "author",
+            "kind": "text",
+            "sensitive": true
+          },
+          {
+            "key": "committedAt",
+            "kind": "timestamp"
+          },
+          {
+            "key": "webUrl",
+            "kind": "url"
+          }
+        ]
+      },
+      {
+        "id": "change-request",
+        "fields": [
+          {
+            "key": "number",
+            "kind": "integer"
+          },
+          {
+            "key": "title",
+            "kind": "text",
+            "sensitive": true
+          },
+          {
+            "key": "state",
+            "kind": "state"
+          },
+          {
+            "key": "source",
+            "kind": "text"
+          },
+          {
+            "key": "target",
+            "kind": "text"
+          },
+          {
+            "key": "author",
+            "kind": "text",
+            "sensitive": true
+          },
+          {
+            "key": "draft",
+            "kind": "boolean"
+          },
+          {
+            "key": "webUrl",
+            "kind": "url"
+          },
+          {
+            "key": "repository",
+            "kind": "text"
+          },
+          {
+            "key": "existing",
+            "kind": "boolean"
+          }
+        ]
+      },
+      {
+        "id": "pipeline",
+        "fields": [
+          {
+            "key": "id",
+            "kind": "text"
+          },
+          {
+            "key": "state",
+            "kind": "state"
+          },
+          {
+            "key": "providerStatus",
+            "kind": "text"
+          },
+          {
+            "key": "reference",
+            "kind": "text"
+          },
+          {
+            "key": "sha",
+            "kind": "text"
+          },
+          {
+            "key": "webUrl",
+            "kind": "url"
+          },
+          {
+            "key": "createdAt",
+            "kind": "timestamp"
+          },
+          {
+            "key": "finishedAt",
+            "kind": "timestamp"
+          },
+          {
+            "key": "durationSeconds",
+            "kind": "integer"
+          }
+        ]
+      },
+      {
+        "id": "issue",
+        "fields": [
+          {
+            "key": "number",
+            "kind": "integer"
+          },
+          {
+            "key": "title",
+            "kind": "text",
+            "sensitive": true
+          },
+          {
+            "key": "state",
+            "kind": "state"
+          },
+          {
+            "key": "author",
+            "kind": "text",
+            "sensitive": true
+          },
+          {
+            "key": "webUrl",
+            "kind": "url"
+          },
+          {
+            "key": "updatedAt",
+            "kind": "timestamp"
+          }
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "id": "probe",
+        "name": "t:actions.probe.name",
+        "description": "t:actions.probe.description",
+        "category": "t:category",
+        "parameters": [
+          {
+            "key": "connection",
+            "label": "t:params.connection",
+            "kind": {
+              "type": "connection",
+              "types": [
+                "github",
+                "gitlab"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "node": {
+          "version": 1,
+          "outputs": [
+            {
+              "key": "items",
+              "label": "t:outputs.items",
+              "kind": "records",
+              "always": true,
+              "schema": "probe"
+            },
+            {
+              "key": "count",
+              "label": "t:outputs.count",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "truncated",
+              "label": "t:outputs.truncated",
+              "kind": "boolean",
+              "always": true
+            },
+            {
+              "key": "account",
+              "label": "t:outputs.account",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "version",
+              "label": "t:outputs.version",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "canWrite",
+              "label": "t:outputs.canWrite",
+              "kind": "boolean",
+              "always": true
+            },
+            {
+              "key": "excessScopes",
+              "label": "t:outputs.excessScopes",
+              "kind": "text",
+              "always": false
+            }
+          ],
+          "timeoutMs": 30000,
+          "effect": "readOnly",
+          "retrySafe": true
+        },
+        "internal": true
+      },
+      {
+        "id": "list-repositories",
+        "name": "t:actions.list-repositories.name",
+        "description": "t:actions.list-repositories.description",
+        "category": "t:category",
+        "parameters": [
+          {
+            "key": "connection",
+            "label": "t:params.connection",
+            "kind": {
+              "type": "connection",
+              "types": [
+                "github",
+                "gitlab"
+              ]
+            },
+            "required": true
+          },
+          {
+            "key": "search",
+            "label": "t:params.search",
+            "kind": {
+              "type": "text",
+              "maxLength": 100
+            },
+            "required": false
+          },
+          {
+            "key": "page",
+            "label": "t:params.page",
+            "kind": {
+              "type": "integer",
+              "min": 1,
+              "max": 100
+            },
+            "required": false,
+            "default": {
+              "type": "integer",
+              "value": 1
+            }
+          }
+        ],
+        "node": {
+          "version": 1,
+          "outputs": [
+            {
+              "key": "items",
+              "label": "t:outputs.items",
+              "kind": "records",
+              "always": true,
+              "schema": "repository"
+            },
+            {
+              "key": "count",
+              "label": "t:outputs.count",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "truncated",
+              "label": "t:outputs.truncated",
+              "kind": "boolean",
+              "always": true
+            },
+            {
+              "key": "next",
+              "label": "t:outputs.next",
+              "kind": "integer",
+              "always": false
+            }
+          ],
+          "timeoutMs": 30000,
+          "effect": "readOnly",
+          "retrySafe": true
+        },
+        "internal": true
+      },
+      {
+        "id": "get-repository",
+        "name": "t:actions.get-repository.name",
+        "description": "t:actions.get-repository.description",
+        "category": "t:category",
+        "parameters": [
+          {
+            "key": "connection",
+            "label": "t:params.connection",
+            "kind": {
+              "type": "connection",
+              "types": [
+                "github",
+                "gitlab"
+              ]
+            },
+            "required": true
+          },
+          {
+            "key": "repository",
+            "label": "t:params.repository",
+            "kind": {
+              "type": "text",
+              "maxLength": 128
+            },
+            "required": true
+          }
+        ],
+        "node": {
+          "version": 1,
+          "outputs": [
+            {
+              "key": "items",
+              "label": "t:outputs.items",
+              "kind": "records",
+              "always": true,
+              "schema": "repository"
+            },
+            {
+              "key": "count",
+              "label": "t:outputs.count",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "truncated",
+              "label": "t:outputs.truncated",
+              "kind": "boolean",
+              "always": true
+            },
+            {
+              "key": "path",
+              "label": "t:outputs.path",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "url",
+              "label": "t:outputs.url",
+              "kind": "url",
+              "always": true
+            }
+          ],
+          "timeoutMs": 30000,
+          "effect": "readOnly",
+          "retrySafe": true
+        },
+        "internal": true
+      },
+      {
+        "id": "list-branches",
+        "name": "t:actions.list-branches.name",
+        "description": "t:actions.list-branches.description",
+        "category": "t:category",
+        "parameters": [
+          {
+            "key": "connection",
+            "label": "t:params.connection",
+            "kind": {
+              "type": "connection",
+              "types": [
+                "github",
+                "gitlab"
+              ]
+            },
+            "required": true
+          },
+          {
+            "key": "repository",
+            "label": "t:params.repository",
+            "kind": {
+              "type": "text",
+              "maxLength": 128
+            },
+            "required": true
+          },
+          {
+            "key": "search",
+            "label": "t:params.search",
+            "kind": {
+              "type": "text",
+              "maxLength": 100
+            },
+            "required": false
+          }
+        ],
+        "node": {
+          "version": 1,
+          "outputs": [
+            {
+              "key": "items",
+              "label": "t:outputs.items",
+              "kind": "records",
+              "always": true,
+              "schema": "branch"
+            },
+            {
+              "key": "count",
+              "label": "t:outputs.count",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "truncated",
+              "label": "t:outputs.truncated",
+              "kind": "boolean",
+              "always": true
+            }
+          ],
+          "timeoutMs": 30000,
+          "effect": "readOnly",
+          "retrySafe": true
+        },
+        "internal": true
+      },
+      {
+        "id": "list-commits",
+        "name": "t:actions.list-commits.name",
+        "description": "t:actions.list-commits.description",
+        "category": "t:category",
+        "parameters": [
+          {
+            "key": "connection",
+            "label": "t:params.connection",
+            "kind": {
+              "type": "connection",
+              "types": [
+                "github",
+                "gitlab"
+              ]
+            },
+            "required": true
+          },
+          {
+            "key": "repository",
+            "label": "t:params.repository",
+            "kind": {
+              "type": "text",
+              "maxLength": 128
+            },
+            "required": true
+          },
+          {
+            "key": "ref",
+            "label": "t:params.ref",
+            "kind": {
+              "type": "text",
+              "maxLength": 250
+            },
+            "required": false
+          },
+          {
+            "key": "limit",
+            "label": "t:params.limit",
+            "kind": {
+              "type": "integer",
+              "min": 1,
+              "max": 100
+            },
+            "required": false,
+            "default": {
+              "type": "integer",
+              "value": 20
+            }
+          }
+        ],
+        "node": {
+          "version": 1,
+          "outputs": [
+            {
+              "key": "items",
+              "label": "t:outputs.items",
+              "kind": "records",
+              "always": true,
+              "schema": "commit"
+            },
+            {
+              "key": "count",
+              "label": "t:outputs.count",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "truncated",
+              "label": "t:outputs.truncated",
+              "kind": "boolean",
+              "always": true
+            }
+          ],
+          "timeoutMs": 30000,
+          "effect": "readOnly",
+          "retrySafe": true
+        },
+        "internal": true
+      },
+      {
+        "id": "list-change-requests",
+        "name": "t:actions.list-change-requests.name",
+        "description": "t:actions.list-change-requests.description",
+        "category": "t:category",
+        "parameters": [
+          {
+            "key": "connection",
+            "label": "t:params.connection",
+            "kind": {
+              "type": "connection",
+              "types": [
+                "github",
+                "gitlab"
+              ]
+            },
+            "required": true
+          },
+          {
+            "key": "repository",
+            "label": "t:params.repository",
+            "kind": {
+              "type": "text",
+              "maxLength": 128
+            },
+            "required": false
+          },
+          {
+            "key": "filter",
+            "label": "t:params.filter",
+            "kind": {
+              "type": "choice",
+              "options": [
+                "open",
+                "mine",
+                "review"
+              ]
+            },
+            "required": false,
+            "default": {
+              "type": "choice",
+              "value": "open"
+            }
+          },
+          {
+            "key": "limit",
+            "label": "t:params.limit",
+            "kind": {
+              "type": "integer",
+              "min": 1,
+              "max": 100
+            },
+            "required": false,
+            "default": {
+              "type": "integer",
+              "value": 20
+            }
+          }
+        ],
+        "node": {
+          "version": 1,
+          "outputs": [
+            {
+              "key": "items",
+              "label": "t:outputs.items",
+              "kind": "records",
+              "always": true,
+              "schema": "change-request"
+            },
+            {
+              "key": "count",
+              "label": "t:outputs.count",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "truncated",
+              "label": "t:outputs.truncated",
+              "kind": "boolean",
+              "always": true
+            },
+            {
+              "key": "firstUrl",
+              "label": "t:outputs.firstUrl",
+              "kind": "url",
+              "always": false
+            }
+          ],
+          "timeoutMs": 30000,
+          "effect": "readOnly",
+          "retrySafe": true
+        },
+        "internal": true
+      },
+      {
+        "id": "list-pipelines",
+        "name": "t:actions.list-pipelines.name",
+        "description": "t:actions.list-pipelines.description",
+        "category": "t:category",
+        "parameters": [
+          {
+            "key": "connection",
+            "label": "t:params.connection",
+            "kind": {
+              "type": "connection",
+              "types": [
+                "github",
+                "gitlab"
+              ]
+            },
+            "required": true
+          },
+          {
+            "key": "repository",
+            "label": "t:params.repository",
+            "kind": {
+              "type": "text",
+              "maxLength": 128
+            },
+            "required": true
+          },
+          {
+            "key": "ref",
+            "label": "t:params.ref",
+            "kind": {
+              "type": "text",
+              "maxLength": 250
+            },
+            "required": false
+          },
+          {
+            "key": "limit",
+            "label": "t:params.limit",
+            "kind": {
+              "type": "integer",
+              "min": 1,
+              "max": 100
+            },
+            "required": false,
+            "default": {
+              "type": "integer",
+              "value": 20
+            }
+          }
+        ],
+        "node": {
+          "version": 1,
+          "outputs": [
+            {
+              "key": "items",
+              "label": "t:outputs.items",
+              "kind": "records",
+              "always": true,
+              "schema": "pipeline"
+            },
+            {
+              "key": "count",
+              "label": "t:outputs.count",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "truncated",
+              "label": "t:outputs.truncated",
+              "kind": "boolean",
+              "always": true
+            }
+          ],
+          "timeoutMs": 30000,
+          "effect": "readOnly",
+          "retrySafe": true
+        },
+        "internal": true
+      },
+      {
+        "id": "list-issues",
+        "name": "t:actions.list-issues.name",
+        "description": "t:actions.list-issues.description",
+        "category": "t:category",
+        "parameters": [
+          {
+            "key": "connection",
+            "label": "t:params.connection",
+            "kind": {
+              "type": "connection",
+              "types": [
+                "github",
+                "gitlab"
+              ]
+            },
+            "required": true
+          },
+          {
+            "key": "repository",
+            "label": "t:params.repository",
+            "kind": {
+              "type": "text",
+              "maxLength": 128
+            },
+            "required": true
+          },
+          {
+            "key": "state",
+            "label": "t:params.state",
+            "kind": {
+              "type": "choice",
+              "options": [
+                "open",
+                "closed",
+                "all"
+              ]
+            },
+            "required": false,
+            "default": {
+              "type": "choice",
+              "value": "open"
+            }
+          },
+          {
+            "key": "limit",
+            "label": "t:params.limit",
+            "kind": {
+              "type": "integer",
+              "min": 1,
+              "max": 100
+            },
+            "required": false,
+            "default": {
+              "type": "integer",
+              "value": 20
+            }
+          }
+        ],
+        "node": {
+          "version": 1,
+          "outputs": [
+            {
+              "key": "items",
+              "label": "t:outputs.items",
+              "kind": "records",
+              "always": true,
+              "schema": "issue"
+            },
+            {
+              "key": "count",
+              "label": "t:outputs.count",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "truncated",
+              "label": "t:outputs.truncated",
+              "kind": "boolean",
+              "always": true
+            }
+          ],
+          "timeoutMs": 30000,
+          "effect": "readOnly",
+          "retrySafe": true
+        },
+        "internal": true
+      },
+      {
+        "id": "get-issue",
+        "name": "t:actions.get-issue.name",
+        "description": "t:actions.get-issue.description",
+        "category": "t:category",
+        "parameters": [
+          {
+            "key": "connection",
+            "label": "t:params.connection",
+            "kind": {
+              "type": "connection",
+              "types": [
+                "github",
+                "gitlab"
+              ]
+            },
+            "required": true
+          },
+          {
+            "key": "repository",
+            "label": "t:params.repository",
+            "kind": {
+              "type": "text",
+              "maxLength": 128
+            },
+            "required": true
+          },
+          {
+            "key": "issue",
+            "label": "t:params.issue",
+            "kind": {
+              "type": "integer",
+              "min": 1
+            },
+            "required": true
+          }
+        ],
+        "node": {
+          "version": 1,
+          "outputs": [
+            {
+              "key": "items",
+              "label": "t:outputs.items",
+              "kind": "records",
+              "always": true,
+              "schema": "issue"
+            },
+            {
+              "key": "count",
+              "label": "t:outputs.count",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "truncated",
+              "label": "t:outputs.truncated",
+              "kind": "boolean",
+              "always": true
+            },
+            {
+              "key": "url",
+              "label": "t:outputs.url",
+              "kind": "url",
+              "always": true
+            }
+          ],
+          "timeoutMs": 30000,
+          "effect": "readOnly",
+          "retrySafe": true
+        },
+        "internal": true
+      },
+      {
+        "id": "resolve-remote",
+        "name": "t:actions.resolve-remote.name",
+        "description": "t:actions.resolve-remote.description",
+        "category": "t:category",
+        "parameters": [
+          {
+            "key": "connection",
+            "label": "t:params.connection",
+            "kind": {
+              "type": "connection",
+              "types": [
+                "github",
+                "gitlab"
+              ]
+            },
+            "required": true
+          },
+          {
+            "key": "remoteUrl",
+            "label": "t:params.remoteUrl",
+            "kind": {
+              "type": "text",
+              "maxLength": 2048
+            },
+            "required": true
+          }
+        ],
+        "node": {
+          "version": 1,
+          "outputs": [
+            {
+              "key": "items",
+              "label": "t:outputs.items",
+              "kind": "records",
+              "always": true,
+              "schema": "repository"
+            },
+            {
+              "key": "count",
+              "label": "t:outputs.count",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "truncated",
+              "label": "t:outputs.truncated",
+              "kind": "boolean",
+              "always": true
+            }
+          ],
+          "timeoutMs": 30000,
+          "effect": "readOnly",
+          "retrySafe": true
+        },
+        "internal": true
+      },
+      {
+        "id": "extension",
+        "name": "t:actions.extension.name",
+        "description": "t:actions.extension.description",
+        "category": "t:category",
+        "parameters": [
+          {
+            "key": "connection",
+            "label": "t:params.connection",
+            "kind": {
+              "type": "connection",
+              "types": [
+                "github",
+                "gitlab"
+              ]
+            },
+            "required": true
+          },
+          {
+            "key": "repository",
+            "label": "t:params.repository",
+            "kind": {
+              "type": "text",
+              "maxLength": 128
+            },
+            "required": true
+          },
+          {
+            "key": "id",
+            "label": "t:params.id",
+            "kind": {
+              "type": "choice",
+              "options": [
+                "github.checks",
+                "github.review-requests",
+                "github.workflow-dispatch",
+                "gitlab.review-requests",
+                "gitlab.pipeline-variables",
+                "gitlab.approvals"
+              ]
+            },
+            "required": true
+          },
+          {
+            "key": "args",
+            "label": "t:params.args",
+            "kind": {
+              "type": "code",
+              "language": "json",
+              "maxLength": 4096
+            },
+            "required": false
+          }
+        ],
+        "node": {
+          "version": 1,
+          "outputs": [
+            {
+              "key": "result",
+              "label": "t:outputs.result",
+              "kind": "text",
+              "always": true
+            }
+          ],
+          "timeoutMs": 30000,
+          "effect": "readOnly",
+          "retrySafe": true
+        },
+        "internal": true
+      },
+      {
+        "id": "open-repository",
+        "name": "t:actions.open-repository.name",
+        "description": "t:actions.open-repository.description",
+        "category": "t:category",
+        "parameters": [
+          {
+            "key": "connection",
+            "label": "t:params.connection",
+            "kind": {
+              "type": "connection",
+              "types": [
+                "github",
+                "gitlab"
+              ]
+            },
+            "required": true
+          },
+          {
+            "key": "repository",
+            "label": "t:params.repository",
+            "kind": {
+              "type": "text",
+              "maxLength": 128
+            },
+            "required": true,
+            "options": {
+              "from": "list-repositories",
+              "dependsOn": [
+                "connection"
+              ],
+              "value": "id",
+              "label": "path",
+              "search": true
+            }
+          },
+          {
+            "key": "page",
+            "label": "t:params.page",
+            "kind": {
+              "type": "choice",
+              "options": [
+                "home",
+                "branches",
+                "commits",
+                "pipelines",
+                "issues",
+                "changes"
+              ]
+            },
+            "required": false,
+            "default": {
+              "type": "choice",
+              "value": "home"
+            }
+          }
+        ],
+        "node": {
+          "version": 1,
+          "outputs": [
+            {
+              "key": "url",
+              "label": "t:outputs.url",
+              "kind": "url",
+              "always": true
+            }
+          ],
+          "timeoutMs": 15000,
+          "effect": "opens"
+        }
+      },
+      {
+        "id": "open-change-requests",
+        "name": "t:actions.open-change-requests.name",
+        "description": "t:actions.open-change-requests.description",
+        "category": "t:category",
+        "parameters": [
+          {
+            "key": "connection",
+            "label": "t:params.connection",
+            "kind": {
+              "type": "connection",
+              "types": [
+                "github",
+                "gitlab"
+              ]
+            },
+            "required": true
+          },
+          {
+            "key": "repository",
+            "label": "t:params.repository",
+            "kind": {
+              "type": "text",
+              "maxLength": 128
+            },
+            "required": false,
+            "options": {
+              "from": "list-repositories",
+              "dependsOn": [
+                "connection"
+              ],
+              "value": "id",
+              "label": "path",
+              "search": true
+            }
+          }
+        ],
+        "node": {
+          "version": 1,
+          "outputs": [
+            {
+              "key": "url",
+              "label": "t:outputs.url",
+              "kind": "url",
+              "always": true
+            }
+          ],
+          "timeoutMs": 15000,
+          "effect": "opens"
+        }
+      },
+      {
+        "id": "open-issue",
+        "name": "t:actions.open-issue.name",
+        "description": "t:actions.open-issue.description",
+        "category": "t:category",
+        "parameters": [
+          {
+            "key": "connection",
+            "label": "t:params.connection",
+            "kind": {
+              "type": "connection",
+              "types": [
+                "github",
+                "gitlab"
+              ]
+            },
+            "required": true
+          },
+          {
+            "key": "repository",
+            "label": "t:params.repository",
+            "kind": {
+              "type": "text",
+              "maxLength": 128
+            },
+            "required": true,
+            "options": {
+              "from": "list-repositories",
+              "dependsOn": [
+                "connection"
+              ],
+              "value": "id",
+              "label": "path",
+              "search": true
+            }
+          },
+          {
+            "key": "issue",
+            "label": "t:params.issue",
+            "kind": {
+              "type": "integer",
+              "min": 1
+            },
+            "required": true
+          }
+        ],
+        "node": {
+          "version": 1,
+          "outputs": [
+            {
+              "key": "url",
+              "label": "t:outputs.url",
+              "kind": "url",
+              "always": true
+            }
+          ],
+          "timeoutMs": 15000,
+          "effect": "opens"
+        }
+      },
+      {
+        "id": "pipeline-status",
+        "name": "t:actions.pipeline-status.name",
+        "description": "t:actions.pipeline-status.description",
+        "category": "t:category",
+        "parameters": [
+          {
+            "key": "connection",
+            "label": "t:params.connection",
+            "kind": {
+              "type": "connection",
+              "types": [
+                "github",
+                "gitlab"
+              ]
+            },
+            "required": true
+          },
+          {
+            "key": "repository",
+            "label": "t:params.repository",
+            "kind": {
+              "type": "text",
+              "maxLength": 128
+            },
+            "required": true,
+            "options": {
+              "from": "list-repositories",
+              "dependsOn": [
+                "connection"
+              ],
+              "value": "id",
+              "label": "path",
+              "search": true
+            }
+          },
+          {
+            "key": "ref",
+            "label": "t:params.ref",
+            "kind": {
+              "type": "text",
+              "maxLength": 250
+            },
+            "required": false,
+            "options": {
+              "from": "list-branches",
+              "dependsOn": [
+                "connection",
+                "repository"
+              ],
+              "value": "name",
+              "search": true
+            }
+          },
+          {
+            "key": "changeRequest",
+            "label": "t:params.changeRequest",
+            "kind": {
+              "type": "integer",
+              "min": 1
+            },
+            "required": false
+          }
+        ],
+        "node": {
+          "version": 1,
+          "outputs": [
+            {
+              "key": "state",
+              "label": "t:outputs.state",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "providerStatus",
+              "label": "t:outputs.providerStatus",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "pipelineId",
+              "label": "t:outputs.pipelineId",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "url",
+              "label": "t:outputs.url",
+              "kind": "url",
+              "always": false
+            },
+            {
+              "key": "sha",
+              "label": "t:outputs.sha",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "finishedAt",
+              "label": "t:outputs.finishedAt",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "durationSeconds",
+              "label": "t:outputs.durationSeconds",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "items",
+              "label": "t:outputs.items",
+              "kind": "records",
+              "always": true,
+              "schema": "pipeline"
+            },
+            {
+              "key": "count",
+              "label": "t:outputs.count",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "truncated",
+              "label": "t:outputs.truncated",
+              "kind": "boolean",
+              "always": true
+            }
+          ],
+          "timeoutMs": 30000,
+          "effect": "readOnly",
+          "retrySafe": true
+        }
+      },
+      {
+        "id": "create-change-request",
+        "name": "t:actions.create-change-request.name",
+        "description": "t:actions.create-change-request.description",
+        "category": "t:category",
+        "parameters": [
+          {
+            "key": "connection",
+            "label": "t:params.connection",
+            "kind": {
+              "type": "connection",
+              "types": [
+                "github",
+                "gitlab"
+              ]
+            },
+            "required": true
+          },
+          {
+            "key": "repository",
+            "label": "t:params.repository",
+            "kind": {
+              "type": "text",
+              "maxLength": 128
+            },
+            "required": true,
+            "options": {
+              "from": "list-repositories",
+              "dependsOn": [
+                "connection"
+              ],
+              "value": "id",
+              "label": "path",
+              "search": true
+            }
+          },
+          {
+            "key": "source",
+            "label": "t:params.source",
+            "kind": {
+              "type": "text",
+              "maxLength": 250
+            },
+            "required": true,
+            "options": {
+              "from": "list-branches",
+              "dependsOn": [
+                "connection",
+                "repository"
+              ],
+              "value": "name",
+              "search": true
+            }
+          },
+          {
+            "key": "target",
+            "label": "t:params.target",
+            "kind": {
+              "type": "text",
+              "maxLength": 250
+            },
+            "required": false,
+            "options": {
+              "from": "list-branches",
+              "dependsOn": [
+                "connection",
+                "repository"
+              ],
+              "value": "name",
+              "search": true
+            }
+          },
+          {
+            "key": "title",
+            "label": "t:params.title",
+            "kind": {
+              "type": "text",
+              "maxLength": 255
+            },
+            "required": true
+          },
+          {
+            "key": "description",
+            "label": "t:params.description",
+            "kind": {
+              "type": "text",
+              "multiline": true,
+              "maxLength": 10000
+            },
+            "required": false
+          },
+          {
+            "key": "draft",
+            "label": "t:params.draft",
+            "kind": {
+              "type": "boolean"
+            },
+            "required": false,
+            "default": {
+              "type": "boolean",
+              "value": false
+            }
+          },
+          {
+            "key": "openAfter",
+            "label": "t:params.openAfter",
+            "kind": {
+              "type": "boolean"
+            },
+            "required": false,
+            "default": {
+              "type": "boolean",
+              "value": false
+            }
+          },
+          {
+            "key": "confirm",
+            "label": "t:params.confirm",
+            "kind": {
+              "type": "boolean"
+            },
+            "required": false,
+            "default": {
+              "type": "boolean",
+              "value": true
+            }
+          }
+        ],
+        "node": {
+          "version": 1,
+          "outputs": [
+            {
+              "key": "number",
+              "label": "t:outputs.number",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "url",
+              "label": "t:outputs.url",
+              "kind": "url",
+              "always": true
+            },
+            {
+              "key": "state",
+              "label": "t:outputs.state",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "existing",
+              "label": "t:outputs.existing",
+              "kind": "boolean",
+              "always": true
+            }
+          ],
+          "timeoutMs": 60000,
+          "effect": "modifies",
+          "idempotent": true
+        }
+      },
+      {
+        "id": "trigger-pipeline",
+        "name": "t:actions.trigger-pipeline.name",
+        "description": "t:actions.trigger-pipeline.description",
+        "category": "t:category",
+        "parameters": [
+          {
+            "key": "connection",
+            "label": "t:params.connection",
+            "kind": {
+              "type": "connection",
+              "types": [
+                "github",
+                "gitlab"
+              ]
+            },
+            "required": true
+          },
+          {
+            "key": "repository",
+            "label": "t:params.repository",
+            "kind": {
+              "type": "text",
+              "maxLength": 128
+            },
+            "required": true,
+            "options": {
+              "from": "list-repositories",
+              "dependsOn": [
+                "connection"
+              ],
+              "value": "id",
+              "label": "path",
+              "search": true
+            }
+          },
+          {
+            "key": "ref",
+            "label": "t:params.ref",
+            "kind": {
+              "type": "text",
+              "maxLength": 250
+            },
+            "required": true,
+            "options": {
+              "from": "list-branches",
+              "dependsOn": [
+                "connection",
+                "repository"
+              ],
+              "value": "name",
+              "search": true
+            }
+          },
+          {
+            "key": "variables",
+            "label": "t:params.variables",
+            "kind": {
+              "type": "pairs",
+              "separator": "=",
+              "maxItems": 50,
+              "noSecrets": true
+            },
+            "required": false
+          },
+          {
+            "key": "workflow",
+            "label": "t:params.workflow",
+            "kind": {
+              "type": "text",
+              "maxLength": 255
+            },
+            "required": false
+          },
+          {
+            "key": "confirm",
+            "label": "t:params.confirm",
+            "kind": {
+              "type": "boolean"
+            },
+            "required": false,
+            "default": {
+              "type": "boolean",
+              "value": true
+            }
+          }
+        ],
+        "node": {
+          "version": 1,
+          "outputs": [
+            {
+              "key": "state",
+              "label": "t:outputs.state",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "providerStatus",
+              "label": "t:outputs.providerStatus",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "pipelineId",
+              "label": "t:outputs.pipelineId",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "url",
+              "label": "t:outputs.url",
+              "kind": "url",
+              "always": false
+            }
+          ],
+          "timeoutMs": 60000,
+          "effect": "modifies",
+          "idempotent": false
+        }
+      },
+      {
+        "id": "wait-pipeline",
+        "name": "t:actions.wait-pipeline.name",
+        "description": "t:actions.wait-pipeline.description",
+        "category": "t:category",
+        "parameters": [
+          {
+            "key": "connection",
+            "label": "t:params.connection",
+            "kind": {
+              "type": "connection",
+              "types": [
+                "github",
+                "gitlab"
+              ]
+            },
+            "required": true
+          },
+          {
+            "key": "repository",
+            "label": "t:params.repository",
+            "kind": {
+              "type": "text",
+              "maxLength": 128
+            },
+            "required": true,
+            "options": {
+              "from": "list-repositories",
+              "dependsOn": [
+                "connection"
+              ],
+              "value": "id",
+              "label": "path",
+              "search": true
+            }
+          },
+          {
+            "key": "pipelineId",
+            "label": "t:params.pipelineId",
+            "kind": {
+              "type": "text",
+              "maxLength": 20
+            },
+            "required": true
+          },
+          {
+            "key": "pollSeconds",
+            "label": "t:params.pollSeconds",
+            "kind": {
+              "type": "integer",
+              "min": 10,
+              "max": 120
+            },
+            "required": false,
+            "default": {
+              "type": "integer",
+              "value": 15
+            }
+          }
+        ],
+        "node": {
+          "version": 1,
+          "outputs": [
+            {
+              "key": "state",
+              "label": "t:outputs.state",
+              "kind": "text",
+              "always": true
+            },
+            {
+              "key": "providerStatus",
+              "label": "t:outputs.providerStatus",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "pipelineId",
+              "label": "t:outputs.pipelineId",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "url",
+              "label": "t:outputs.url",
+              "kind": "url",
+              "always": false
+            },
+            {
+              "key": "sha",
+              "label": "t:outputs.sha",
+              "kind": "text",
+              "always": false
+            },
+            {
+              "key": "finishedAt",
+              "label": "t:outputs.finishedAt",
+              "kind": "integer",
+              "always": false
+            },
+            {
+              "key": "durationSeconds",
+              "label": "t:outputs.durationSeconds",
+              "kind": "integer",
+              "always": false
+            }
+          ],
+          "timeoutMs": 600000,
+          "effect": "readOnly",
+          "retrySafe": true,
+          "cancellable": true
+        }
+      }
+    ],
+    "errorCodes": {
+      "unauthorized": "t:errors.unauthorized",
+      "insufficient-scope": "t:errors.insufficient-scope",
+      "not-found": "t:errors.not-found",
+      "rate-limited": "t:errors.rate-limited",
+      "provider-error": "t:errors.provider-error",
+      "rejected": "t:errors.rejected",
+      "invalid-response": "t:errors.invalid-response",
+      "invalid-repository": "t:errors.invalid-repository",
+      "invalid-ref": "t:errors.invalid-ref",
+      "invalid-variables": "t:errors.invalid-variables",
+      "unreachable": "t:errors.unreachable",
+      "redirect-refused": "t:errors.redirect-refused",
+      "connection-missing": "t:errors.connection-missing",
+      "connection-disabled": "t:errors.connection-disabled",
+      "read-only-connection": "t:errors.read-only-connection",
+      "capability-unsupported": "t:errors.capability-unsupported",
+      "needs-confirmation": "t:errors.needs-confirmation",
+      "url-not-allowed": "t:errors.url-not-allowed",
+      "timed-out": "t:errors.timed-out",
+      "cancelled": "t:errors.cancelled"
+    }
+  }
+}

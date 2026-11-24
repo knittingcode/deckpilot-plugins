@@ -1,0 +1,162 @@
+{
+  "outputs": {
+    "state": "Stan",
+    "providerStatus": "Status dostawcy",
+    "pipelineId": "Potok",
+    "url": "Strona",
+    "sha": "Commit",
+    "finishedAt": "Zakończono (ms)",
+    "durationSeconds": "Czas trwania (s)",
+    "items": "Pozycje",
+    "count": "Liczba",
+    "truncated": "Lista skrócona",
+    "account": "Konto",
+    "version": "Wersja serwera",
+    "canWrite": "Może wprowadzać zmiany",
+    "excessScopes": "Więcej uprawnień niż potrzeba",
+    "next": "Następna strona",
+    "path": "Ścieżka",
+    "firstUrl": "Pierwsza strona",
+    "result": "Wynik (JSON)",
+    "number": "Numer",
+    "existing": "Był już otwarty"
+  },
+  "params": {
+    "connection": "Połączenie",
+    "search": "Szukaj",
+    "page": "Strona",
+    "repository": "Repozytorium",
+    "ref": "Gałąź, tag lub commit",
+    "limit": "Najwięcej pozycji",
+    "filter": "Które",
+    "state": "Stan",
+    "issue": "Zgłoszenie",
+    "remoteUrl": "Adres zdalnego repozytorium git",
+    "id": "Rozszerzenie",
+    "args": "Argumenty (JSON)",
+    "changeRequest": "Pull lub merge request",
+    "source": "Gałąź źródłowa",
+    "target": "Gałąź docelowa",
+    "title": "Tytuł",
+    "description": "Opis",
+    "draft": "Wersja robocza",
+    "openAfter": "Otwórz potem",
+    "confirm": "Najpierw zapytaj",
+    "variables": "Zmienne potoku (GitLab)",
+    "workflow": "Plik workflow (GitHub Actions)",
+    "pipelineId": "Potok",
+    "pollSeconds": "Sprawdzaj co (sekundy)"
+  },
+  "actions": {
+    "probe": {
+      "name": "Sprawdź połączenie",
+      "description": "Loguje się i sprawdza, co może token połączenia."
+    },
+    "list-repositories": {
+      "name": "Lista repozytoriów",
+      "description": "Repozytoria połączenia."
+    },
+    "get-repository": {
+      "name": "Repozytorium",
+      "description": "Jedno repozytorium według identyfikatora."
+    },
+    "list-branches": {
+      "name": "Lista gałęzi",
+      "description": "Gałęzie repozytorium."
+    },
+    "list-commits": {
+      "name": "Lista commitów",
+      "description": "Ostatnie commity gałęzi."
+    },
+    "list-change-requests": {
+      "name": "Lista pull lub merge requestów",
+      "description": "Otwarte pull lub merge requesty: repozytorium, Twoje lub czekające na Twoją recenzję."
+    },
+    "list-pipelines": {
+      "name": "Lista potoków",
+      "description": "Ostatnie potoki repozytorium."
+    },
+    "list-issues": {
+      "name": "Lista zgłoszeń",
+      "description": "Zgłoszenia repozytorium."
+    },
+    "get-issue": {
+      "name": "Zgłoszenie",
+      "description": "Jedno zgłoszenie repozytorium."
+    },
+    "resolve-remote": {
+      "name": "Znajdź repozytorium po zdalnym adresie git",
+      "description": "Repozytorium tego połączenia, którego adres klonowania to podany adres zdalny git, jeśli istnieje."
+    },
+    "extension": {
+      "name": "Rozszerzenie dostawcy",
+      "description": "Operacja, którą ma tylko jeden dostawca."
+    },
+    "open-repository": {
+      "name": "Otwórz repozytorium",
+      "description": "Otwiera stronę repozytorium w przeglądarce."
+    },
+    "open-change-requests": {
+      "name": "Otwórz pull lub merge requesty",
+      "description": "Otwiera pull lub merge requesty repozytorium albo Twoje."
+    },
+    "open-issue": {
+      "name": "Otwórz zgłoszenie",
+      "description": "Otwiera zgłoszenie w przeglądarce."
+    },
+    "pipeline-status": {
+      "name": "Stan potoku",
+      "description": "Ostatni potok gałęzi albo pull lub merge requestu."
+    },
+    "create-change-request": {
+      "name": "Utwórz pull lub merge request",
+      "description": "Tworzy pull lub merge request z gałęzi albo znajduje już otwarty."
+    },
+    "trigger-pipeline": {
+      "name": "Uruchom potok",
+      "description": "Uruchamia potok na gałęzi (GitLab: ze zmiennymi)."
+    },
+    "wait-pipeline": {
+      "name": "Czekaj na potok",
+      "description": "Czeka, aż potok się zakończy, najwyżej dziesięć minut."
+    }
+  },
+  "category": "Platformy Git",
+  "errors": {
+    "unauthorized": "Serwer odrzucił token połączenia: połącz ponownie.",
+    "insufficient-scope": "Tokenowi brakuje potrzebnego uprawnienia.",
+    "not-found": "Nie znaleziono albo token tego nie widzi.",
+    "rate-limited": "Osiągnięto limit zapytań serwera; spróbuj później.",
+    "provider-error": "Serwer odpowiedział błędem.",
+    "rejected": "Serwer odrzucił żądanie.",
+    "invalid-response": "Odpowiedź serwera nie jest taka, jak oczekiwano.",
+    "invalid-repository": "Wybierz repozytorium tego połączenia.",
+    "invalid-ref": "To nie jest nazwa gałęzi, tagu ani commita.",
+    "invalid-variables": "Zmienna potoku nie ma postaci NAZWA=wartość.",
+    "unreachable": "Nie można połączyć się z serwerem (sieć lub VPN?).",
+    "redirect-refused": "Serwer przekierował żądanie gdzie indziej, co jest zabronione.",
+    "connection-missing": "Tego połączenia nie ma na tym komputerze.",
+    "connection-disabled": "Połączenie jest wyłączone.",
+    "read-only-connection": "Połączenie jest tylko do odczytu.",
+    "capability-unsupported": "Ten serwer lub dostawca tego nie potrafi.",
+    "needs-confirmation": "Ta akcja najpierw pyta, więc nie działa bez nadzoru.",
+    "url-not-allowed": "Można otwierać tylko strony serwera połączenia.",
+    "timed-out": "Potok nie zakończył się na czas.",
+    "cancelled": "Anulowano."
+  },
+  "plugin": {
+    "name": "Platformy Git",
+    "description": "Repozytoria, pull i merge requesty, potoki i zgłoszenia z serwerów GitHub i GitLab, które połączysz, każdy z własnym tokenem."
+  },
+  "permissions": {
+    "connections": "Łączy się z serwerami GitHub i GitLab, które połączysz, każdym z własnym tokenem, i z niczym więcej.",
+    "openUrl": "Otwiera w przeglądarce repozytoria, pull lub merge requesty, potoki i zgłoszenia Twoich połączeń.",
+    "dialogs": "Prosi o potwierdzenie, zanim z klawisza utworzy merge request albo uruchomi potok."
+  },
+  "types": {
+    "github": "GitHub",
+    "ghes": "GitHub Enterprise Server",
+    "gitlab": "GitLab",
+    "gitlabSelf": "Własny GitLab"
+  }
+}
