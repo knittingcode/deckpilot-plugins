@@ -240,6 +240,27 @@ for hid in $held; do
   expect fail "release-build refuses held $hid" "is not a released official plugin" -- "$copy/tools/official.sh" release-build "$hid" "$hversion"
 done
 
+echo "== compare in official-release.yml's checks: nothing that needs the C toolchain"
+# The checks job runs `official.sh compare` without tools/wasm-c-toolchain.sh:
+# compare builds every member but those held ahead of the pin, and none of
+# what it builds compiles C (C_CRATES).
+crates=$("$root/tools/official.sh" compare-crates 2>/dev/null) || crates=
+c_crates=$(sed -n 's/^C_CRATES="\(.*\)"$/\1/p' "$root/tools/official.sh")
+[ -n "$c_crates" ] && ok "official.sh names the members that compile C: $c_crates" || bad "no C_CRATES in official.sh"
+for c in $c_crates; do
+  grep -qx -- "$c" <<<"$crates" && bad "compare builds $c, which needs the C toolchain" || ok "compare does not build $c"
+done
+for ahead in $(python3 -I "$root/tools/check-official.py" --root "$root/official" --commit "$DECKPILOT_SDK_COMMIT" \
+    --app-version "$DECKPILOT_VERSION" --plugin-api "$DECKPILOT_PLUGIN_API" --ahead | cut -d' ' -f1); do
+  crate=$(python3 -I "$root/tools/check-official.py" --root "$root/official" --commit "$DECKPILOT_SDK_COMMIT" \
+    --app-version "$DECKPILOT_VERSION" --plugin-api "$DECKPILOT_PLUGIN_API" --list | awk -v id="$ahead" '$2 == id {print $4}')
+  grep -qx -- "$crate" <<<"$crates" && bad "compare builds $ahead, held ahead of the pin" || ok "compare skips $ahead, held ahead of the pin"
+done
+for pid in $privileged; do
+  crate=deckpilot-${pid#deckpilot.}
+  grep -qx -- "$crate" <<<"$crates" && ok "compare builds $pid" || bad "compare does not build $pid"
+done
+
 echo "== the key test (official-test-sign.yml)"
 # (A well-formed tag then needs its commit on main: not testable on a pull
 # request's merge commit; official-test-sign.yml's resolve job checks it.)

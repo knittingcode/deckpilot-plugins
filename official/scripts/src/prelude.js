@@ -25,6 +25,32 @@
   const parse = JSON.parse;
   delete globalThis.__dp;
 
+  // The built-ins the prelude uses, taken before the script runs: a script
+  // that replaces a prototype method (String.prototype.includes,
+  // Array.prototype.map, Object.assign, …) changes its own code, not the
+  // API's. Called as uncurried functions: sSlice(text, 0, 3).
+  const { assign, defineProperty, freeze, getOwnPropertyDescriptor, getPrototypeOf, isFrozen, keys } = Object;
+  const ownKeys = Reflect.ownKeys;
+  const isArray = Array.isArray;
+  const uncurry = Function.prototype.bind.bind(Function.prototype.call);
+  const sIncludes = uncurry(String.prototype.includes);
+  const sSlice = uncurry(String.prototype.slice);
+  const sSplit = uncurry(String.prototype.split);
+  const sTrim = uncurry(String.prototype.trim);
+  const reTest = uncurry(RegExp.prototype.test);
+  const reExec = uncurry(RegExp.prototype.exec);
+  const aMap = uncurry(Array.prototype.map);
+  const aFilter = uncurry(Array.prototype.filter);
+  const aFind = uncurry(Array.prototype.find);
+  const aJoin = uncurry(Array.prototype.join);
+  const aPush = uncurry(Array.prototype.push);
+  const aPop = uncurry(Array.prototype.pop);
+  const aSlice = uncurry(Array.prototype.slice);
+  const aSome = uncurry(Array.prototype.some);
+  const aConcat = uncurry(Array.prototype.concat);
+  const wsHas = uncurry(WeakSet.prototype.has);
+  const wsAdd = uncurry(WeakSet.prototype.add);
+
   const FIELDS = ["repository", "command", "path"];
 
   class ScriptError extends Error {
@@ -71,10 +97,10 @@
 
   function firstLine(text) {
     if (typeof text !== "string") return "";
-    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.length > 0);
+    const lines = aFilter(aMap(sSplit(text, /\r?\n/), (l) => sTrim(l)), (l) => l.length > 0);
     // git and docker put the reason on the last line ("fatal: …").
-    const line = lines.find((l) => /^(fatal|error)\b/i.test(l)) || lines[lines.length - 1] || "";
-    return line.length > 300 ? line.slice(0, 300) + "…" : line;
+    const line = aFind(lines, (l) => reTest(/^(fatal|error)\b/i, l)) || lines[lines.length - 1] || "";
+    return line.length > 300 ? sSlice(line, 0, 300) + "…" : line;
   }
 
   function fault(f, context) {
@@ -84,11 +110,11 @@
       path: f.path || undefined,
     };
     let message = f.message || f.code;
-    if (detail.repository && !message.includes(`"${detail.repository}"`)) {
+    if (detail.repository && !sIncludes(message, `"${detail.repository}"`)) {
       message = `${message} (repository "${detail.repository}")`;
     }
     const e = new ScriptError(f.code, message, detail);
-    if (f.confirmation) Object.defineProperty(e, "confirmation", { value: f.confirmation });
+    if (f.confirmation) defineProperty(e, "confirmation", { value: f.confirmation });
     return e;
   }
 
@@ -109,25 +135,25 @@
       if (typeof part !== "string") {
         throw new ScriptError("invalidArgument", "repo.join takes strings", { repository: key });
       }
-      if (/^[\\/]/.test(part) || part.includes(":") || part.includes("\0")) {
+      if (reTest(/^[\\/]/, part) || sIncludes(part, ":") || sIncludes(part, "\0")) {
         throw new ScriptError("outsideScope", `\`${part}\` is not a path inside repository "${key}"`, { repository: key });
       }
-      for (const seg of part.split(/[\\/]/)) {
+      for (const seg of sSplit(part, /[\\/]/)) {
         if (seg === "" || seg === ".") continue;
         if (seg === "..") {
           if (out.length === 0) {
-            throw new ScriptError("outsideScope", `\`${parts.join("/")}\` leaves repository "${key}"`, { repository: key });
+            throw new ScriptError("outsideScope", `\`${aJoin(parts, "/")}\` leaves repository "${key}"`, { repository: key });
           }
-          out.pop();
-        } else out.push(seg);
+          aPop(out);
+        } else aPush(out, seg);
       }
     }
-    return out.join("/");
+    return aJoin(out, "/");
   }
 
   function repositoryKey(r) {
     if (typeof r === "string") return r;
-    if (r && repositories.has(r)) return r.key;
+    if (r && wsHas(repositories, r)) return r.key;
     return null;
   }
 
@@ -135,7 +161,7 @@
   function pathArg(p, what) {
     if (typeof p === "string") return [{ path: p }, null];
     if (p && typeof p === "object") {
-      if (repositories.has(p)) return [{ repository: p.key, relative: "" }, p.key];
+      if (wsHas(repositories, p)) return [{ repository: p.key, relative: "" }, p.key];
       if (typeof p.repository === "string" && typeof p.relative === "string") {
         return [{ repository: p.repository, relative: p.relative }, p.repository];
       }
@@ -157,18 +183,18 @@
         ? { url: r.remote.url == null ? null : String(r.remote.url), defaultBranch: r.remote.defaultBranch == null ? null : String(r.remote.defaultBranch) }
         : null,
       join(...parts) {
-        return Object.freeze({ repository: key, relative: relativeJoin(key, parts) });
+        return freeze({ repository: key, relative: relativeJoin(key, parts) });
       },
       toString() {
         return `repository "${key}"`;
       },
     };
-    repositories.add(repo);
+    wsAdd(repositories, repo);
     return deepFreeze(repo);
   }
 
   function makeProject(p, repos) {
-    let cache = repos ? repos.map(makeRepository) : null;
+    let cache = repos ? aMap(repos, makeRepository) : null;
     const id = String(p.id);
     return deepFreeze({
       id,
@@ -177,9 +203,9 @@
       repositories() {
         if (cache === null) {
           const r = host("project.repositories", { project: id });
-          cache = (r.repositories || []).map(makeRepository);
+          cache = aMap(r.repositories || [], makeRepository);
         }
-        return cache.slice();
+        return aSlice(cache);
       },
     });
   }
@@ -190,7 +216,7 @@
       return r.project ? makeProject(r.project, r.repositories || []) : null;
     },
     list() {
-      return (host("project.list", {}).projects || []).map((p) => makeProject(p, null));
+      return aMap(host("project.list", {}).projects || [], (p) => makeProject(p, null));
     },
   };
 
@@ -202,10 +228,10 @@
     // OD-3: the marked default; else the only repository; else none.
     default() {
       const all = repositoriesApi.current();
-      return all.find((r) => r.isDefault) || (all.length === 1 ? all[0] : null);
+      return aFind(all, (r) => r.isDefault) || (all.length === 1 ? all[0] : null);
     },
     get(key) {
-      return repositoriesApi.current().find((r) => r.key === key) || null;
+      return aFind(repositoriesApi.current(), (r) => r.key === key) || null;
     },
   };
 
@@ -219,7 +245,7 @@
           throw new ScriptError("invalidArgument", `path.${op} takes strings`);
         }
       }
-      const reply = parse(nativePath(op, stringify(args.filter((a) => a !== undefined))));
+      const reply = parse(nativePath(op, stringify(aFilter(args, (a) => a !== undefined))));
       if (reply.error) throw fault(reply.error);
       return reply.ok;
     };
@@ -242,9 +268,9 @@
       const token = e.confirmation.token;
       const answer = host("script.confirm", { token }, context);
       if (!answer || answer.confirmed !== true) {
-        throw fault({ code: "needsConfirmation", message: `${op.slice(3)} was not confirmed` }, context);
+        throw fault({ code: "needsConfirmation", message: `${sSlice(op, 3)} was not confirmed` }, context);
       }
-      return host(op, Object.assign({}, args, { confirmation: token }), context);
+      return host(op, assign({}, args, { confirmation: token }), context);
     }
   }
 
@@ -300,15 +326,15 @@
   // ---- processes ----------------------------------------------------------
 
   function display(command, args) {
-    return [command].concat(args).map((a) => (/^[A-Za-z0-9_@%+=:,./-]+$/.test(a) ? a : stringify(a))).join(" ");
+    return aJoin(aMap(aConcat([command], args), (a) => (reTest(/^[A-Za-z0-9_@%+=:,./-]+$/, a) ? a : stringify(a))), " ");
   }
 
   function strings(v, what) {
     if (v === undefined) return [];
-    if (!Array.isArray(v) || v.some((a) => typeof a !== "string")) {
+    if (!isArray(v) || aSome(v, (a) => typeof a !== "string")) {
       throw new ScriptError("invalidArgument", `${what} is an array of strings (there is no shell)`);
     }
-    return v.slice();
+    return aSlice(v);
   }
 
   function processRun(req, unavailable) {
@@ -320,7 +346,7 @@
     if (r.cwd !== undefined) [a.cwd, repository] = pathArg(r.cwd, "cwd");
     if (r.env !== undefined) {
       if (typeof r.env !== "object" || r.env === null) throw new ScriptError("invalidArgument", "env is an object of strings");
-      for (const k of Object.keys(r.env)) {
+      for (const k of keys(r.env)) {
         if (typeof r.env[k] !== "string") throw new ScriptError("invalidArgument", `env.${k} is not a string`);
         a.env[k] = r.env[k];
       }
@@ -358,14 +384,19 @@
     if (!out.ok) {
       out.errorCode = out.timedOut ? "timedOut" : out.cancelled ? "cancelled" : "nonZeroExit";
     }
-    return Object.freeze(out);
+    return freeze(out);
   }
+
+  // What available() never turns into { ok: false }: a stop, and a refusal
+  // of the grant (the script must not read "no git" when it lacks the
+  // permission to run it).
+  const isFinal = (code) => code === "cancelled" || code === "timedOut" || code === "notGranted";
 
   const DAEMON_DOWN = /Cannot connect to the Docker daemon|Is the docker daemon running|error during connect|docker daemon is not running/i;
 
   function dockerResult(r) {
-    if (!r.ok && !r.timedOut && !r.cancelled && DAEMON_DOWN.test(r.stderr)) {
-      return Object.freeze(Object.assign({}, r, { errorCode: "dockerDaemonDown" }));
+    if (!r.ok && !r.timedOut && !r.cancelled && reTest(DAEMON_DOWN, r.stderr)) {
+      return freeze(assign({}, r, { errorCode: "dockerDaemonDown" }));
     }
     return r;
   }
@@ -379,10 +410,10 @@
       try {
         const r = processRun({ command: "git", args: ["--version"] }, "gitUnavailable");
         if (!r.ok) return { ok: false, error: ScriptError.fromResult(r).message };
-        const m = /git version (\S+)/.exec(r.stdout);
-        return { ok: true, version: m ? m[1] : r.stdout.trim() };
+        const m = reExec(/git version (\S+)/, r.stdout);
+        return { ok: true, version: m ? m[1] : sTrim(r.stdout) };
       } catch (e) {
-        if (e instanceof ScriptError && (e.code === "cancelled" || e.code === "timedOut")) throw e;
+        if (e instanceof ScriptError && isFinal(e.code)) throw e;
         return { ok: false, error: e.message };
       }
     },
@@ -396,16 +427,16 @@
     available() {
       try {
         const client = processRun({ command: "docker", args: ["version", "--format", "{{.Client.Version}}"] }, "dockerUnavailable");
-        const version = client.stdout.trim().split(/\r?\n/)[0] || undefined;
+        const version = sSplit(sTrim(client.stdout), /\r?\n/)[0] || undefined;
         const server = dockerResult(processRun({ command: "docker", args: ["info", "--format", "{{.ServerVersion}}"] }, "dockerUnavailable"));
         if (!server.ok) {
           const e = ScriptError.fromResult(server);
           return { ok: false, version, error: server.errorCode === "dockerDaemonDown" ? `the Docker daemon is not running: ${e.message}` : e.message };
         }
         const compose = processRun({ command: "docker", args: ["compose", "version", "--short"] }, "dockerUnavailable");
-        return { ok: true, version, composeVersion: compose.ok ? compose.stdout.trim() : undefined };
+        return { ok: true, version, composeVersion: compose.ok ? sTrim(compose.stdout) : undefined };
       } catch (e) {
-        if (e instanceof ScriptError && (e.code === "cancelled" || e.code === "timedOut")) throw e;
+        if (e instanceof ScriptError && isFinal(e.code)) throw e;
         return { ok: false, error: e.message };
       }
     },
@@ -415,11 +446,11 @@
     },
     compose(args, o) {
       needCwd(o, "docker.compose");
-      return docker.run(["compose"].concat(strings(args, "args")), o);
+      return docker.run(aConcat(["compose"], strings(args, "args")), o);
     },
   };
 
-  const shellGrant = setup.grants && Array.isArray(setup.grants.shell) ? setup.grants.shell : null;
+  const shellGrant = setup.grants && isArray(setup.grants.shell) ? setup.grants.shell : null;
   const shell = shellGrant
     ? {
         run(req) {
@@ -427,13 +458,13 @@
           const a = { shell: r.shell, script: r.script, env: {} };
           let repository = null;
           if (r.cwd !== undefined) [a.cwd, repository] = pathArg(r.cwd, "cwd");
-          if (r.env !== undefined) Object.assign(a.env, r.env);
+          if (r.env !== undefined) assign(a.env, r.env);
           if (r.timeoutMs !== undefined) a.timeoutMs = r.timeoutMs;
           const command = `${r.shell} script`;
           return finish(host("shell.run", a, { repository, command }), command, repository);
         },
         available() {
-          return (host("shell.available", {}).shells || []).slice();
+          return aSlice(host("shell.available", {}).shells || []);
         },
       }
     : undefined;
@@ -454,7 +485,7 @@
 
   const log = {};
   for (const level of ["debug", "info", "warn", "error"]) {
-    log[level] = (...a) => nativeLog(level, a.map(show).join(" "));
+    log[level] = (...a) => nativeLog(level, aJoin(aMap(a, show), " "));
   }
 
   function faultOf(e) {
@@ -501,7 +532,7 @@
         outcome = { repository: repo.key, ok: false, error: inRepository(e, repo) };
       }
       nativeRecord(stringify(outcome.ok ? { repository: repo.key, ok: true } : { repository: repo.key, ok: false, error: faultOf(outcome.error) }));
-      outcomes.push(Object.freeze(outcome));
+      aPush(outcomes, freeze(outcome));
       if (!outcome.ok && stopOnError) throw outcome.error;
     }
     return outcomes;
@@ -520,7 +551,7 @@
       origin: String(run.origin || "editor"),
       userInitiated: run.userInitiated === true,
       inputs: run.inputs === undefined ? null : run.inputs,
-      signal: Object.defineProperty({}, "aborted", { get: () => nativeAborted(), enumerable: true }),
+      signal: defineProperty({}, "aborted", { get: () => nativeAborted(), enumerable: true }),
     },
     sleep,
     log,
@@ -536,10 +567,10 @@
   if (shell) deckpilot.shell = shell;
 
   function deepFreeze(o) {
-    if (o === null || (typeof o !== "object" && typeof o !== "function") || Object.isFrozen(o)) return o;
-    Object.freeze(o);
-    for (const k of Reflect.ownKeys(o)) {
-      const d = Object.getOwnPropertyDescriptor(o, k);
+    if (o === null || (typeof o !== "object" && typeof o !== "function") || isFrozen(o)) return o;
+    freeze(o);
+    for (const k of ownKeys(o)) {
+      const d = getOwnPropertyDescriptor(o, k);
       if (d && "value" in d) deepFreeze(d.value);
     }
     return o;
@@ -554,8 +585,8 @@
   };
 
   deepFreeze(ScriptError.prototype);
-  for (const [name, value] of [["deckpilot", deepFreeze(deckpilot)], ["ScriptError", Object.freeze(ScriptError)], ["console", deepFreeze(console)]]) {
-    Object.defineProperty(globalThis, name, { value, writable: false, enumerable: false, configurable: false });
+  for (const [name, value] of [["deckpilot", deepFreeze(deckpilot)], ["ScriptError", freeze(ScriptError)], ["console", deepFreeze(console)]]) {
+    defineProperty(globalThis, name, { value, writable: false, enumerable: false, configurable: false });
   }
 
   // No code from strings: eval, Function and the generator and async
@@ -564,18 +595,18 @@
   const refuse = function () {
     throw new EvalError("code from strings is disabled in DeckPilot scripts");
   };
-  Object.freeze(refuse);
+  freeze(refuse);
   const constructors = [
     Function,
-    Object.getPrototypeOf(function* () {}).constructor,
-    Object.getPrototypeOf(async function () {}).constructor,
-    Object.getPrototypeOf(async function* () {}).constructor,
+    getPrototypeOf(function* () {}).constructor,
+    getPrototypeOf(async function () {}).constructor,
+    getPrototypeOf(async function* () {}).constructor,
   ];
   for (const C of constructors) {
-    Object.defineProperty(C.prototype, "constructor", { value: refuse, writable: false, configurable: false });
-    Object.freeze(C.prototype);
+    defineProperty(C.prototype, "constructor", { value: refuse, writable: false, configurable: false });
+    freeze(C.prototype);
   }
   for (const name of ["eval", "Function"]) {
-    Object.defineProperty(globalThis, name, { value: refuse, writable: false, configurable: false });
+    defineProperty(globalThis, name, { value: refuse, writable: false, configurable: false });
   }
 })(globalThis.__dp);

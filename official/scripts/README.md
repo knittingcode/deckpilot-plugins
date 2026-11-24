@@ -42,6 +42,16 @@ with its fuel, epoch and memory limits.
 
   A stop is final: QuickJS interrupts cannot be caught, and every op after
   a cancellation fails in the guest.
+- **Async scripts.** When a script's completion value is a promise (an
+  `async` main or a `.then` chain), the run waits for it, under the same
+  limits, and ends with its value or its rejection. A promise that never
+  settles fails the run, and so does a rejection no handler took. Top-level
+  `await` is not supported; a script is not a module.
+- **Built-ins are pinned.** The prelude takes the built-ins it uses before
+  the script runs (`Object.*`, `Array.isArray`, the `String`, `Array`,
+  `RegExp` and `WeakSet` methods), so a script that replaces a prototype
+  method changes only its own code. Nothing in the prelude is a security
+  boundary; the agent decides every op.
 
 ## Files
 
@@ -72,8 +82,8 @@ is not trusted.
 | Op | Args | Ok value |
 | --- | --- | --- |
 | `script.load` | `{script}`: the invocation's own parameter only | `{source, platform: "macos"\|"windows"\|"linux", settings: {timeoutMs, stopOnError, memoryMiB}, grants: {shell?: string[]\|null, …}, run: {id, origin, userInitiated}, nowUs?}`; refuse untrusted with `script.code` `scriptNeedsReview`, and missing with `scriptMissing` |
-| `script.poll` | `{}` | `{cancelled, remainingMs, nowUs?}`; not counted in the 4,096 calls (the guest caps it at 8,192 per run) |
-| `script.log` | `{level: debug\|info\|warn\|error, message}` | `null` |
+| `script.poll` | `{}` | `{cancelled, remainingMs, nowUs?}`; not counted in the 4,096 calls (the guest caps it at 8,192 per run); **must not reset the epoch deadline** (see below) |
+| `script.log` | `{level: debug\|info\|warn\|error, message}` | `null`; **must not reset the epoch deadline** |
 | `script.sleep` | `{ms}` (≤ 600,000) | `null`; `timedOut` / `cancelled` on the deadline or Stop |
 | `script.confirm` | `{token}` | `{confirmed}`: the agent shows **its own stored plan** for the token (dialogs 1.5), only in user-started runs |
 | `project.list` | `{}` | `{projects: [{id, key, name}]}` (active profile) |
@@ -102,6 +112,41 @@ the first request with `script.code` `needsConfirmation` and
 on `{confirmed: true}` repeats the op with `confirmation: token`. The agent
 recomputes the plan then. The guest never supplies the text the user sees.
 
+The **token** is the agent's and is only a reference; the agent alone gives
+it meaning:
+
+- it is **single-use**: consumed by the op it confirms, refused after that;
+- it is **bound to one op and its exact args**: the op, the resolved paths
+  and the options it was issued for (another path, another op, another run
+  or another script is refused);
+- it is **valid only after `script.confirm` answered `confirmed: true`** in
+  this run, and expires with the run or after a short time;
+- the plan is recomputed when the op runs, and a plan larger than the one
+  confirmed is refused and asked again.
+
+**The CPU deadline.** The host resets its continuous-CPU (epoch) deadline
+after each host call, so long `process.run` calls never trip it. The guest
+polls `script.poll` about every 2.5 million bytecode operations, and logs
+freely. If those calls reset the deadline too, a busy loop that polls, or
+logs every iteration, would never reach `continuousMs` (`runtime.limits`).
+So P6 **must not reset the epoch deadline for `script.poll` and
+`script.log`**, only for calls that wait on the host (`process.run`,
+`shell.run`, `script.sleep`, `script.confirm`, the `fs.*` ops). The fuel
+budget, the guest's instruction budget and the run's wall time still bound
+every loop.
+
+**The grant summary** (`script.load`'s `grants`) tells the guest what to
+expose, not what is allowed. It is never trusted for a decision; the agent
+checks every op. The guest reads only one member today:
+
+- `shell`: `string[]` of the granted shells (`"sh"`, `"bash"`, `"zsh"`,
+  `"pwsh"`, `"powershell"`, `"cmd"`), or `null`/absent without the shell
+  grant. Only with an array is `deckpilot.shell` defined; `shell.run` is
+  refused by the agent in any case without the grant.
+
+Other members (`projectsRead`, `repositoriesPaths`, `fs`, `process`,
+`destructive`) are P6's to define; the guest ignores them.
+
 **What P6 must also provide:**
 
 - the request and reply caps raised for this plugin: up to about 6 MiB for
@@ -116,6 +161,27 @@ The manifest's `scripts` permission, `script` parameter kind, `code`
 parameter kind, `scripts` view, `runtime.limits`, `runtime.hostCalls` and
 `actions[].contexts` follow the design. P6 defines their exact schema, and
 this manifest follows it before P9.
+
+## Before the release (P9): blockers
+
+- **The vendored C code is reviewed code.** `rquickjs-sys` 0.14.0 vendors
+  QuickJS-NG's sources and a prebuilt `vendor/wasi-libc/lib/libc.a` (from
+  wasi-sdk 24) that is linked into this module. Neither is built from
+  source here, so their bytes must be recorded as reviewed when this plugin
+  joins the reviewed privileged policy (`official/reviewed-sources.json`,
+  which today admits only the policy's plugins):
+  - `rquickjs-sys` 0.14.0, crate checksum
+    `cee271d0eeba64f0915b846cb7ae02e16faf3dfdffdca91731101d9d30fe3423`
+    (`official/Cargo.lock`);
+  - `vendor/wasi-libc/lib/libc.a`, sha256
+    `566b9d6322cb3f339963cb1e6719b0bb0c932724fafa3418cf6aebe763dc2036`;
+  - `rquickjs-core` `6657979a…bbf24` and `rquickjs` `a0a22bf7…eb34e` with
+    them.
+
+  Removing `held` without that record is not allowed (the `held` reason in
+  `official/plugins.json` says so).
+- The privileged policy entry, the contract at the pin, `PLUGIN_API` 1.13
+  (P8), and the security review sign-off.
 
 ## S1, the spike
 

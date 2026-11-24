@@ -244,18 +244,25 @@ pub fn run(session: Session, setup: RunSetup) -> Report {
     let ending = match runtime(setup.memory_mib) {
         Ok((rt, ctx)) => {
             install_interrupt(&rt, &shared);
-            let ending = ctx.with(|ctx| execute(&ctx, &shared, &setup));
-            // Settle what the script queued (promise reactions), under the
-            // same interrupt handler; their failures do not change a
-            // finished run's result.
-            let mut jobs = 0;
-            while rt.is_job_pending() && jobs < 10_000 && shared.borrow().stop.is_none() {
-                jobs += 1;
-                if rt.execute_pending_job().is_err() {
-                    break;
+            let unhandled = install_rejection_tracker(&rt);
+            let ending = ctx.with(|ctx| {
+                let ending = execute(&ctx, &shared, &setup);
+                // Settle what the script queued (promise reactions), under
+                // the same interrupt handler.
+                drain_jobs(&ctx, &shared);
+                ending
+            });
+            // A rejection no handler took fails a run that otherwise ended
+            // well: an async failure is never reported as success.
+            match (ending, unhandled.borrow().first.clone()) {
+                (Ending::Done(_), Some(reason)) if unhandled.borrow().count > 0 => {
+                    Ending::Failed(ScriptFault::new(
+                        "scriptError",
+                        format!("an unhandled promise rejection: {reason}"),
+                    ))
                 }
+                (e, _) => e,
             }
-            ending
         }
         Err(f) => Ending::Failed(f),
     };
@@ -274,6 +281,66 @@ pub fn run(session: Session, setup: RunSetup) -> Report {
         log_lines: s.session.budget.log_lines,
         log_truncated: s.session.budget.log_truncated,
     }
+}
+
+/// The longest run of promise jobs after the script (each is bounded by the
+/// interrupt handler too).
+const MAX_JOBS: u32 = 100_000;
+
+fn drain_jobs(ctx: &Ctx<'_>, shared: &Rc<RefCell<Shared>>) {
+    let mut jobs = 0;
+    while jobs < MAX_JOBS && shared.borrow().stop.is_none() && ctx.execute_pending_job() {
+        jobs += 1;
+    }
+}
+
+/// Rejected promises without a handler, as QuickJS reports them: `count`
+/// goes up when one is rejected unhandled and down when a handler is
+/// attached later; `first` is the first one's reason.
+#[derive(Debug, Default)]
+struct Unhandled {
+    count: i64,
+    first: Option<String>,
+}
+
+fn install_rejection_tracker(rt: &rquickjs::Runtime) -> Rc<RefCell<Unhandled>> {
+    let state = Rc::new(RefCell::new(Unhandled::default()));
+    let s = Rc::clone(&state);
+    rt.set_host_promise_rejection_tracker(Some(Box::new(
+        move |_ctx, _promise, reason, is_handled| {
+            let Ok(mut u) = s.try_borrow_mut() else {
+                return;
+            };
+            if is_handled {
+                u.count -= 1;
+                return;
+            }
+            u.count += 1;
+            if u.first.is_none() {
+                u.first = Some(reason_text(&reason));
+            }
+        },
+    )));
+    state
+}
+
+fn reason_text(reason: &Value<'_>) -> String {
+    let text = match reason.as_object() {
+        Some(o) => {
+            let name: Option<String> = o.get("name").ok().flatten();
+            let message: Option<String> = o.get("message").ok().flatten();
+            match (name, message) {
+                (Some(n), Some(m)) => format!("{n}: {m}"),
+                (None, Some(m)) => m,
+                _ => "a value that is not an Error".to_owned(),
+            }
+        }
+        None => reason
+            .as_string()
+            .and_then(|s| s.to_string().ok())
+            .unwrap_or_else(|| format!("a {} value", reason.type_name())),
+    };
+    api::log::cut(&text, MAX_ERROR_TEXT).to_owned()
 }
 
 fn stop_fault(stop: Stop) -> ScriptFault {
@@ -330,9 +397,32 @@ fn execute(ctx: &Ctx<'_>, shared: &Rc<RefCell<Shared>>, setup: &RunSetup) -> End
     }
     let result: rquickjs::Result<Value> =
         ctx.eval_with_options(setup.source.as_str(), options(SCRIPT_FILE));
-    match result.catch(ctx) {
-        Ok(v) => Ending::Done(result_json(ctx, v)),
-        Err(e) => Ending::Failed(fault_of(e)),
+    let value = match result.catch(ctx) {
+        Ok(v) => v,
+        Err(e) => return Ending::Failed(fault_of(e)),
+    };
+    // A script whose completion value is a promise (an async main, a
+    // `.then` chain) ends when it settles, with its value or its rejection.
+    let Some(promise) = value.as_promise().cloned() else {
+        return Ending::Done(result_json(ctx, value));
+    };
+    let mut jobs = 0;
+    while promise.state() == rquickjs::promise::PromiseState::Pending
+        && jobs < MAX_JOBS
+        && shared.borrow().stop.is_none()
+        && ctx.execute_pending_job()
+    {
+        jobs += 1;
+    }
+    match promise.result::<Value>() {
+        None => Ending::Failed(ScriptFault::new(
+            "scriptError",
+            "the script's promise never settled (nothing was left to run)",
+        )),
+        Some(r) => match r.catch(ctx) {
+            Ok(v) => Ending::Done(result_json(ctx, v)),
+            Err(e) => Ending::Failed(fault_of(e)),
+        },
     }
 }
 

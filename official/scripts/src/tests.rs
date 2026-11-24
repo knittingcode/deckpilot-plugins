@@ -204,7 +204,9 @@ fn there_is_no_code_from_strings_no_import_and_no_natives() {
         attempt("asyncGenerator", () => (async function* () {}).constructor("yield 1"));
         attempt("reflect", () => Reflect.construct(Object.getPrototypeOf(() => 1).constructor, ["return 1"]));
         attempt("restoreFunction", () => { Function.prototype.constructor = null; if (Function.prototype.constructor === null) throw 0; });
-        out.dynamicImport = typeof import("x");
+        const imported = import("x");
+        imported.then(() => { globalThis.importLoaded = true }, () => {});
+        out.dynamicImport = typeof imported;
         out.natives = typeof globalThis.__dp;
         out.std = typeof globalThis.std + "," + typeof globalThis.os + "," + typeof globalThis.require + "," + typeof globalThis.process;
         out.frozen = Object.isFrozen(deckpilot) && Object.isFrozen(deckpilot.fs) && Object.isFrozen(deckpilot.run);
@@ -875,4 +877,124 @@ fn a_script_cannot_throw_the_runs_own_codes_or_unbounded_text() {
         "{}",
         message.len()
     );
+}
+
+// ---- async scripts ----------------------------------------------------------
+
+#[test]
+fn an_async_script_ends_with_its_settled_value() {
+    let src = "(async () => { const x = await Promise.resolve(20); return { x: x + 1 }; })()";
+    assert_eq!(result(run_mock(&Mock::new(src))), json!({ "x": 21 }));
+    let src = "Promise.resolve(1).then((v) => v + 1)";
+    assert_eq!(result(run_mock(&Mock::new(src))), json!(2));
+}
+
+#[test]
+fn a_rejected_async_script_fails_the_run() {
+    let src =
+        "(async () => { await null; throw new ScriptError('noProject', 'async failure'); })()";
+    let (code, message) = failed(run_mock(&Mock::new(src)));
+    assert_eq!(
+        (code.as_str(), message.as_str()),
+        ("no-project", "async failure")
+    );
+    let (code, message) = failed(run_mock(&Mock::new(
+        "Promise.reject(new TypeError('nope'))",
+    )));
+    assert_eq!(code, "script-error");
+    assert!(message.contains("TypeError: nope"), "{message}");
+}
+
+#[test]
+fn an_unhandled_rejection_fails_a_run_that_otherwise_finished() {
+    let src = "Promise.reject(new Error('lost')); 'done'";
+    let (code, message) = failed(run_mock(&Mock::new(src)));
+    assert_eq!(code, "script-error");
+    assert!(
+        message.contains("unhandled promise rejection: Error: lost"),
+        "{message}"
+    );
+    // A rejection that is handled is not one.
+    let src = "Promise.reject(new Error('caught')).catch(() => {}); 'done'";
+    assert_eq!(result(run_mock(&Mock::new(src))), json!("done"));
+}
+
+#[test]
+fn a_promise_that_never_settles_fails() {
+    let (code, message) = failed(run_mock(&Mock::new("new Promise(() => {})")));
+    assert_eq!(code, "script-error");
+    assert!(message.contains("never settled"), "{message}");
+}
+
+// ---- the prelude does not depend on what the script changes ------------------
+
+#[test]
+fn replaced_built_ins_do_not_change_the_api() {
+    let src = r#"
+        String.prototype.includes = () => { throw new Error("polluted includes") };
+        String.prototype.split = () => { throw new Error("polluted split") };
+        String.prototype.trim = () => { throw new Error("polluted trim") };
+        Array.prototype.map = () => { throw new Error("polluted map") };
+        Array.prototype.join = () => { throw new Error("polluted join") };
+        Array.prototype.find = () => { throw new Error("polluted find") };
+        Object.assign = () => { throw new Error("polluted assign") };
+        Array.isArray = () => false;
+        const repo = deckpilot.repositories.default();
+        const r = deckpilot.git.run(["pull", "--ff-only"], { cwd: repo });
+        let error;
+        try { repo.join("..") } catch (e) { error = e.code }
+        ({ key: repo.key, ref: repo.join("a", "b"), command: r.command, msg: ScriptError.fromResult(r).message, error })
+    "#;
+    let mock = three_repositories(src, |_| {
+        exit(1, "", "fatal: Not possible to fast-forward, aborting.\n")
+    });
+    assert_eq!(
+        result(run_mock(&mock)),
+        json!({ "key": "cms", "ref": { "repository": "cms", "relative": "a/b" }, "command": "git pull --ff-only",
+                "msg": "git pull --ff-only failed in repository \"cms\" (exit 1): fatal: Not possible to fast-forward, aborting.",
+                "error": "outsideScope" })
+    );
+}
+
+// ---- available() and grants ---------------------------------------------------
+
+#[test]
+fn available_rethrows_a_refused_grant() {
+    let src = "const out = {}; for (const t of ['git', 'docker']) { try { out[t] = deckpilot[t].available() } catch (e) { out[t] = e.code } } out";
+    let mock = Mock::with(
+        src,
+        json!({}),
+        Box::new(|_, _| refuse("not-permitted", "notGranted", "process: not granted")),
+    );
+    assert_eq!(
+        result(run_mock(&mock)),
+        json!({ "git": "notGranted", "docker": "notGranted" })
+    );
+}
+
+// ---- outcome size ---------------------------------------------------------------
+
+#[test]
+fn the_outcomes_output_is_capped() {
+    let many: Vec<runtime::Outcome> = (0..4096)
+        .map(|i| runtime::Outcome {
+            repository: format!("r{i}"),
+            ok: false,
+            error: Some(bridge::ScriptFault::new("scriptError", "e".repeat(2048))),
+        })
+        .collect();
+    let text = outcomes_json(&many);
+    assert!(text.len() <= MAX_OUTCOMES_JSON, "{}", text.len());
+    let parsed: Value = serde_json::from_str(&text).unwrap();
+    let items = parsed.as_array().unwrap();
+    assert_eq!(
+        items.last().unwrap(),
+        &json!({ "truncated": true, "total": 4096 })
+    );
+    assert!(items.len() > 10);
+    // Few outcomes are kept whole, without a marker.
+    let few = &many[..3];
+    let parsed: Value = serde_json::from_str(&outcomes_json(few)).unwrap();
+    assert_eq!(parsed.as_array().unwrap().len(), 3);
+    assert_eq!(outcomes_json(&[]), "[]");
 }

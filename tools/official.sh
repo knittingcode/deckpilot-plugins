@@ -13,6 +13,8 @@
 #                  .work/official/packages.
 # repro            two clean builds in fresh target directories; every
 #                  module and package must be byte-identical.
+# compare-crates   the crates compare builds (every member but those held
+#                  ahead of the pin), one per line.
 # compare          DeckPilot's plugins/first-party/build.sh at the pinned
 #                  commit, for every member: identical or not (informational:
 #                  the SDK's git source is hashed into the build, so modules
@@ -194,6 +196,11 @@ build() {
 # it from Ubuntu's signed archive (tools/wasm-c-toolchain.sh). Another
 # compiler builds other bytes, so a release build uses exactly this one.
 WASM_CLANG_MAJOR=19
+# Exactly that compiler: the Ubuntu 24.04 package version CI installs, and
+# the first line of its --version. When Ubuntu replaces the package, CI fails
+# closed until both are updated here (a reviewed change, like a toolchain pin).
+WASM_CLANG_APT_VERSION=1:19.1.1-1ubuntu1~24.04.2
+WASM_CLANG_VERSION_LINE="Ubuntu clang version 19.1.1 (1ubuntu1~24.04.2)"
 # The members that compile C for wasm32 (their package names).
 C_CRATES="deckpilot-scripts"
 
@@ -203,11 +210,14 @@ C_CRATES="deckpilot-scripts"
 # toolchain (component llvm-tools), deterministic by default.
 wasm_c_toolchain() {
   WASM_CC=${DECKPILOT_WASM_CC:-}
+  if [ -n "$WASM_CC" ] && [ -n "${CI:-}" ]; then
+    die "DECKPILOT_WASM_CC is for local builds only; CI builds with the pinned clang-$WASM_CLANG_MAJOR"
+  fi
   if [ -z "$WASM_CC" ]; then
     WASM_CC=$(command -v "clang-$WASM_CLANG_MAJOR" || true)
     [ -n "$WASM_CC" ] || die "no clang-$WASM_CLANG_MAJOR to compile C for wasm32 (tools/wasm-c-toolchain.sh --install; locally DECKPILOT_WASM_CC=clang)"
-    "$WASM_CC" --version | head -1 | grep -q "version $WASM_CLANG_MAJOR\." \
-      || die "$WASM_CC is not clang $WASM_CLANG_MAJOR"
+    [ "$("$WASM_CC" --version | head -1)" = "$WASM_CLANG_VERSION_LINE" ] \
+      || die "$WASM_CC is not $WASM_CLANG_VERSION_LINE (tools/official.sh WASM_CLANG_VERSION_LINE): $("$WASM_CC" --version | head -1)"
   fi
   local probe
   probe=$(mktemp -d)
@@ -342,15 +352,33 @@ repro() {
   summary "" "Two clean builds produced byte-identical modules and packages."
 }
 
+# compare_crates: the crates compare builds. Every member but those held
+# ahead of the pin: DeckPilot has no build of them to compare with, and they
+# may need the C toolchain (C_CRATES), which official-release.yml's
+# `checks` job, where compare also runs, does not install.
+compare_crates() {
+  local ahead id crate
+  ahead=" $(list --ahead | cut -d' ' -f1 | tr '\n' ' ') "
+  while read -r _ id _ crate _; do
+    [[ $ahead == *" $id "* ]] || echo "$crate"
+  done < <(list --list)
+}
+
 compare() {
   [ -x "$DECKPILOT_DIR/plugins/first-party/build.sh" ] || die "no pinned DeckPilot checkout; run tools/build-cli.sh"
   note "DeckPilot's plugins/first-party/build.sh at $DECKPILOT_COMMIT"
   "$DECKPILOT_DIR/plugins/first-party/build.sh" --test-fixtures \
     --out "$OUT/deckpilot" --target-dir "$OUT/deckpilot-target" >&2
-  [ -d "$OUT/target-guest" ] || build "$OUT/target-guest"
+  local crates=()
+  mapfile -t crates < <(compare_crates)
+  [ -d "$OUT/target-guest" ] || build "$OUT/target-guest" "${crates[@]}"
   summary "" "| Member | Here | DeckPilot build.sh | |" "| --- | --- | --- | --- |"
   local path id version crate kind ours theirs
   while read -r path id version crate kind; do
+    if [[ " ${crates[*]} " != *" $crate "* ]]; then
+      note "$id: held ahead of the pin; DeckPilot has no build of it to compare with"
+      continue
+    fi
     ours=$(sha "$(module_of "$OUT/target-guest" "$crate")")
     theirs=$OUT/deckpilot/bundled/$id/plugin.wasm
     if [ ! -f "$theirs" ]; then
@@ -906,6 +934,7 @@ case $what in
   package) package ;;
   repro) repro ;;
   compare) compare ;;
+  compare-crates) compare_crates ;;
   sign-test) sign_test ;;
   all) check; run_tests; package; repro; compare; sign_test ;;
   fetch-deckpilot) fetch_deckpilot "$DECKPILOT_DIR" ;;

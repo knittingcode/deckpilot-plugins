@@ -213,9 +213,34 @@ fn run_with(
     finish(runtime::run(session, setup))
 }
 
+/// The most bytes of the `outcomes` output (JSON). The run's reply has to
+/// fit the host's reply cap whatever the script recorded.
+pub const MAX_OUTCOMES_JSON: usize = 64 * 1024;
+
+/// The outcomes as a JSON array of at most [`MAX_OUTCOMES_JSON`] bytes: as
+/// many as fit, in order, then `{"truncated": true, "total": N}` when some
+/// were left out.
+pub fn outcomes_json(outcomes: &[runtime::Outcome]) -> String {
+    let marker = |total: usize| json!({ "truncated": true, "total": total }).to_string();
+    let mut parts: Vec<String> = Vec::new();
+    let mut bytes = 2;
+    let reserve = marker(outcomes.len()).len() + 1;
+    for (i, o) in outcomes.iter().enumerate() {
+        let item = serde_json::to_string(o).unwrap_or_else(|_| "null".into());
+        let rest_fits = i + 1 == outcomes.len() && bytes + item.len() < MAX_OUTCOMES_JSON;
+        if !rest_fits && bytes + item.len() + 1 + reserve > MAX_OUTCOMES_JSON {
+            parts.push(marker(outcomes.len()));
+            break;
+        }
+        bytes += item.len() + 1;
+        parts.push(item);
+    }
+    format!("[{}]", parts.join(","))
+}
+
 fn finish(report: Report) -> ActionResult {
     let failed: Vec<&runtime::Outcome> = report.outcomes.iter().filter(|o| !o.ok).collect();
-    let outcomes = serde_json::to_string(&report.outcomes).unwrap_or_else(|_| "[]".into());
+    let outcomes = outcomes_json(&report.outcomes);
     match report.ending {
         Ending::Failed(f) => Err(failure(f)),
         Ending::Done(_) if !failed.is_empty() => {
