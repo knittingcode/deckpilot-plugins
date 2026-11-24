@@ -195,6 +195,14 @@ test, check and package official plugins* log shows `deckpilot.scripts: held
 ahead of the pin; module … bytes, only the host ABI imported, package
 --first-party refused, as required`.
 
+`deckpilot.scripts` (`scripts/`) is one: the Scripts runtime, QuickJS-NG
+compiled into its wasm module ([its README](scripts/README.md)). Its C code
+is compiled with clang 19 from Ubuntu's archive and the pinned Rust
+toolchain's `llvm-ar` (`tools/wasm-c-toolchain.sh`, `C_CRATES` in
+`tools/official.sh`); only a build of such a member needs that toolchain.
+The dependency policy of `official/Cargo.lock` is `deny.toml` (cargo-deny,
+the *Dependency policy* job of official.yml).
+
 ## The reviewed privileged policy
 
 `official/privileged-policy.json` is a byte copy of DeckPilot's
