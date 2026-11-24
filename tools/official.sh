@@ -167,11 +167,59 @@ build() {
   local args=()
   for crate in "${crates[@]}"; do args+=(--package "$crate"); done
   local sep=$'\x1f'
+  # C code (QuickJS in deckpilot.scripts, through rquickjs-sys) is compiled
+  # by the pinned clang (wasm_c_toolchain), archived by the Rust toolchain's
+  # own llvm-ar, with no C flags from the environment and its paths mapped
+  # like the Rust ones. Only a build of such a crate needs that toolchain.
+  local c_env=() crate
+  for crate in "${crates[@]}"; do
+    case " $C_CRATES " in *" $crate "*) c_env=(c) ;; esac
+  done
+  if [ ${#c_env[@]} -gt 0 ]; then
+    wasm_c_toolchain
+    c_env=(CC_wasm32_unknown_unknown="$WASM_CC" AR_wasm32_unknown_unknown="$WASM_AR"
+      CFLAGS_wasm32_unknown_unknown="-ffile-prefix-map=$OFF=/deckpilot/plugins -ffile-prefix-map=$cargo_home=/cargo -ffile-prefix-map=$target=/target")
+  fi
   rm -rf "$target"
   (cd "$OFF" &&
     env -u RUSTFLAGS -u RUSTC_WRAPPER -u RUSTC_WORKSPACE_WRAPPER -u CARGO_BUILD_TARGET \
+      -u CFLAGS -u CPPFLAGS -u TARGET_CFLAGS -u TARGET_CC -u TARGET_AR \
+      -u CC_wasm32_unknown_unknown -u AR_wasm32_unknown_unknown -u CFLAGS_wasm32_unknown_unknown \
+      "${c_env[@]}" \
       CARGO_ENCODED_RUSTFLAGS="--remap-path-prefix=$OFF=/deckpilot/plugins${sep}--remap-path-prefix=$cargo_home=/cargo${sep}--remap-path-prefix=$checkout/=" \
       cargo build --locked "${args[@]}" --target "$WASM_TARGET" --profile guest --target-dir "$target")
+}
+
+# The clang major version that compiles C for wasm32 (QuickJS): CI installs
+# it from Ubuntu's signed archive (tools/wasm-c-toolchain.sh). Another
+# compiler builds other bytes, so a release build uses exactly this one.
+WASM_CLANG_MAJOR=19
+# The members that compile C for wasm32 (their package names).
+C_CRATES="deckpilot-scripts"
+
+# wasm_c_toolchain: WASM_CC, a clang $WASM_CLANG_MAJOR with the wasm32
+# backend (DECKPILOT_WASM_CC overrides it for local builds, which are then
+# not comparable with CI's), and WASM_AR, the llvm-ar of the pinned Rust
+# toolchain (component llvm-tools), deterministic by default.
+wasm_c_toolchain() {
+  WASM_CC=${DECKPILOT_WASM_CC:-}
+  if [ -z "$WASM_CC" ]; then
+    WASM_CC=$(command -v "clang-$WASM_CLANG_MAJOR" || true)
+    [ -n "$WASM_CC" ] || die "no clang-$WASM_CLANG_MAJOR to compile C for wasm32 (tools/wasm-c-toolchain.sh --install; locally DECKPILOT_WASM_CC=clang)"
+    "$WASM_CC" --version | head -1 | grep -q "version $WASM_CLANG_MAJOR\." \
+      || die "$WASM_CC is not clang $WASM_CLANG_MAJOR"
+  fi
+  local probe
+  probe=$(mktemp -d)
+  printf 'int f(void){return 0;}\n' >"$probe/p.c"
+  "$WASM_CC" --target=wasm32-unknown-unknown -c "$probe/p.c" -o "$probe/p.o" 2>/dev/null \
+    || { rm -rf "$probe"; die "$WASM_CC cannot compile for wasm32-unknown-unknown"; }
+  rm -rf "$probe"
+  local sysroot host
+  sysroot=$(cd "$REPO_ROOT" && rustc --print sysroot)
+  host=$(cd "$REPO_ROOT" && rustc -vV | sed -n 's/^host: //p')
+  WASM_AR=$sysroot/lib/rustlib/$host/bin/llvm-ar
+  [ -x "$WASM_AR" ] || die "no llvm-ar in the pinned Rust toolchain: rustup component add llvm-tools"
 }
 
 module_of() { echo "$1/$WASM_TARGET/guest/${2//-/_}.wasm"; }

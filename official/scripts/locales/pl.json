@@ -1,0 +1,22 @@
+{
+  "plugin": {
+    "name": "Skrypty",
+    "description": "Pisz JavaScript działający na repozytoriach projektu i uruchamiaj go z klawiszy, gestów, Multi Actions i przepływów. Każdy skrypt działa w piaskownicy i może robić tylko to, na co mu pozwolisz."
+  },
+  "permissions": {
+    "scripts": "Uruchamia Twoje skrypty w piaskownicy. Skrypt ma dostęp do plików, programów lub powłoki wyłącznie przez uprawnienia nadane temu skryptowi na jego karcie Uprawnienia; nowy lub zaimportowany skrypt nie ma żadnych.",
+    "hostViews": "Pokazuje ekran Skrypty DeckPilota i jego pozycję w nawigacji."
+  },
+  "navigation": { "scripts": "Skrypty" },
+  "category": "Skrypty",
+  "actions": {
+    "run": { "name": "Uruchom skrypt", "description": "Uruchamia jeden z zapisanych skryptów." },
+    "check": { "name": "Sprawdź skrypt", "description": "Sprawdza skrypt pod kątem błędów składni bez uruchamiania go." }
+  },
+  "params": {
+    "script": { "label": "Skrypt", "description": "Zapisany skrypt do uruchomienia." },
+    "inputs": { "label": "Dane wejściowe", "description": "Opcjonalny JSON, który skrypt odczytuje jako deckpilot.run.inputs." },
+    "source": { "label": "Źródło", "description": "Kod JavaScript do sprawdzenia." }
+  },
+  "outputs": { "result": "Wynik", "outcomes": "Wyniki repozytoriów" }
+}

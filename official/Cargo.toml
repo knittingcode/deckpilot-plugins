@@ -17,6 +17,7 @@ members = [
     "jira",
     "notifications",
     "projects",
+    "scripts",
     "test-fixtures/example-default",
     "workflows",
     "workspace",
@@ -35,6 +36,7 @@ publish = false
 # plugins/first-party/support).
 deckpilot-plugin-sdk = { git = "https://github.com/knittingcode/deckpilot", rev = "8dc27d5a52d0fd9407644fc9562840f458063373" }
 deckpilot-plugin-abi = { git = "https://github.com/knittingcode/deckpilot", rev = "8dc27d5a52d0fd9407644fc9562840f458063373" }
+deckpilot-plugin-guest = { git = "https://github.com/knittingcode/deckpilot", rev = "8dc27d5a52d0fd9407644fc9562840f458063373" }
 deckpilot-first-party-support = { git = "https://github.com/knittingcode/deckpilot", rev = "8dc27d5a52d0fd9407644fc9562840f458063373" }
 # The versions of DeckPilot's plugins/runtime workspace.
 serde = { version = "1.0.229", features = ["derive"] }

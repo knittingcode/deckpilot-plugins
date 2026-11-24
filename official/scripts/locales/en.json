@@ -1,0 +1,22 @@
+{
+  "plugin": {
+    "name": "Scripts",
+    "description": "Write JavaScript that works across your project's repositories, and run it from keys, gestures, Multi Actions and workflows. Each script runs in a sandbox and can do only what you granted it."
+  },
+  "permissions": {
+    "scripts": "Runs your scripts in a sandbox. A script reaches files, programs or a shell only through the permissions you grant that script on its Permissions tab; a new or imported script has none.",
+    "hostViews": "Shows DeckPilot's own Scripts screen and its entry in the navigation."
+  },
+  "navigation": { "scripts": "Scripts" },
+  "category": "Scripts",
+  "actions": {
+    "run": { "name": "Run script", "description": "Runs one of your saved scripts." },
+    "check": { "name": "Check script", "description": "Checks a script for syntax errors without running it." }
+  },
+  "params": {
+    "script": { "label": "Script", "description": "The saved script to run." },
+    "inputs": { "label": "Inputs", "description": "Optional JSON the script reads as deckpilot.run.inputs." },
+    "source": { "label": "Source", "description": "The JavaScript to check." }
+  },
+  "outputs": { "result": "Result", "outcomes": "Repository outcomes" }
+}
