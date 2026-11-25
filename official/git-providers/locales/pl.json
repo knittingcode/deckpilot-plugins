@@ -144,8 +144,12 @@
     "capability-unsupported": "Ten serwer lub dostawca tego nie potrafi.",
     "needs-confirmation": "Ta akcja najpierw pyta, więc nie działa bez nadzoru.",
     "url-not-allowed": "Można otwierać tylko strony serwera połączenia.",
-    "timed-out": "Potok nie zakończył się na czas.",
-    "cancelled": "Anulowano."
+    "timed-out": "Minął limit czasu: potok się nie zakończył albo serwer nie odpowiedział na czas.",
+    "cancelled": "Anulowano.",
+    "invalid-api-url": "Adres połączenia nie jest adresem https API GitHub ani GitLab (starsze akcje).",
+    "invalid-project": "Projekt nie ma postaci grupa/projekt ani nie jest numerem (starsze akcje GitLab).",
+    "github-error": "Inny kod błędu od GitHub (starsze akcje GitHub).",
+    "gitlab-error": "Inny kod błędu od GitLab (starsze akcje GitLab)."
   },
   "plugin": {
     "name": "Platformy Git",

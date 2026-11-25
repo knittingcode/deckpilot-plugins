@@ -148,6 +148,7 @@ name = "deckpilot-git-providers"
 version = "0.1.0"
 dependencies = [
  "deckpilot-first-party-support",
+ "deckpilot-plugin-abi",
  "deckpilot-plugin-guest",
  "deckpilot-plugin-sdk",
  "serde",

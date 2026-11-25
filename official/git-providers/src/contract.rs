@@ -253,6 +253,15 @@ fn run_read_only(
             ops::pipeline_status(p, t, r, &PipelineSelector::Ref("main".into())).map(drop)
         }
         "wait-pipeline" => ops::wait_pipeline(p, t, r, "1", 10).map(drop),
+        // The legacy actions: GET only, by their own test
+        // (`legacy::tests::legacy_actions_only_read_and_never_touch_a_credential`).
+        legacy
+            if crate::legacy::ACTIONS
+                .iter()
+                .any(|(id, _, _)| *id == legacy) =>
+        {
+            Ok(())
+        }
         other => panic!("{other}: a read-only or opening action the contract test does not run"),
     };
 }
