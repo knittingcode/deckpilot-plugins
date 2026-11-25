@@ -90,6 +90,14 @@
     "name": {
       "name": "Nazwa projektu",
       "description": "Nazwa projektu w kontekście"
+    },
+    "repositories": {
+      "name": "Repozytoria projektu",
+      "description": "Wszystkie repozytoria projektu w kontekście, według klucza"
+    },
+    "repository": {
+      "name": "Domyślne repozytorium",
+      "description": "Domyślne repozytorium projektu w kontekście"
     }
   },
   "navigation": {

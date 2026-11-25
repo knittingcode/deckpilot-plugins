@@ -31,13 +31,13 @@
     {
       "id": "deckpilot.projects",
       "path": "projects",
-      "version": "0.1.1",
+      "version": "0.2.0",
       "files": {
-        "Cargo.toml": "9c7a1a6851350fd3cd00fe768acfb0d19857775765641e5721e1c29080f71ee1",
-        "manifest.json": "6e480f09caa3e9fea385c004d82ad54ada37f2c52e7ba6464f474351fba1df53",
-        "src/contract.rs": "15c6fd6b02a4f2f47ae9200ad324941b6976e1839c0831232c580286ce95b7ec",
+        "Cargo.toml": "3009d227071fa63fe965e57feba947081af519d7c0a5346f0296e18b77bfb221",
+        "manifest.json": "30b4feafe7cafd59bc8c10ea566e820f0cdbbe09cac030e0934a48f9f4c18668",
+        "src/contract.rs": "886a997b737366687e2a548975eb8fa142ce869233a1da33f3475ee5a030f5d0",
         "src/lib.rs": "ef2d3f72ff2964beece5b911b36a00fb8634a7379fade3aee344e3229c01b80e",
-        "src/tests.rs": "32c2442729e036315260f66a94b64de698715a577532bb8721b560a2b358240c"
+        "src/tests.rs": "4fcb7e7efe465816073858b4f9e9c0cf99f3007d1b6d2245bf20268cc45c3c21"
       }
     },
     {

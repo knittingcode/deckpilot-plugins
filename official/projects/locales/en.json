@@ -90,6 +90,14 @@
     "name": {
       "name": "Project name",
       "description": "Name of the project in the context"
+    },
+    "repositories": {
+      "name": "Repositories of the project",
+      "description": "Every repository of the project in the context, by key"
+    },
+    "repository": {
+      "name": "Default repository",
+      "description": "Default repository of the project in the context"
     }
   },
   "navigation": {

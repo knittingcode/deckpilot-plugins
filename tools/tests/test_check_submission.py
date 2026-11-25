@@ -48,7 +48,8 @@ OFFICIAL_MARKETPLACE = ("deckpilot.github", "deckpilot.gitlab", "deckpilot.jira"
 BUNDLED_ONLY = ("deckpilot.docker", "deckpilot.git", "deckpilot.projects", "deckpilot.workflows", "deckpilot.workspace",
                 "deckpilot.git-providers", "deckpilot.scripts")
 # Held ahead of the pin (tools/check-official.py AHEAD_OF_PIN): bundled-only.
-AHEAD = ("deckpilot.git-providers", "deckpilot.scripts")
+# deckpilot.projects is bundled as well (its 0.2.0 needs plugin API 1.12).
+AHEAD = ("deckpilot.git-providers", "deckpilot.projects", "deckpilot.scripts")
 
 
 def deckpilot_list(source_rs, name):

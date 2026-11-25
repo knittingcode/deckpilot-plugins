@@ -51,8 +51,9 @@ neither cargo nor the manifest schema does:
   the module of the release DeckPilot bundles,
   plugins/first-party/contracts/<id>/ (DeckPilot no longer has the
   sources): the same manifest but for `version` (never older than the
-  contract's) and `repository`, the same locales and assets. A plugin
-  without a contract there fails: the comparison is never skipped.
+  contract's) and `repository`, the same locales and assets (a plugin held
+  ahead of the pin: below). A plugin without a contract there fails: the
+  comparison is never skipped.
 
 * The reviewed code of the privileged plugins (official/reviewed-sources.json,
   REVIEWED_SOURCES): for every plugin of official/privileged-policy.json,
@@ -68,20 +69,37 @@ neither cargo nor the manifest schema does:
 * Ahead of the pin (AHEAD_OF_PIN, fixed here, per id): a plugin whose
   manifest needs a plugin API the pinned DeckPilot does not have yet, with
   the new permission kinds of that API it may declare (deckpilot.scripts:
-  1.13, `scripts`; deckpilot.git-providers: 1.14, `connections`). Its
-  plugins.json entry must be `held` and carry `hostApi`, exactly its
-  AHEAD_OF_PIN level, and only while the pinned plugin API is lower (a pin
-  that reaches it fails until `hostApi` is removed, and the plugin is then
-  checked like any other). For it alone: it need not be one DeckPilot
-  bundles yet, engines.pluginApi must be exactly `^<hostApi>`
-  (engines.deckpilot is not compared with the pinned version), it is held
-  without a plugin API 1.9 privileged usage, and it has no contract at the
-  pin yet (one that exists is compared). Everything else applies; and the
+  1.13, `scripts`; deckpilot.git-providers: 1.14, `connections`;
+  deckpilot.projects: 1.12, none). Its plugins.json entry must be `held`
+  and carry `hostApi`, exactly its AHEAD_OF_PIN level, and only while the
+  pinned plugin API is lower (a pin that reaches it fails until `hostApi`
+  is removed, and the plugin is then checked like any other). For it
+  alone: it need not be one DeckPilot bundles yet, engines.pluginApi must
+  be exactly `^<hostApi>` (engines.deckpilot is not compared with the
+  pinned version), and it is held without a plugin API 1.9 privileged
+  usage. A plugin DeckPilot does not bundle yet may have no contract at
+  the pin; a contract that exists, and always that of a bundled plugin, is
+  compared with only the additions of that API level allowed
+  (compare_contract with `ahead_api`): `version` newer, `engines` free,
+  `contributes.variables` the contract's list unchanged and in order, then
+  only variables of a host source of exactly that level (HOST_SOURCES:
+  DeckPilot's VariableHostSource, its value type, scope `project`), the
+  locales the same files with every text of the contract unchanged plus
+  only the texts those variables name; every other field, `assets/` and
+  LICENSE equal. Everything else applies (the permission set, the reviewed
+  sources, and the privileged policy, which is the pin's: a privileged
+  plugin held ahead is not compared with its entry, being held); and the
   kinds of AHEAD_OF_PIN are refused in every manifest but their own
   plugin's while it is held ahead. It is `held` in --list, so it is never
   packaged, signed, released or given a Marketplace entry; official.sh
   requires the pinned packager to refuse it and its module to import only
-  the host ABI, within the package's module cap.
+  the host ABI, within the package's module cap. deckpilot.projects 0.2.0
+  (the typed repository variables) is the released, privileged case: while
+  it is held, no 0.1.x patch of it is released either. Its release (P8,
+  P9) removes `hostApi` and `held` once the pinned DeckPilot has plugin API
+  1.12, its 0.2.0 contract and the privileged policy entry of 0.2.0 (both
+  repositories, the two new host sources as constructs), with a release
+  tag the owner authorizes.
 
 --list prints `<path> <id> <version> <package> <kind>` per member, kind
 `plugin`, `held` (a plugin marked held) or `fixture`. Without --list, each
@@ -127,7 +145,22 @@ PRIVILEGED_GATE_OPEN = True
 # a change of this checker, reviewed as tooling.
 AHEAD_OF_PIN = {
     "deckpilot.git-providers": {"api": "1.14", "kinds": ["connections"]},
+    # Released and privileged: its contract at the pin is compared, and only
+    # the additions of 1.12 (AHEAD_ADDITIONS) may differ.
+    "deckpilot.projects": {"api": "1.12", "kinds": []},
     "deckpilot.scripts": {"api": "1.13", "kinds": ["scripts"]},
+}
+# The variable host sources (DeckPilot's VariableHostSource): the plugin API
+# level that introduced each (`api()`) and the value type it takes
+# (`value_type()`, exactly). The additions a plugin held ahead of the pin
+# may make to the contract of its release are the variables of the sources
+# of exactly its level, appended (compare_contract).
+HOST_SOURCES = {
+    "host:project.id": ("1.9", {"type": "string"}),
+    "host:project.key": ("1.9", {"type": "string"}),
+    "host:project.name": ("1.9", {"type": "string"}),
+    "host:project.repositories": ("1.12", {"type": "map", "of": "repository"}),
+    "host:project.repository": ("1.12", {"type": "object", "shape": "repository"}),
 }
 # Every such kind: refused in a manifest that is not its plugin, held ahead.
 AHEAD_ONLY_KINDS = frozenset(k for e in AHEAD_OF_PIN.values() for k in e["kinds"])
@@ -687,11 +720,14 @@ def main():
             theirs = args.deckpilot / "plugins/first-party/test-fixtures" / Path(path).name
             compare_tree(where, directory, theirs)
         if kind != "fixture" and args.deckpilot:
-            if ahead and not (args.deckpilot / CONTRACTS / mid / "manifest.json").is_file():
+            # Only a plugin DeckPilot does not bundle yet may lack a contract;
+            # a released one (deckpilot.projects) is always compared.
+            if ahead and mid not in BUNDLED_PLUGIN_IDS and not (args.deckpilot / CONTRACTS / mid / "manifest.json").is_file():
                 print(f"{where}: held ahead of the pin (plugin API {host_api}); the pinned DeckPilot has no "
                       "contract for it yet", file=sys.stderr)
             else:
-                compare_contract(where, directory, manifest, args.deckpilot / CONTRACTS / mid)
+                compare_contract(where, directory, manifest, args.deckpilot / CONTRACTS / mid,
+                                 ahead_api=host_api if ahead else None)
         rows.append((path, mid, manifest.get("version", ""), package, kind))
 
     if args.release is not None:
@@ -723,8 +759,92 @@ MOVED_FIELDS = ("version", "repository")
 CONTRACTS = Path("plugins/first-party/contracts")
 
 
-def compare_contract(where, ours, manifest, theirs):
-    """A moved plugin keeps the contract of the release DeckPilot bundles."""
+def flat_strings(doc, prefix=""):
+    """A locale file as {dotted key: value}, objects walked."""
+    out = {}
+    if isinstance(doc, dict):
+        for k, v in doc.items():
+            out.update(flat_strings(v, f"{prefix}.{k}" if prefix else k))
+    else:
+        out[prefix] = doc
+    return out
+
+
+def ahead_additions(where, manifest, original, api):
+    """What a plugin held ahead of the pin at `api` adds to the contract of
+    its release: `contributes.variables` must be the contract's list,
+    unchanged and in order, then only variables of a host source of exactly
+    that level (with its value type, scope `project`). Returns the locale
+    keys those variables name (`t:`), the only keys the locales may add;
+    every other difference is a problem."""
+    contributes = manifest.get("contributes") if isinstance(manifest.get("contributes"), dict) else {}
+    theirs = original.get("contributes") if isinstance(original.get("contributes"), dict) else {}
+    for key in sorted(set(contributes) | set(theirs)):
+        if key != "variables" and not strict_equal(contributes.get(key), theirs.get(key)):
+            problem(f"{where}/manifest.json: `contributes.{key}` differs from DeckPilot's contract at the "
+                    f"pinned commit; held ahead of the pin (plugin API {api}), it may only append variables "
+                    f"of the host sources of {api}")
+    ours_vars = contributes.get("variables") or []
+    base = theirs.get("variables") or []
+    if not isinstance(ours_vars, list) or not isinstance(base, list) or len(ours_vars) < len(base) \
+            or not strict_equal(ours_vars[:len(base)], base):
+        problem(f"{where}/manifest.json: `contributes.variables` does not begin with DeckPilot's contract "
+                "unchanged and in order; a variable of the release is never changed, removed or moved")
+        return set()
+    keys = set()
+    for i, v in enumerate(ours_vars[len(base):], start=len(base)):
+        at = f"{where}/manifest.json: contributes.variables[{i}]"
+        source = v.get("source") if isinstance(v, dict) else None
+        level, value_type = HOST_SOURCES.get(source, (None, None))
+        if level != api:
+            problem(f"{at}: appended without a host source of plugin API {api} (it has {source!r}); held "
+                    f"ahead of the pin, only the variables of {api}'s host sources may be added")
+            continue
+        if not strict_equal(v.get("valueType"), value_type):
+            problem(f"{at}: `{source}` takes exactly the value type {json.dumps(value_type)}")
+        if v.get("scope") != "project":
+            problem(f"{at}: `{source}` is a project value: its scope is `project`")
+        for field in ("name", "description"):
+            text = v.get(field)
+            if isinstance(text, str) and text.startswith("t:"):
+                keys.add(text[2:])
+    return keys
+
+
+def compare_ahead_locales(where, ours, theirs, added):
+    """The locales of a plugin held ahead of the pin: the same files as the
+    contract; every key of the contract with the same value; new keys only
+    those its added variables name."""
+    def names(base):
+        return sorted(p.name for p in base.iterdir() if p.is_file()) if base.is_dir() else []
+    a, b = names(ours / "locales"), names(theirs / "locales")
+    if a != b:
+        problem(f"{where}/locales: files differ from DeckPilot's: {sorted(set(a) ^ set(b))}")
+        return
+    for name in a:
+        mine, original = load(ours / "locales" / name), load(theirs / "locales" / name)
+        if mine is None or original is None:
+            continue
+        mine, original = flat_strings(mine), flat_strings(original)
+        for key in sorted(original):
+            if key not in mine or not strict_equal(mine[key], original[key]):
+                problem(f"{where}/locales/{name}: `{key}` differs from DeckPilot's at the pinned commit (an "
+                        "existing text is never changed or removed)")
+        for key in sorted(set(mine) - set(original)):
+            if key not in added:
+                problem(f"{where}/locales/{name}: `{key}` is added, but no appended variable names it; held "
+                        "ahead of the pin, the locales only add the texts of the added variables")
+        for key in sorted(added - set(mine)):
+            problem(f"{where}/locales/{name}: `{key}`, a text of an appended variable, is missing")
+
+
+def compare_contract(where, ours, manifest, theirs, ahead_api=None):
+    """A moved plugin keeps the contract of the release DeckPilot bundles.
+
+    `ahead_api` (a plugin held ahead of the pin at that level whose release
+    DeckPilot bundles): `engines` may differ, `version` must be newer, and
+    the only other differences are the additions of that API level
+    (ahead_additions, compare_ahead_locales)."""
     if not (theirs / "manifest.json").is_file():
         problem(f"{where}: the pinned DeckPilot has no contract {CONTRACTS}/{theirs.name}/manifest.json; "
                 "every official plugin is compared with the release DeckPilot bundles")
@@ -736,15 +856,22 @@ def compare_contract(where, ours, manifest, theirs):
     if ours_v is None or theirs_v is None or ours_v < theirs_v:
         problem(f"{where}/manifest.json: version {manifest.get('version')} is older than DeckPilot's contract "
                 f"{original.get('version')} (the bundled release); a source here is that release or a newer one")
+    elif ahead_api is not None and ours_v == theirs_v:
+        problem(f"{where}/manifest.json: version {manifest.get('version')} is DeckPilot's contract's; held ahead "
+                f"of the pin (plugin API {ahead_api}), it is a newer version")
+    moved = MOVED_FIELDS if ahead_api is None else (*MOVED_FIELDS, "engines", "contributes")
     for key in sorted(set(manifest) | set(original)):
-        if key not in MOVED_FIELDS and manifest.get(key) != original.get(key):
+        if key not in moved and manifest.get(key) != original.get(key):
             problem(f"{where}/manifest.json: `{key}` differs from DeckPilot's {theirs.name} at the pinned "
                     "commit; ids, actions, settings, permissions and views are its contract")
+    added = ahead_additions(where, manifest, original, ahead_api) if ahead_api is not None else set()
+    if ahead_api is not None:
+        compare_ahead_locales(where, ours, theirs, added)
 
     def files(base):
         return sorted(str(p.relative_to(base)) for p in base.rglob("*") if p.is_file()) if base.is_dir() else []
 
-    for sub in ("locales", "assets"):
+    for sub in ("locales", "assets") if ahead_api is None else ("assets",):
         a, b = ours / sub, theirs / sub
         if files(a) != files(b):
             problem(f"{where}/{sub}: files differ from DeckPilot's: {sorted(set(files(a)) ^ set(files(b)))}")
