@@ -16,7 +16,7 @@ use crate::tests::{failed, result, run_mock};
 /// A file the mock serves by offset and length, as the agent would; `edit`
 /// may change it between chunks (it gets the chunk's index). Like the
 /// agent, it gives each state of the file its own version, answers it
-/// with every chunk (but a first chunk that is the whole file), and
+/// with every reply before the end (none on the one that reaches it), and
 /// refuses a later chunk whose `ifVersion` is not
 /// the file's current one with `fileChanged` (the host's
 /// `read_handle`).
@@ -62,8 +62,9 @@ fn serving(source: &str, file: Vec<u8>, edit: impl FnMut(usize, &mut Vec<u8>) + 
                     "size": f.len(),
                     "eof": end == f.len(),
                 });
-                // No version when the first chunk is the whole file.
-                if !(offset == 0 && end == f.len()) {
+                // The host's form: a version on every reply before the
+                // end, none on the one that reaches it.
+                if end < f.len() {
                     reply["version"] = json!(version);
                 }
                 ok(reply)
@@ -465,8 +466,9 @@ fn a_missing_version_before_the_end_or_a_malformed_one_is_an_invalid_response() 
         );
         assert_eq!(result(run_mock(&mock)), json!(base64::encoded_len(1000)));
     }
-    // The last chunk (it reaches the end) may omit it too; the earlier
-    // ones named it, and every later request carried it.
+    // The host's own form: the last chunk (it reaches the end) has no
+    // version; the earlier ones named it, and every later request
+    // carried it.
     let mock = versioned(
         "deckpilot.fs.readFile('/w/a', { encoding: 'base64' }).length",
         1_100_000,

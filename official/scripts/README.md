@@ -114,16 +114,19 @@ at most 64 KiB (`MAX_HOST_CALL_REQUEST`) and a reply at most 1 MiB
 chunks:
 
 - `readFile` is a loop of `fs.readFile`, 512 KiB at a time, under the
-  **version contract** (deckpilot #481, under review; fixture version 2):
-  - a reply names the read's `version` (1 to 64 printable ASCII bytes;
-    the agent's are 32 hex digits), except when the first chunk already
-    reaches the end (a file read in one chunk). The first reply's
-    `version` and `size` are the read's;
-  - every later chunk sends that version back as `ifVersion`, exactly as
-    the fixture's later chunk shows. The agent serves the later chunks
-    from the state of the file the first chunk saw, and refuses with
-    `fileChanged` when the file was replaced, or its size or
-    modification time changed, in between;
+  **version contract** (deckpilot #481, fixture version 2):
+  - every reply before the end names the read's `version` (1 to 64
+    printable ASCII bytes; the agent's are 32 hex digits); the reply that
+    reaches the end has none, so a file read in one chunk has none at
+    all. The first reply's `version` and `size` are the read's;
+  - every chunk at an offset above 0 sends that version back as
+    `ifVersion`, exactly as the fixture's later chunk shows. The agent
+    takes the whole file into one snapshot on the first chunk (checking
+    it before and after) and serves the later chunks from it, refusing
+    with `fileChanged` when the file was replaced, or its size or
+    modification time changed. A rewrite during the first chunk's own
+    read that keeps both the size and the modification time is the one
+    change the agent cannot see;
   - the guest checks too: a later reply with another `version` or
     `size`, a chunk longer than asked or past that size, or `eof`
     anywhere but exactly at the end, fails the read with `fileChanged`.
@@ -171,13 +174,11 @@ clock.
 **The shared fixture.** `tests/fixtures/script-requests.json` is a
 byte-for-byte copy of DeckPilot's
 `plugins/runtime/crates/abi/tests/fixtures/script-requests.json`
-(knittingcode/deckpilot #465 at
-`2fc870dad2e6438413a200c751f142134cae7517`, sha256
-`e2e12b2ec6db4e207114f9134f0fe3f3c885429d7025d30db45f5c8842becfe4`, which
+(version 2: knittingcode/deckpilot #481 at
+`33957b3f325fb1f345871fadd6ac56cb47176262`, sha256
+`e09772aa197beb668fd8aa0d33db8daf3dc8a4bab7bddfe52019264e5dd55d30`, which
 a test holds), the one contract of both repositories: never edit it
-here. Version 2 (deckpilot #481) replaces it once approved; until then a
-later chunk is compared with the version 1 entries without its
-`ifVersion`. Its `valid` requests are what the host
+here. Its `valid` requests are what the host
 parses and serializes back unchanged, its `invalid` ones what it refuses.
 `src/tests_fixture.rs` drives the prelude and the marshallers against the
 mock bridge (answered from `tests/fixtures/bridge-replies.json`) and holds
@@ -273,10 +274,12 @@ this manifest follows it before P9.
   Removing `held` without that record is not allowed (the `held` reason in
   `official/plugins.json` says so).
 - The privileged policy entry, the contract at the pin, `PLUGIN_API` 1.13
-  (P8), and the security review sign-off. The version contract of chunked
-  reads must ship with the agent at the pin: this guest refuses a read
-  whose replies name no version (deckpilot #481 is a draft today), so the
-  shared fixture copied here must be the one of the DeckPilot it pins.
+  (P8), and the security review sign-off.
+- **The version contract ships in the same release as the host's.** This
+  guest refuses a read whose replies before the end name no version
+  (`invalidResponse`), so it must be released together with the
+  DeckPilot that carries deckpilot #481, and the shared fixture copied
+  here must be that DeckPilot's.
 
 ## S1, the spike
 

@@ -1,6 +1,6 @@
 {
   "about": "Every request of the Scripts host bridge (plugin API 1.13), in the canonical form the deckpilot.scripts guest sends. Shared by knittingcode/deckpilot (plugins/runtime/crates/abi) and knittingcode/deckpilot-plugins (official/scripts): both parse every `valid` request, check that it serializes back to the same JSON, and refuse every `invalid` one. Change both repositories together.",
-  "version": 1,
+  "version": 2,
   "valid": [
     {
       "op": "script.load",
@@ -144,8 +144,25 @@
           },
           "encoding": "base64",
           "maxBytes": 4194304,
-          "offset": 524288,
+          "offset": 0,
           "length": 524288
+        }
+      }
+    },
+    {
+      "op": "fs.readFile",
+      "request": {
+        "op": "fs.readFile",
+        "args": {
+          "path": {
+            "repository": "cms",
+            "relative": "logo.png"
+          },
+          "encoding": "base64",
+          "maxBytes": 4194304,
+          "offset": 524288,
+          "length": 524288,
+          "ifVersion": "0123456789abcdef0123456789abcdef"
         }
       }
     },
@@ -1051,6 +1068,35 @@
           },
           "encoding": "utf8",
           "offset": 0
+        }
+      }
+    },
+    {
+      "why": "a later chunk without its version",
+      "request": {
+        "op": "fs.readFile",
+        "args": {
+          "path": {
+            "path": "/tmp/a"
+          },
+          "encoding": "utf8",
+          "offset": 10,
+          "length": 10
+        }
+      }
+    },
+    {
+      "why": "a version with a space",
+      "request": {
+        "op": "fs.readFile",
+        "args": {
+          "path": {
+            "path": "/tmp/a"
+          },
+          "encoding": "utf8",
+          "offset": 0,
+          "length": 10,
+          "ifVersion": "a b"
         }
       }
     }

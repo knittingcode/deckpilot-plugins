@@ -12,11 +12,11 @@
 //!
 //! * `readFile` is a loop of `fs.readFile {path, encoding: "base64",
 //!   maxBytes, offset, length}` (at most [`READ_CHUNK`] bytes each),
-//!   answered with `{content, bytes, size, eof, version?}`. `version` is
-//!   absent only when the first chunk already reaches the end. Every chunk
-//!   after the first sends the first reply's `version` back as
-//!   `ifVersion`, and the agent serves it from the state of the file the
-//!   first chunk saw, refusing with `fileChanged` when the file was
+//!   answered with `{content, bytes, size, eof, version?}`. Every reply
+//!   before the end has the read's `version`; the one that reaches it has
+//!   none (so a file read in one chunk has none at all). Every chunk after
+//!   the first sends the version back as `ifVersion`, and the agent
+//!   serves it from the snapshot the first chunk took, refusing with `fileChanged` when the file was
 //!   replaced, or its size or modification time changed, in between. The guest checks too: every reply names the same version
 //!   and the same size, or the read fails with `fileChanged`. So a script
 //!   gets the bytes of one version of the file, or `fileChanged`; never a
@@ -372,8 +372,9 @@ struct ReadReply {
     bytes: Option<u64>,
     size: u64,
     eof: bool,
-    /// Absent when the first chunk already reaches the end; otherwise a
-    /// string (anything else is `invalidResponse`).
+    /// On every reply before the end; the host's omits it on the one
+    /// that reaches the end. A string (anything else is
+    /// `invalidResponse`).
     #[serde(default)]
     version: Option<Value>,
 }
@@ -445,8 +446,8 @@ fn malformed(op: &str) -> ScriptFault {
 /// first reply's `version` and `size` are the read's; every later chunk
 /// names that version (`ifVersion`), and the agent refuses it with
 /// `fileChanged` when the file was replaced or rewritten meanwhile. Only
-/// a reply that reaches the end may omit the version (a file read in one
-/// chunk); one before the end without it, or a malformed version, is
+/// a reply that reaches the end may omit the version (the host always
+/// does there); one before the end without it, or a malformed version, is
 /// `invalidResponse` and nothing more is sent. A reply with another
 /// version or size, a chunk that runs past the size or is
 /// longer than asked, or `eof` anywhere but exactly at the end, means the

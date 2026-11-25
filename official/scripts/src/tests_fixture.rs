@@ -1,18 +1,12 @@
 //! The shared request fixture: `tests/fixtures/script-requests.json` is a
 //! byte-for-byte copy of DeckPilot's
 //! `plugins/runtime/crates/abi/tests/fixtures/script-requests.json`
-//! (knittingcode/deckpilot PR #465, commit
-//! 2fc870dad2e6438413a200c751f142134cae7517, sha256
-//! e2e12b2ec6db4e207114f9134f0fe3f3c885429d7025d30db45f5c8842becfe4,
+//! (version 2: knittingcode/deckpilot PR #481, commit
+//! 33957b3f325fb1f345871fadd6ac56cb47176262, sha256
+//! e09772aa197beb668fd8aa0d33db8daf3dc8a4bab7bddfe52019264e5dd55d30,
 //! held by [`the_shared_fixture_is_the_recorded_copy`]). It is the one
 //! contract of the two repositories: never edit it here; change it in
 //! DeckPilot and copy it again.
-//!
-//! **Until version 2 lands** (deckpilot #481, under review): the guest
-//! already sends `ifVersion` on every later chunk of a read, which the
-//! version 1 copy has no entry for. Against version 1 only, a later
-//! chunk is compared without its `ifVersion` ([`as_of_fixture`]); the
-//! tests still hold that every later chunk carries a valid one.
 //!
 //! * **Its `valid` requests.** Each driver below runs a script through the
 //!   real prelude and marshallers against the mock bridge, answered with
@@ -47,25 +41,10 @@ use crate::mock::Mock;
 /// The script id of every driver's run (the fixture's `script.load`).
 const SCRIPT: &str = "6f1c2a8e-4b1d-4c2e-9a77-0d5b1e3f9c10";
 
-/// The copy's source and digest: DeckPilot #465 at this commit.
-const FIXTURE_COMMIT: &str = "2fc870dad2e6438413a200c751f142134cae7517";
-const FIXTURE_SHA256: &str = "e2e12b2ec6db4e207114f9134f0fe3f3c885429d7025d30db45f5c8842becfe4";
-const FIXTURE_VERSION: u64 = 1;
-
-/// A request as the copied fixture's version states it: against version
-/// 1, which predates read versions, a later chunk without `ifVersion`
-/// (the guest's own check of it is separate). Version 2 compares the
-/// bytes as sent.
-fn as_of_fixture(request: &str) -> String {
-    let mut v: Value = serde_json::from_str(request).unwrap();
-    if FIXTURE_VERSION == 1
-        && v["op"] == "fs.readFile"
-        && let Some(args) = v["args"].as_object_mut()
-    {
-        args.remove("ifVersion");
-    }
-    canonical(&v)
-}
+/// The copy's source and digest: DeckPilot #481 at this commit.
+const FIXTURE_COMMIT: &str = "33957b3f325fb1f345871fadd6ac56cb47176262";
+const FIXTURE_SHA256: &str = "e09772aa197beb668fd8aa0d33db8daf3dc8a4bab7bddfe52019264e5dd55d30";
+const FIXTURE_VERSION: u64 = 2;
 
 /// The version the drivers' agent gives a read (the fixture's own).
 const READ_VERSION: &str = "0123456789abcdef0123456789abcdef";
@@ -261,7 +240,13 @@ fn emitted(replies: &Value, driver: &Driver) -> Vec<String> {
                 if offset > 0 {
                     assert_eq!(args["ifVersion"], READ_VERSION, "{args}");
                 }
-                return json!({ "ok": { "content": base64::encode(&bytes[offset..end]), "bytes": end - offset, "size": n, "eof": end == n, "version": READ_VERSION } });
+                // The host's form: a version on every reply before the
+                // end, none on the one that reaches it.
+                let mut reply = json!({ "content": base64::encode(&bytes[offset..end]), "bytes": end - offset, "size": n, "eof": end == n });
+                if end < n {
+                    reply["version"] = json!(READ_VERSION);
+                }
+                return json!({ "ok": reply });
             }
             let mut calls = calls.borrow_mut();
             let k = calls.entry(op.to_owned()).or_default();
@@ -315,7 +300,7 @@ fn every_request_the_guest_emits_is_a_valid_one_of_the_shared_fixture() {
             driver.name
         );
         for raw in &got {
-            let request = &as_of_fixture(raw);
+            let request = raw;
             if valid.contains(request) {
                 sent.insert(request.clone());
             } else {
