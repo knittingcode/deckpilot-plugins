@@ -64,9 +64,51 @@ with its fuel, epoch and memory limits.
 | `src/prelude.js` | the `deckpilot` object (§4.4): paths and repositories, the confirmation round, processes, `forEachRepository`, errors naming the repository and command |
 | `src/bridge.rs` | the wire envelope, the per-run budget, the `host_call` transport |
 | `src/api/` | one marshaller per op group: `fs`, `process` (and `shell`), `projects`, `confirm` (and `sleep`), `log`, and `path` (pure, per host OS) |
-| `src/mock.rs`, `src/tests.rs`, `src/tests_io.rs`, `src/bridge/tests.rs`, `src/api/tests.rs`, `src/api/path/tests.rs` | native tests against a mock bridge |
+| `src/mock.rs`, `src/tests.rs`, `src/tests_io.rs`, `src/tests_remotes.rs`, `src/bridge/tests.rs`, `src/api/tests.rs`, `src/api/path/tests.rs` | native tests against a mock bridge |
 | `tests/fixtures/script-requests.json`, `tests/fixtures/bridge-replies.json`, `src/tests_fixture.rs` | the shared request fixture (DeckPilot's, copied byte for byte), the guest's replies fixture, and the test that the guest emits only the fixture's requests |
 | `deckpilot.d.ts` | the API's types, for the editor's completion (P7) |
+
+## The object model
+
+`deckpilot.d.ts` has the whole API (design §4.4). A project's
+repositories are frozen objects: `id`, `key`, `name`, `description`,
+`isDefault`, `path` (`null` without `repositories.paths`), `exists`,
+`remote`, `remotes`, `join(...)` and `toString()` (`repository "cms"`).
+
+- **`remote`** is the primary remote's `{url, defaultBranch}` or `null`
+  (design §11 C1), unchanged.
+- **`remotes`** (decision K4, deckpilot #491) is a frozen array of
+  frozen `{name, primary, url, defaultBranch, connectionId,
+  remoteRepositoryId}`, in the order the agent sends them (the
+  profile's; the host does not sort the primary first, so find it by
+  `primary`):
+  - a text member the agent sends as `null`, or leaves out, is `null`;
+    a member the guest does not know is dropped;
+  - **an agent before K4** sends no `remotes` (and the host leaves out an
+    empty list): `remotes` is `[]`. It is not derived from `remote`,
+    which has no remote name and no ids, and the design (§11 C1) defines
+    no derivation;
+  - **a malformed list refuses the whole reply** (`invalidResponse`,
+    naming the repository): `remotes` that is not an array, more than 8
+    entries (K1), more than one `primary`, two entries with the same
+    `name` (the host keeps names unique), an entry that is not an
+    object, a `name` that is not a string of 1 to 64 characters, a
+    `primary` that is not a boolean, or a text member that is neither a
+    string nor `null`. Dropping an entry could make another remote look
+    like the primary, so nothing is dropped. `api/projects.rs` checks
+    and reduces the reply before the prelude makes the objects.
+- **`connectionId` and `remoteRepositoryId` are the script's alone
+  (K4).** No text the guest makes carries them: not a log line, an
+  error (a refused reply names the member, never a value), a repository's
+  `toString`, the run's outcomes or its result. Each remote has a
+  `toJSON` (not enumerable, so `Object.keys` shows the six members) that
+  leaves both out. The repository, its `remote` and the `remotes` array
+  have their own `toJSON` too, so the guest's JSON never consults
+  `Object.prototype.toJSON` or `Array.prototype.toJSON`, which a script
+  can replace. So `deckpilot.log.info(repo)`, `JSON.stringify(repo)`
+  and a returned repository have `name`, `primary`, `url` and
+  `defaultBranch` only. A script that logs `remote.connectionId` itself
+  does so by its own choice.
 
 ## The bridge contract (for P6)
 
@@ -90,7 +132,7 @@ is not trusted.
 | `script.sleep` | `{ms}` (≤ 600,000) | `{nowUs}`; `timedOut` / `cancelled` on the deadline or Stop |
 | `script.confirm` | `{token}` | `{confirmed}`: the agent shows **its own stored plan** for the token (dialogs 1.5), only in user-started runs |
 | `project.list` | `{}` | `{projects: [{id, key, name}]}` (active profile) |
-| `project.repositories` | `{project: id\|null}` (`null`: the current one) | `{project: {id, key, name}\|null, repositories: [{id, key, name, description, isDefault, path\|null, exists, remote}]}` |
+| `project.repositories` | `{project: id\|null}` (`null`: the current one) | `{project: {id, key, name}\|null, repositories: [{id, key, name, description, isDefault, path\|null, exists, remote, remotes?}]}`; `remotes` (deckpilot #491, K4): `[{name, primary, url\|null, defaultBranch\|null, connectionId\|null, remoteRepositoryId\|null}]`, see "The object model" |
 | `fs.exists`, `fs.stat` | `{path}` | `{exists}`, `{stat\|null}` |
 | `fs.list` | `{path}` | `{entries: [{name, kind}]}` |
 | `fs.mkdir` | `{path, recursive}` | `{}` |

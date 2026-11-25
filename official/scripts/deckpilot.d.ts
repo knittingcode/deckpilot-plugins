@@ -178,9 +178,36 @@ interface Repository {
   /** `null` without the `repositories.paths` grant. */
   path: string | null;
   exists: boolean;
+  /** The primary remote's URL and default branch (design §11 C1), as before `remotes`. */
   remote: { url: string | null; defaultBranch: string | null } | null;
+  /**
+   * Every git remote of the repository (decision K4), in the profile's
+   * order: at most 8, unique names, at most one `primary` (which need not
+   * be first; find it by `primary`). Frozen. `[]` from an agent before
+   * K4 (it is not derived from `remote`).
+   */
+  readonly remotes: readonly RepositoryRemote[];
   /** A path inside the repository; refuses `..` that would leave it. Works without `repositories.paths`. */
   join(...p: string[]): PathRef;
+}
+
+/**
+ * One remote of a repository (frozen). `connectionId` and
+ * `remoteRepositoryId` are for the script only: no text the API makes
+ * carries them. `JSON.stringify` of a remote (so a log line of it, or the
+ * run's result) has only `name`, `primary`, `url` and `defaultBranch`;
+ * read the ids by name.
+ */
+interface RepositoryRemote {
+  /** The git remote name (`origin`). */
+  readonly name: string;
+  readonly primary: boolean;
+  readonly url: string | null;
+  readonly defaultBranch: string | null;
+  /** The Git Providers connection the remote is linked to on this computer, or `null`. */
+  readonly connectionId: string | null;
+  /** The provider's immutable repository id (`gh:…`, `gl:…`, `bb:…`), or `null`. */
+  readonly remoteRepositoryId: string | null;
 }
 
 interface PathRef {

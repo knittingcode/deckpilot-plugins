@@ -158,6 +158,13 @@ fn drivers() -> Vec<Driver> {
             "projects and repositories",
             "deckpilot.projects.list()[0].repositories(); deckpilot.repositories.current()",
         ),
+        Driver {
+            answers: &[("project.repositories", &["withRemotes", "withRemotes"])],
+            ..d(
+                "repositories with remotes",
+                "deckpilot.projects.list()[0].repositories(); deckpilot.repositories.current()[0].remotes.length",
+            )
+        },
         d(
             "exists, stat, list and mkdir",
             r#"deckpilot.fs.exists({ repository: "cms", relative: "package.json" });
@@ -649,7 +656,10 @@ fn the_guest_accepts_every_reply() {
                 assert!(s.budget.remaining_ms.is_some(), "{op}:{name}");
                 continue;
             }
-            let got = s.call(op, json!({}));
+            let mut got = s.call(op, json!({}));
+            if op == "project.repositories" {
+                got = got.and_then(api::projects::reply);
+            }
             match reply.get("error") {
                 None => assert!(got.is_ok(), "{op}:{name}: {got:?}"),
                 Some(e) => {
