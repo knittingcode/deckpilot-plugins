@@ -111,6 +111,7 @@ impl Mock {
                 "settings": { "timeoutMs": 60000, "stopOnError": true, "memoryMib": 64 },
                 "grants": grants,
                 "run": { "id": "run-1", "origin": "editor", "userInitiated": true },
+                "remainingMs": 60000,
                 "nowUs": 1_700_000_000_000_000.0_f64,
             }),
             load_error: None,

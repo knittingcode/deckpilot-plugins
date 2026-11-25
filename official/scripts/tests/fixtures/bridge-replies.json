@@ -12,7 +12,8 @@
     "processStdinBytes": 49152,
     "shellScriptBytes": 49152,
     "hostCalls": 4096,
-    "polls": 8192
+    "polls": 8192,
+    "processOutputBytes": 983040
   },
   "ops": {
     "script.load": {
@@ -64,6 +65,7 @@
               "origin": "key",
               "userInitiated": true
             },
+            "remainingMs": 300000,
             "nowUs": 1764000000000000
           }
         },
@@ -326,6 +328,17 @@
             "bytes": 11,
             "size": 11,
             "eof": true
+          }
+        },
+        "fileChanged": {
+          "error": {
+            "code": "failed",
+            "message": "the file changed while it was read",
+            "script": {
+              "code": "fileChanged",
+              "message": "“logo.png” changed between two parts of the read; read it again",
+              "path": "logo.png"
+            }
           }
         },
         "notFound": {

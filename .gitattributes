@@ -1,0 +1,3 @@
+# Byte-exact fixtures: never converted to CRLF on checkout (Windows CI).
+# script-requests.json is a sha256-checked copy of DeckPilot's.
+official/scripts/tests/fixtures/*.json -text

@@ -73,9 +73,13 @@ declare const deckpilot: {
     mkdir(path: PathLike, opts?: { recursive?: boolean }): void;
     /**
      * At most 4 MiB (`maxBytes`, 1 to 4 MiB, lowers it: a larger file is
-     * `tooLarge`). Read in chunks of 512 KiB; a file whose size changes
-     * meanwhile fails with `fileChanged` (read it again). A change that
-     * keeps the size is not detected yet. `utf8` (the default) refuses
+     * `tooLarge`). Read in chunks of 512 KiB, all of one version of the
+     * file: DeckPilot detects the file being replaced, or its size or
+     * modification time changing, between chunks. So you get the whole
+     * file as it was, or a `fileChanged` error naming the path (read it
+     * again); never a mix of two versions. (The one change it cannot see:
+     * a rewrite while DeckPilot takes its first snapshot that keeps both
+     * the size and the modification time.) `utf8` (the default) refuses
      * bytes that are not UTF-8.
      */
     readFile(path: PathLike, opts?: { encoding?: "utf8" | "base64"; maxBytes?: number }): string;
@@ -190,7 +194,7 @@ interface ProcessResult {
   signal: string | null;
   stdout: string;
   stderr: string;
-  /** The output was longer than the limit and was cut. */
+  /** The output was longer than the limit (stdout and stderr together at most 960 KiB) and was cut. */
   truncated: boolean;
   durationMs: number;
   timedOut: boolean;
@@ -238,4 +242,5 @@ type ErrorCode =
   | "notGranted" | "outsideScope" | "protectedPath" | "symlinkEscape" | "notFound" | "exists" | "tooLarge"
   | "commandNotFound" | "gitUnavailable" | "dockerUnavailable" | "dockerDaemonDown" | "nonZeroExit" | "timedOut" | "cancelled"
   | "needsConfirmation" | "notUserInitiated" | "limit" | "invalidArgument" | "noProject" | "noDefaultRepository"
-  | "scriptError" | "syntaxError" | "unsupported" | "unavailable" | "hostError" | "fileChanged";
+  | "scriptError" | "syntaxError" | "unsupported" | "unavailable" | "hostError" | "fileChanged"
+  | "invalidResponse";

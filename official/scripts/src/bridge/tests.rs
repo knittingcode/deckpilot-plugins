@@ -134,3 +134,10 @@ fn a_cancelled_reply_stops_the_session() {
     );
     assert_eq!(sent.borrow().len(), 1);
 }
+
+#[test]
+fn a_polls_remaining_time_is_capped_like_the_loads() {
+    let (mut s, _) = session(json!({ "ok": { "cancelled": false, "remainingMs": u64::MAX } }));
+    assert!(!s.poll());
+    assert_eq!(s.budget.remaining_ms, Some(limits::TIMEOUT_MS_MAX));
+}

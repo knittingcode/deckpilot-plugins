@@ -1,11 +1,12 @@
 //! The shared request fixture: `tests/fixtures/script-requests.json` is a
 //! byte-for-byte copy of DeckPilot's
 //! `plugins/runtime/crates/abi/tests/fixtures/script-requests.json`
-//! (knittingcode/deckpilot PR #465, commit
-//! 2fc870dad2e6438413a200c751f142134cae7517, sha256
-//! e2e12b2ec6db4e207114f9134f0fe3f3c885429d7025d30db45f5c8842becfe4). It is
-//! the one contract of the two repositories: never edit it here; change it
-//! in DeckPilot and copy it again.
+//! (version 2: knittingcode/deckpilot PR #481, commit
+//! 33957b3f325fb1f345871fadd6ac56cb47176262, sha256
+//! e09772aa197beb668fd8aa0d33db8daf3dc8a4bab7bddfe52019264e5dd55d30,
+//! held by [`the_shared_fixture_is_the_recorded_copy`]). It is the one
+//! contract of the two repositories: never edit it here; change it in
+//! DeckPilot and copy it again.
 //!
 //! * **Its `valid` requests.** Each driver below runs a script through the
 //!   real prelude and marshallers against the mock bridge, answered with
@@ -13,12 +14,17 @@
 //!   byte-equal (canonical JSON) to a `valid` entry, or, where the
 //!   fixture's one example has other values (the first chunk of a read,
 //!   the request a confirmation repeats), of exactly the shape of one.
+//!   Every chunk of a read after the first carries the first reply's
+//!   `version` as `ifVersion`, a version the host accepts.
 //!   Every `valid` entry is emitted byte for byte by some driver, but
 //!   those in [`NOT_SENT`], which say why the guest never sends them.
 //! * **Its `invalid` requests.** The guest never emits one: each is
 //!   refused by its own validation (or normalized to another request)
 //!   on every host OS, or is one the guest cannot produce at all, and the
-//!   test says which.
+//!   test says which. A chunk of a read (`offset`, `ifVersion`) is never a
+//!   script's argument: the guest builds it, and the test drives reads
+//!   against agents that answer without a version or with a malformed
+//!   one, and holds that no later chunk ever leaves without a valid one.
 //! * Every request is under 64 KiB and every reply of
 //!   `bridge-replies.json` under 1 MiB, and the guest accepts each reply.
 
@@ -34,6 +40,14 @@ use crate::mock::Mock;
 
 /// The script id of every driver's run (the fixture's `script.load`).
 const SCRIPT: &str = "6f1c2a8e-4b1d-4c2e-9a77-0d5b1e3f9c10";
+
+/// The copy's source and digest: DeckPilot #481 at this commit.
+const FIXTURE_COMMIT: &str = "33957b3f325fb1f345871fadd6ac56cb47176262";
+const FIXTURE_SHA256: &str = "e09772aa197beb668fd8aa0d33db8daf3dc8a4bab7bddfe52019264e5dd55d30";
+const FIXTURE_VERSION: u64 = 2;
+
+/// The version the drivers' agent gives a read (the fixture's own).
+const READ_VERSION: &str = "0123456789abcdef0123456789abcdef";
 
 /// `valid` requests the guest never sends, and why.
 const NOT_SENT: &[(&str, &str)] = &[(
@@ -223,7 +237,16 @@ fn emitted(replies: &Value, driver: &Driver) -> Vec<String> {
                 let bytes: Vec<u8> = (0..n).map(|i| (i % 251) as u8).collect();
                 let offset = args["offset"].as_u64().unwrap() as usize;
                 let end = (offset + args["length"].as_u64().unwrap() as usize).min(n);
-                return json!({ "ok": { "content": base64::encode(&bytes[offset..end]), "bytes": end - offset, "size": n, "eof": end == n } });
+                if offset > 0 {
+                    assert_eq!(args["ifVersion"], READ_VERSION, "{args}");
+                }
+                // The host's form: a version on every reply before the
+                // end, none on the one that reaches it.
+                let mut reply = json!({ "content": base64::encode(&bytes[offset..end]), "bytes": end - offset, "size": n, "eof": end == n });
+                if end < n {
+                    reply["version"] = json!(READ_VERSION);
+                }
+                return json!({ "ok": reply });
             }
             let mut calls = calls.borrow_mut();
             let k = calls.entry(op.to_owned()).or_default();
@@ -287,6 +310,15 @@ fn every_request_the_guest_emits_is_a_valid_one_of_the_shared_fixture() {
                     driver.name
                 );
             }
+            // A later chunk of a read names the read's version.
+            let v: Value = serde_json::from_str(request).unwrap();
+            if v["op"] == "fs.readFile" && v["args"]["offset"].as_u64() != Some(0) {
+                assert_eq!(
+                    v["args"]["ifVersion"], READ_VERSION,
+                    "{}: {request}",
+                    driver.name
+                );
+            }
             // The guest's own bytes are canonical.
             assert_eq!(
                 request,
@@ -341,6 +373,24 @@ fn the_guest_never_emits_an_invalid_request_of_the_shared_fixture() {
         let op = request["op"].as_str().unwrap();
         let args = request["args"].clone();
         let input = canonical(&args);
+        if op == "fs.readFile" && (args.get("offset").is_some() || args.get("ifVersion").is_some())
+        {
+            // A chunk: the guest's own, never a script's argument.
+            for flavor in flavors {
+                assert!(api::dispatch(op, args.clone(), flavor).is_err(), "{why}");
+            }
+            for reply_version in [None, args.get("ifVersion").cloned()] {
+                for sent in chunks_against(reply_version.clone()) {
+                    assert_ne!(canonical(&sent), input, "{why}");
+                    let offset = sent["offset"].as_u64().unwrap();
+                    match sent.get("ifVersion").and_then(Value::as_str) {
+                        Some(v) => assert!(api::fs::valid_read_version(v), "{why}: {sent}"),
+                        None => assert_eq!(offset, 0, "{why}: {sent}"),
+                    }
+                }
+            }
+            continue;
+        }
         if api::OPS.contains(&op) {
             // What a script can make the guest send: refused, or sent only
             // as another, normalized request.
@@ -395,6 +445,125 @@ fn the_guest_never_emits_an_invalid_request_of_the_shared_fixture() {
             other => panic!("{why}: an invalid {other} request this test does not classify"),
         }
     }
+}
+
+/// The `fs.readFile` chunks a two-chunk read sends to an agent whose
+/// first reply has this `version` member (`None`: none at all).
+fn chunks_against(version: Option<Value>) -> Vec<Value> {
+    let mock = Mock::with(
+        "try { deckpilot.fs.readFile('/tmp/a') } catch (e) { e.code }",
+        json!({}),
+        Box::new(move |_, args| {
+            let offset = args["offset"].as_u64().unwrap();
+            let mut reply = json!({ "content": base64::encode(&[b'a'; 524_288]), "bytes": 524_288, "size": 600_000, "eof": false });
+            match (&version, offset) {
+                (Some(v), 0) => reply["version"] = v.clone(),
+                (None, 0) => {}
+                _ => reply["version"] = json!(READ_VERSION),
+            }
+            json!({ "ok": reply })
+        }),
+    );
+    let _ = crate::run(mock.boxed(), SCRIPT, None);
+    mock.0
+        .borrow()
+        .of("fs.readFile")
+        .into_iter()
+        .cloned()
+        .collect()
+}
+
+#[test]
+fn the_shared_fixture_is_the_recorded_copy() {
+    let path = format!(
+        "{}/tests/fixtures/script-requests.json",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let bytes = std::fs::read(&path).unwrap();
+    assert_eq!(
+        sha256_hex(&bytes),
+        FIXTURE_SHA256,
+        "{path} is not the byte-for-byte copy of deckpilot {FIXTURE_COMMIT}"
+    );
+    assert_eq!(requests()["version"], FIXTURE_VERSION);
+    // The digest itself (FIPS 180-4's examples).
+    assert_eq!(
+        sha256_hex(b"abc"),
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    );
+    assert_eq!(
+        sha256_hex(b""),
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    );
+    assert_eq!(
+        sha256_hex(&[b'a'; 1_000_000]),
+        "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0"
+    );
+}
+
+/// SHA-256 (FIPS 180-4), for the one check above: no dependency for it.
+fn sha256_hex(data: &[u8]) -> String {
+    const K: [u32; 64] = [
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
+        0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
+        0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f,
+        0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+        0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
+        0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
+        0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116,
+        0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
+        0xc67178f2,
+    ];
+    let mut h: [u32; 8] = [
+        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
+        0x5be0cd19,
+    ];
+    let mut msg = data.to_vec();
+    msg.push(0x80);
+    while msg.len() % 64 != 56 {
+        msg.push(0);
+    }
+    msg.extend_from_slice(&((data.len() as u64) * 8).to_be_bytes());
+    for block in msg.chunks(64) {
+        let mut w = [0u32; 64];
+        for (i, word) in block.chunks(4).enumerate() {
+            w[i] = u32::from_be_bytes([word[0], word[1], word[2], word[3]]);
+        }
+        for i in 16..64 {
+            let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);
+            let s1 = w[i - 2].rotate_right(17) ^ w[i - 2].rotate_right(19) ^ (w[i - 2] >> 10);
+            w[i] = w[i - 16]
+                .wrapping_add(s0)
+                .wrapping_add(w[i - 7])
+                .wrapping_add(s1);
+        }
+        let [mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut hh] = h;
+        for i in 0..64 {
+            let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
+            let ch = (e & f) ^ (!e & g);
+            let t1 = hh
+                .wrapping_add(s1)
+                .wrapping_add(ch)
+                .wrapping_add(K[i])
+                .wrapping_add(w[i]);
+            let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
+            let maj = (a & b) ^ (a & c) ^ (b & c);
+            let t2 = s0.wrapping_add(maj);
+            hh = g;
+            g = f;
+            f = e;
+            e = d.wrapping_add(t1);
+            d = c;
+            c = b;
+            b = a;
+            a = t1.wrapping_add(t2);
+        }
+        for (x, y) in h.iter_mut().zip([a, b, c, d, e, f, g, hh]) {
+            *x = x.wrapping_add(y);
+        }
+    }
+    h.iter().map(|x| format!("{x:08x}")).collect()
 }
 
 #[test]
@@ -458,8 +627,14 @@ fn every_request_and_reply_fits_the_host_caps() {
     // write chunk, and a whole read chunk's reply.
     let chunk = json!({ "op": "fs.write.chunk", "args": { "handle": "f".repeat(api::fs::MAX_HANDLE), "content": base64::encode(&[0xff; api::fs::WRITE_CHUNK]), "encoding": "base64" } });
     assert!(canonical(&chunk).len() < limits::REQUEST);
-    let read = json!({ "ok": { "content": base64::encode(&vec![0xffu8; api::fs::READ_CHUNK as usize]), "bytes": api::fs::READ_CHUNK, "size": 4194304, "eof": false, "nowUs": 1.7e15 } });
+    let read = json!({ "ok": { "content": base64::encode(&vec![0xffu8; api::fs::READ_CHUNK as usize]), "bytes": api::fs::READ_CHUNK, "size": 4194304, "eof": false, "version": "v".repeat(api::fs::MAX_READ_VERSION), "nowUs": 1.7e15 } });
     assert!(canonical(&read).len() < limits::REPLY);
+    let later = json!({ "op": "fs.readFile", "args": { "path": { "path": format!("/{}", "a".repeat(api::fs::MAX_PATH - 1)) }, "encoding": "base64", "maxBytes": 4194304, "offset": 3670016, "length": 524288, "ifVersion": "v".repeat(api::fs::MAX_READ_VERSION) } });
+    assert!(canonical(&later).len() < limits::REQUEST);
+    assert_eq!(
+        r["limits"]["processOutputBytes"],
+        json!(api::process::HOST_OUTPUT_TOTAL)
+    );
 }
 
 #[test]

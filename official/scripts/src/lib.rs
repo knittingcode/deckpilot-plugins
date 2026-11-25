@@ -143,9 +143,11 @@ struct Loaded {
     run: Value,
     #[serde(default)]
     now_us: Option<f64>,
-    /// The run's remaining time at the load (the guest clamps process and
-    /// shell timeouts to it until the first poll); without it, the
-    /// script's `timeoutMs` setting.
+    /// The run's time left at the load (the host's `ScriptLoaded` always
+    /// sends it): the run's deadline as the guest knows it, which clamps
+    /// process, shell and sleep times until a poll says more. Only when it
+    /// is absent (an agent before deckpilot #481) does the guest fall back
+    /// to the script's `timeoutMs` setting, else the default timeout.
     #[serde(default)]
     remaining_ms: Option<u64>,
 }
@@ -213,9 +215,13 @@ fn run_with(
         session.budget.clock_us = us;
     }
     clock::set(session.budget.clock_us);
-    if let Some(ms) = loaded.remaining_ms.or(loaded.settings.timeout_ms) {
-        session.budget.set_remaining(ms.min(limits::TIMEOUT_MS_MAX));
-    }
+    let remaining = loaded
+        .remaining_ms
+        .or(loaded.settings.timeout_ms)
+        .unwrap_or(limits::TIMEOUT_MS_DEFAULT);
+    session
+        .budget
+        .set_remaining(remaining.min(limits::TIMEOUT_MS_MAX));
     let mut run = match loaded.run {
         Value::Object(m) => Value::Object(m),
         _ => json!({}),

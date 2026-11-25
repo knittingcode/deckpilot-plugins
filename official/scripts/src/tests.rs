@@ -807,7 +807,9 @@ fn fs_requests_have_their_canonical_shape() {
         json!({}),
         Box::new(|op, _| {
             ok(match op {
-                "fs.readFile" => json!({ "content": "aGk=", "bytes": 2, "size": 2, "eof": true }),
+                "fs.readFile" => {
+                    json!({ "content": "aGk=", "bytes": 2, "size": 2, "eof": true, "version": "v1" })
+                }
                 "fs.write.open" => json!({ "handle": "wh-1" }),
                 _ => json!({}),
             })

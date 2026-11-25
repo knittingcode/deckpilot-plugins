@@ -30,6 +30,15 @@ pub const MAX_ENV: usize = 64;
 pub const MAX_ENV_VALUE: usize = 32 * 1024;
 pub const MAX_COMMAND: usize = 4096;
 pub const MAX_SHELL_SCRIPT: usize = 48 * 1024;
+/// The most output of one `process.run` or `shell.run` the agent keeps:
+/// stdout and stderr **together** at most 960 KiB (deckpilot #481's
+/// `MAX_OUTPUT_TOTAL`), cut with `truncated: true` and then shortened
+/// further until the result's JSON fits the 1 MiB reply. The guest takes
+/// the result as it comes (any reply of at most [`limits::REPLY`]); this
+/// is the documented bound, held by the tests.
+///
+/// [`limits::REPLY`]: crate::bridge::limits::REPLY
+pub const HOST_OUTPUT_TOTAL: usize = 960 * 1024;
 pub const SHELLS: &[&str] = &["sh", "bash", "zsh", "pwsh", "powershell", "cmd"];
 
 /// Environment names a script may never set, whatever its grant, compared
