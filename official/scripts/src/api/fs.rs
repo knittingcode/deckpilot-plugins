@@ -12,9 +12,10 @@
 //!
 //! * `readFile` is a loop of `fs.readFile {path, encoding: "base64",
 //!   maxBytes, offset, length}` (at most [`READ_CHUNK`] bytes each),
-//!   answered with `{content, bytes, size, eof}`. A file whose size
-//!   changes between chunks fails with `fileChanged`; two versions are
-//!   never spliced together.
+//!   answered with `{content, bytes, size, eof}`. A file whose **size**
+//!   changes between chunks fails with `fileChanged`. A file rewritten at
+//!   the same length between chunks is not detected: the host's reply has
+//!   no version yet (a cross-repo ABI change, a blocker before release).
 //! * `writeFile` of at most [`WRITE_CHUNK`] bytes is one `fs.writeFile
 //!   {path, content, encoding, createOnly}`. A larger file is
 //!   `fs.write.open {path, createOnly}` → `{handle}`, then

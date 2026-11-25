@@ -87,6 +87,27 @@ pub fn perform(
     match op {
         "fs.readFile" => fs::read(session, args, flavor),
         "fs.writeFile" => fs::write(session, args, flavor),
+        // The agent's answer, reduced to the one boolean the prelude reads.
+        "script.confirm" => {
+            let args = dispatch(op, args, flavor)?;
+            let v = session.call(op, args)?;
+            Ok(serde_json::json!({ "confirmed": v.get("confirmed") == Some(&Value::Bool(true)) }))
+        }
+        // A sleep never outlasts the run either.
+        "script.sleep" => {
+            let mut args = dispatch(op, args, flavor)?;
+            if session.budget.cancelled {
+                return Err(session.stopped());
+            }
+            let remaining = session.budget.remaining_now();
+            if remaining == Some(0) {
+                return Err(session.out_of_time());
+            }
+            if let (Some(r), Some(ms)) = (remaining, args.get("ms").and_then(Value::as_u64)) {
+                args["ms"] = Value::from(ms.min(r));
+            }
+            session.call(op, args)
+        }
         "process.run" | "shell.run" => {
             let mut args = dispatch(op, args, flavor)?;
             if session.budget.cancelled {

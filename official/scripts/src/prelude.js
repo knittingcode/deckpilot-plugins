@@ -40,6 +40,7 @@
   const getOwnPropertyDescriptor = O.getOwnPropertyDescriptor;
   const getPrototypeOf = O.getPrototypeOf;
   const isFrozen = O.isFrozen;
+  const gopd = O.getOwnPropertyDescriptor;
   const keys = O.keys;
   const ownKeys = Reflect.ownKeys;
   const isArray = Array.isArray;
@@ -58,6 +59,15 @@
 
   // ---- helpers that use nothing the script can replace ---------------------
 
+  // An own data property's value, or undefined: never a getter of the
+  // object's prototypes (a reply's absent `error` must not be the script's
+  // Object.prototype.error).
+  function ownValue(o, k) {
+    if (o === null || typeof o !== "object") return undefined;
+    const d = gopd(o, k);
+    return d && "value" in d ? d.value : undefined;
+  }
+
   // An own data property, as an object literal makes it.
   function own(o, k, v) {
     defineProperty(o, k, { value: v, writable: true, enumerable: true, configurable: true });
@@ -74,10 +84,6 @@
   function find(arr, f) {
     for (let i = 0; i < arr.length; i++) if (f(arr[i])) return arr[i];
     return undefined;
-  }
-  function some(arr, f) {
-    for (let i = 0; i < arr.length; i++) if (f(arr[i])) return true;
-    return false;
   }
   function copy(arr) {
     return map(arr, (x) => x);
@@ -120,6 +126,7 @@
   function toJson(v, depth) {
     const d = depth || 0;
     if (d > 32) throw new ScriptError("invalidArgument", "the value is nested too deeply");
+    if (typeof v === "bigint") throw new ScriptError("invalidArgument", "a BigInt is not a JSON value");
     if (v === null || typeof v !== "object") {
       const s = stringify(v);
       return s === undefined ? "null" : s;
@@ -201,25 +208,28 @@
   }
 
   function fault(f, context) {
+    const code = ownValue(f, "code");
     const detail = {
-      repository: f.repository || (context && context.repository) || undefined,
-      command: f.command || (context && context.command) || undefined,
-      path: f.path || undefined,
+      repository: ownValue(f, "repository") || (context && context.repository) || undefined,
+      command: ownValue(f, "command") || (context && context.command) || undefined,
+      path: ownValue(f, "path") || undefined,
     };
-    let message = f.message || f.code;
+    let message = ownValue(f, "message") || code;
     if (detail.repository && !sIncludes(message, `"${detail.repository}"`)) {
       message = `${message} (repository "${detail.repository}")`;
     }
-    const e = new ScriptError(f.code, message, detail);
-    if (f.confirmation) defineProperty(e, "confirmation", { value: f.confirmation });
+    const e = new ScriptError(code, message, detail);
+    const confirmation = ownValue(f, "confirmation");
+    if (confirmation) defineProperty(e, "confirmation", { value: confirmation });
     return e;
   }
 
   // One bridge op; a refusal or failure is thrown as a ScriptError.
   function host(op, args, context) {
     const reply = parse(nativeCall(op, toJson(args)));
-    if (reply.error) throw fault(reply.error, context);
-    return reply.ok;
+    const error = ownValue(reply, "error");
+    if (error) throw fault(error, context);
+    return ownValue(reply, "ok");
   }
 
   // ---- paths and repositories -------------------------------------------
@@ -263,8 +273,11 @@
     if (typeof p === "string") return { arg: { path: p }, repository: null };
     if (p && typeof p === "object") {
       if (wsHas(repositories, p)) return { arg: { repository: p.key, relative: "" }, repository: p.key };
-      if (typeof p.repository === "string" && typeof p.relative === "string") {
-        return { arg: { repository: p.repository, relative: p.relative }, repository: p.repository };
+      // Each read once: a getter answers the same for the check and the use.
+      const repository = p.repository;
+      const relative = p.relative;
+      if (typeof repository === "string" && typeof relative === "string") {
+        return { arg: { repository, relative }, repository };
       }
     }
     throw new ScriptError("invalidArgument", `${what} is a path: an absolute string, a repository or repo.join(...)`);
@@ -351,8 +364,9 @@
         put(given, a);
       }
       const reply = parse(nativePath(op, toJson(given)));
-      if (reply.error) throw fault(reply.error);
-      return reply.ok;
+      const error = ownValue(reply, "error");
+      if (error) throw fault(error);
+      return ownValue(reply, "ok");
     });
   }
 
@@ -369,10 +383,11 @@
     try {
       return host(op, args, context);
     } catch (e) {
-      if (!(e instanceof ScriptError) || e.code !== "needsConfirmation" || !e.confirmation || typeof e.confirmation.token !== "string") throw e;
-      const token = e.confirmation.token;
+      if (!(e instanceof ScriptError) || ownValue(e, "code") !== "needsConfirmation") throw e;
+      const token = ownValue(ownValue(e, "confirmation"), "token");
+      if (typeof token !== "string") throw e;
       const answer = host("script.confirm", { token }, context);
-      if (!answer || answer.confirmed !== true) {
+      if (ownValue(answer, "confirmed") !== true) {
         throw fault({ code: "needsConfirmation", message: `${sSlice(op, 3)} was not confirmed` }, context);
       }
       return host(op, withField(args, "confirmation", token), context);
@@ -443,10 +458,16 @@
 
   function strings(v, what) {
     if (v === undefined) return [];
-    if (!isArray(v) || some(v, (a) => typeof a !== "string")) {
-      throw new ScriptError("invalidArgument", `${what} is an array of strings (there is no shell)`);
+    if (!isArray(v)) throw new ScriptError("invalidArgument", `${what} is an array of strings (there is no shell)`);
+    const out = [];
+    const n = v.length;
+    for (let i = 0; i < n; i++) {
+      // Each element read once: what is checked is what is sent.
+      const a = v[i];
+      if (typeof a !== "string") throw new ScriptError("invalidArgument", `${what} is an array of strings (there is no shell)`);
+      put(out, a);
     }
-    return copy(v);
+    return out;
   }
 
   function envOf(env) {
@@ -715,6 +736,12 @@
     warn: log.warn,
     error: log.error,
   };
+
+  // The stack-trace hooks of QuickJS-NG (V8's API) would run script code
+  // whenever any error's stack is made, the API's own included: fixed
+  // before the script runs.
+  defineProperty(ErrorBase, "prepareStackTrace", { value: undefined, writable: false, enumerable: false, configurable: false });
+  defineProperty(ErrorBase, "stackTraceLimit", { value: ErrorBase.stackTraceLimit, writable: false, enumerable: false, configurable: false });
 
   deepFreeze(ScriptError.prototype);
   const GLOBALS = [

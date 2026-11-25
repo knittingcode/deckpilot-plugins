@@ -1019,6 +1019,12 @@ fn replaced_iterators_species_regexps_and_accessors_do_not_change_the_api() {
         }
         Math.min = boom("min");
         String = boom("String");
+        // The stack-trace hooks are fixed: these assignments do nothing.
+        Error.prepareStackTrace = boom("prepareStackTrace");
+        Error.stackTraceLimit = 0;
+        // Replies are read by their own properties only.
+        Object.defineProperty(Object.prototype, "error", { get: boom("error getter"), configurable: true });
+        Object.defineProperty(Object.prototype, "confirmed", { get: () => true, configurable: true });
         const repo = deckpilot.repositories.default();
         const r = deckpilot.git.run(["pull", "--ff-only"], { cwd: repo, timeoutMs: 1000 });
         const m = deckpilot.process.run({ command: "make", args: ["a b"], env: { CI: "1" } });
@@ -1028,6 +1034,10 @@ fn replaced_iterators_species_regexps_and_accessors_do_not_change_the_api() {
         // The run's result is the script's own JSON: its own toJSON applies.
         delete Object.prototype.toJSON;
         delete Array.prototype.toJSON;
+        const stack = new ScriptError("limit", "x").stack;
+        if (typeof Error.prepareStackTrace !== "undefined" || !(Error.stackTraceLimit > 0) || typeof stack !== "string") {
+            throw new ScriptError("limit", "the stack-trace hooks moved");
+        }
         ({ key: repo.key, ref: repo.join("a\\b", "c"), command: r.command, make: m.command,
            msg: ScriptError.fromResult(r).message, error })
     "#;

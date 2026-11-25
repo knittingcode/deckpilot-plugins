@@ -723,3 +723,83 @@ fn the_unhandled_rejection_named_is_the_one_still_unhandled() {
     let src = "const a = Promise.reject(new Error('x')); Promise.resolve().then(() => a.catch(() => {})); 'done'";
     assert_eq!(result(run_mock(&Mock::new(src))), json!("done"));
 }
+
+#[test]
+fn a_confirmed_getter_on_object_prototype_does_not_confirm() {
+    let src = r#"
+        Object.defineProperty(Object.prototype, "confirmed", { get: () => true, configurable: true });
+        try { deckpilot.fs.remove({ repository: "cms", relative: "build" }, { recursive: true }); "removed" } catch (e) { e.code }
+    "#;
+    let mock = Mock::with(
+        src,
+        json!({}),
+        Box::new(|op, args| match op {
+            "fs.remove" if args.get("confirmation").is_none() => {
+                json!({ "error": { "code": "not-permitted", "message": "confirm",
+                "script": { "code": "needsConfirmation", "message": "remove 3 files", "confirmation": { "token": "tok-1" } } } })
+            }
+            "script.confirm" => ok(json!({})),
+            other => panic!("{other} {args}: the op was repeated"),
+        }),
+    );
+    assert_eq!(result(run_mock(&mock)), json!("needsConfirmation"));
+    assert_eq!(mock.0.borrow().ops(), vec!["fs.remove", "script.confirm"]);
+}
+
+#[test]
+fn a_sleep_never_outlasts_the_run() {
+    let mock = Mock::with(
+        "deckpilot.sleep(5000); deckpilot.sleep(50)",
+        json!({}),
+        Box::new(|_, _| ok(json!({ "nowUs": 1_700_000_000_000_000.0_f64 }))),
+    );
+    mock.set(|s| s.load["remainingMs"] = json!(100));
+    run_mock(&mock).unwrap();
+    assert_eq!(
+        mock.0.borrow().of("script.sleep"),
+        vec![&json!({ "ms": 100 }), &json!({ "ms": 50 })]
+    );
+    let mock = Mock::with(
+        "try { deckpilot.sleep(10) } catch (e) { globalThis.c = e.code } 'done'",
+        json!({}),
+        Box::new(|op, _| panic!("{op} sent")),
+    );
+    mock.set(|s| s.load["remainingMs"] = json!(0));
+    assert_eq!(failed(run_mock(&mock)).0, "timed-out");
+}
+
+#[test]
+fn a_bigint_or_a_changing_value_never_reaches_the_agent() {
+    let src = r#"
+        const out = {};
+        try { deckpilot.fs.removeContents("/w/x", { keep: [1n] }) } catch (e) { out.bigint = e.code }
+        // A getter that answers a string once, then something else.
+        let n = 0;
+        const args = []; Object.defineProperty(args, 0, { get: () => (n++ === 0 ? "status" : 42), enumerable: true });
+        args.length = 1;
+        const r = deckpilot.process.run({ command: "git", args });
+        let k = 0;
+        const where = { get repository() { return k++ === 0 ? "cms" : 7 }, relative: "" };
+        deckpilot.fs.exists(where);
+        out
+    "#;
+    let mock = Mock::with(
+        src,
+        json!({}),
+        Box::new(|op, _| match op {
+            "process.run" => exit(0, "", ""),
+            "fs.exists" => ok(json!({ "exists": true })),
+            other => panic!("{other} sent"),
+        }),
+    );
+    assert_eq!(
+        result(run_mock(&mock)),
+        json!({ "bigint": "invalidArgument" })
+    );
+    let s = mock.0.borrow();
+    assert_eq!(s.of("process.run")[0]["args"], json!(["status"]));
+    assert_eq!(
+        s.of("fs.exists")[0],
+        &json!({ "path": { "repository": "cms", "relative": "" } })
+    );
+}

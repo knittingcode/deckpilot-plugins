@@ -117,7 +117,9 @@ chunks:
   reply's `size` is the file's; a later reply with another size, a chunk
   longer than asked or past that size, or `eof` anywhere but exactly at
   the end, fails the read with `fileChanged`. A shorter chunk is read on
-  from where it ended. Two versions of a file are never spliced together.
+  from where it ended. Only a change of **size** between chunks is
+  detected: a file rewritten at the same length while it is read is not
+  (see the blockers below).
 - `writeFile` of at most 32 KiB is one `fs.writeFile` in the script's
   encoding (unless JSON escaping would take it past 64 KiB). A larger one
   is `fs.write.open`, then `fs.write.chunk` per 32 KiB, then
@@ -225,6 +227,14 @@ this manifest follows it before P9.
 
 ## Before the release (P9): blockers
 
+- **Same-length changes during a chunked read are not detected.** The
+  guest compares only `size` between `fs.readFile` chunks, and the host's
+  reply (`FsRead`) carries no version, so a file rewritten at the same
+  length between two chunks is read as a splice of both. The fix is a
+  cross-repo ABI change: a `version` in the first chunk's reply, sent back
+  as `ifVersion` on the later chunks, and `fileChanged` on a mismatch. It
+  must land in DeckPilot's ABI crate, the shared fixture and this guest
+  together.
 - **The vendored C code is reviewed code.** `rquickjs-sys` 0.14.0 vendors
   QuickJS-NG's sources and a prebuilt `vendor/wasi-libc/lib/libc.a` (from
   wasi-sdk 24) that is linked into this module. Neither is built from

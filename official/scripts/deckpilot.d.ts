@@ -74,8 +74,9 @@ declare const deckpilot: {
     /**
      * At most 4 MiB (`maxBytes`, 1 to 4 MiB, lowers it: a larger file is
      * `tooLarge`). Read in chunks of 512 KiB; a file whose size changes
-     * meanwhile fails with `fileChanged` (read it again), never mixing two
-     * versions. `utf8` (the default) refuses bytes that are not UTF-8.
+     * meanwhile fails with `fileChanged` (read it again). A change that
+     * keeps the size is not detected yet. `utf8` (the default) refuses
+     * bytes that are not UTF-8.
      */
     readFile(path: PathLike, opts?: { encoding?: "utf8" | "base64"; maxBytes?: number }): string;
     /**
