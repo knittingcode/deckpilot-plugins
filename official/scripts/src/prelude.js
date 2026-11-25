@@ -295,6 +295,7 @@
       remote: r.remote
         ? { url: r.remote.url == null ? null : toStr(r.remote.url), defaultBranch: r.remote.defaultBranch == null ? null : toStr(r.remote.defaultBranch) }
         : null,
+      remotes: isArray(r.remotes) ? map(r.remotes, makeRemote) : [],
       join(...parts) {
         return freeze({ repository: key, relative: relativeJoin(key, parts) });
       },
@@ -304,6 +305,28 @@
     };
     wsAdd(repositories, repo);
     return deepFreeze(repo);
+  }
+
+  const textOrNull = (v) => (typeof v === "string" ? v : null);
+
+  // One of `Repository.remotes` (decision K4), from the reply that
+  // api/projects.rs already checked and reduced to these members. The
+  // ids are the script's to read; no text the API builds carries them:
+  // JSON (a log line of the object, the run's result) omits both, through
+  // a toJSON that is not enumerable, so Object.keys shows the six members.
+  function makeRemote(m) {
+    const remote = {
+      name: toStr(m.name),
+      primary: m.primary === true,
+      url: textOrNull(m.url),
+      defaultBranch: textOrNull(m.defaultBranch),
+      connectionId: textOrNull(m.connectionId),
+      remoteRepositoryId: textOrNull(m.remoteRepositoryId),
+    };
+    defineProperty(remote, "toJSON", {
+      value: () => ({ name: remote.name, primary: remote.primary, url: remote.url, defaultBranch: remote.defaultBranch }),
+    });
+    return remote;
   }
 
   function makeProject(p, repos) {

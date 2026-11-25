@@ -108,6 +108,11 @@ pub fn perform(
             }
             session.call(op, args)
         }
+        // Each repository's `remotes` checked and in the guest's form.
+        "project.repositories" => {
+            let args = dispatch(op, args, flavor)?;
+            projects::reply(session.call(op, args)?)
+        }
         "process.run" | "shell.run" => {
             let mut args = dispatch(op, args, flavor)?;
             if session.budget.cancelled {

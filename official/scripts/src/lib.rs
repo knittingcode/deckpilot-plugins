@@ -317,3 +317,5 @@ mod tests;
 mod tests_fixture;
 #[cfg(test)]
 mod tests_io;
+#[cfg(test)]
+mod tests_remotes;

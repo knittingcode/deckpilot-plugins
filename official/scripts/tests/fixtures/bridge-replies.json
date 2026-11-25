@@ -1,7 +1,8 @@
 {
   "$comment": [
     "Representative replies of the Scripts host bridge, one or more per op, as the deckpilot.scripts guest expects them: {\"ok\": value} or {\"error\": {code: CallErrorCode, message, script?: {code: ErrorCode, message, repository?, command?, path?, confirmation?: {token}}}}.",
-    "The requests are not here: they are script-requests.json, a byte-for-byte copy of DeckPilot's plugins/runtime/crates/abi/tests/fixtures/script-requests.json (the one contract of both repositories). The guest's tests (src/tests_fixture.rs) answer their drivers with these replies, hold every reply under maxReplyBytes and check that the guest accepts each."
+    "The requests are not here: they are script-requests.json, a byte-for-byte copy of DeckPilot's plugins/runtime/crates/abi/tests/fixtures/script-requests.json (the one contract of both repositories). The guest's tests (src/tests_fixture.rs) answer their drivers with these replies, hold every reply under maxReplyBytes and check that the guest accepts each.",
+    "project.repositories: `ok` is an agent before decision K4 (no `remotes`; the guest gives `remotes: []`), `withRemotes` an agent with it (deckpilot #491: `remotes` with `name`, `primary`, `url`, `defaultBranch`, `connectionId` and `remoteRepositoryId`, the primary first, at most 8, at most one primary; the host omits an empty list)."
   ],
   "limits": {
     "maxRequestBytes": 65536,
@@ -223,6 +224,58 @@
                   "url": "git@github.com:example/cms.git",
                   "defaultBranch": "main"
                 }
+              },
+              {
+                "id": "1c3e5a7b-9d0f-4b2c-8e4a-6c8d0e2f4a6b",
+                "key": "web",
+                "name": "Web",
+                "description": null,
+                "isDefault": false,
+                "path": null,
+                "exists": true,
+                "remote": null
+              }
+            ]
+          }
+        },
+        "withRemotes": {
+          "ok": {
+            "project": {
+              "id": "7d9e2b1c-0000-4000-8000-000000000001",
+              "key": "shop",
+              "name": "Shop"
+            },
+            "repositories": [
+              {
+                "id": "8a2e4c6d-0b1f-4a3c-9e5d-7f8091a2b3c4",
+                "key": "cms",
+                "name": "CMS",
+                "description": null,
+                "isDefault": true,
+                "path": null,
+                "exists": true,
+                "remote": {
+                  "url": "git@github.com:example/cms.git",
+                  "defaultBranch": "main"
+                },
+                "remotes": [
+                  {
+                    "name": "origin",
+                    "primary": true,
+                    "url": "git@github.com:example/cms.git",
+                    "defaultBranch": "main",
+                    "connectionId": "conn-7f3a",
+                    "remoteRepositoryId": "gh:123456789"
+                  },
+                  {
+                    "name": "mirror",
+                    "primary": false,
+                    "url": null,
+                    "defaultBranch": null,
+                    "connectionId": null,
+                    "remoteRepositoryId": null
+                  }
+                ]
               },
               {
                 "id": "1c3e5a7b-9d0f-4b2c-8e4a-6c8d0e2f4a6b",
