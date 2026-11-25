@@ -40,7 +40,6 @@
   const getOwnPropertyDescriptor = O.getOwnPropertyDescriptor;
   const getPrototypeOf = O.getPrototypeOf;
   const isFrozen = O.isFrozen;
-  const gopd = O.getOwnPropertyDescriptor;
   const keys = O.keys;
   const ownKeys = Reflect.ownKeys;
   const isArray = Array.isArray;
@@ -64,7 +63,7 @@
   // Object.prototype.error).
   function ownValue(o, k) {
     if (o === null || typeof o !== "object") return undefined;
-    const d = gopd(o, k);
+    const d = getOwnPropertyDescriptor(o, k);
     return d && "value" in d ? d.value : undefined;
   }
 
@@ -414,8 +413,11 @@
     // Chunked by the guest (512 KiB per request); see api/fs.rs.
     readFile(p, o) {
       const a = pathArg(p, "path");
-      const args = { path: a.arg, encoding: opts(o).encoding || "utf8" };
-      if (opts(o).maxBytes !== undefined) own(args, "maxBytes", opts(o).maxBytes);
+      const opt = opts(o);
+      const encoding = opt.encoding;
+      const maxBytes = opt.maxBytes;
+      const args = { path: a.arg, encoding: encoding || "utf8" };
+      if (maxBytes !== undefined) own(args, "maxBytes", maxBytes);
       return host("fs.readFile", args, a).content;
     },
     // Chunked by the guest (32 KiB per request), into a temporary file the
@@ -484,19 +486,26 @@
   }
 
   function processRun(req, unavailable) {
+    // Each field read once: what is checked is what is sent.
     const r = opts(req);
-    if (typeof r.command !== "string") throw new ScriptError("invalidArgument", "process.run needs a `command`");
-    const args = strings(r.args, "args");
-    const a = { command: r.command, args, env: envOf(r.env) };
+    const name = r.command;
+    const rawArgs = r.args;
+    const env = r.env;
+    const cwd = r.cwd;
+    const timeoutMs = r.timeoutMs;
+    const stdin = r.stdin;
+    if (typeof name !== "string") throw new ScriptError("invalidArgument", "process.run needs a `command`");
+    const args = strings(rawArgs, "args");
+    const a = { command: name, args, env: envOf(env) };
     let repository = null;
-    if (r.cwd !== undefined) {
-      const c = pathArg(r.cwd, "cwd");
+    if (cwd !== undefined) {
+      const c = pathArg(cwd, "cwd");
       own(a, "cwd", c.arg);
       repository = c.repository;
     }
-    if (r.timeoutMs !== undefined) own(a, "timeoutMs", r.timeoutMs);
-    if (r.stdin !== undefined) own(a, "stdin", r.stdin);
-    const command = display(r.command, args);
+    if (timeoutMs !== undefined) own(a, "timeoutMs", timeoutMs);
+    if (stdin !== undefined) own(a, "stdin", stdin);
+    const command = display(name, args);
     let result;
     try {
       result = host("process.run", a, { repository, command });
@@ -544,8 +553,11 @@
     return r;
   }
 
+  // The `cwd` of `o`, read once; refused when there is none.
   function needCwd(o, what) {
-    if (!o || o.cwd === undefined) throw new ScriptError("invalidArgument", `${what} needs { cwd }: a repository or a path`);
+    const cwd = o ? o.cwd : undefined;
+    if (cwd === undefined) throw new ScriptError("invalidArgument", `${what} needs { cwd }: a repository or a path`);
+    return cwd;
   }
 
   const git = {
@@ -561,8 +573,8 @@
       }
     },
     run(args, o) {
-      needCwd(o, "git.run");
-      return processRun({ command: "git", args: strings(args, "args"), cwd: o.cwd, timeoutMs: o.timeoutMs }, "gitUnavailable");
+      const cwd = needCwd(o, "git.run");
+      return processRun({ command: "git", args: strings(args, "args"), cwd, timeoutMs: o.timeoutMs }, "gitUnavailable");
     },
   };
 
@@ -588,11 +600,11 @@
       return dockerResult(processRun({ command: "docker", args: strings(args, "args"), cwd: p.cwd, timeoutMs: p.timeoutMs }, "dockerUnavailable"));
     },
     compose(args, o) {
-      needCwd(o, "docker.compose");
+      const cwd = needCwd(o, "docker.compose");
       const all = ["compose"];
       const rest = strings(args, "args");
       for (let i = 0; i < rest.length; i++) put(all, rest[i]);
-      return docker.run(all, o);
+      return docker.run(all, { cwd, timeoutMs: o.timeoutMs });
     },
   };
 
@@ -600,16 +612,22 @@
   const shell = shellGrant
     ? {
         run(req) {
+          // Each field read once: what is checked is what is sent.
           const r = opts(req);
-          const a = { shell: r.shell, script: r.script, env: envOf(r.env) };
+          const name = r.shell;
+          const script = r.script;
+          const env = r.env;
+          const cwd = r.cwd;
+          const timeoutMs = r.timeoutMs;
+          const a = { shell: name, script, env: envOf(env) };
           let repository = null;
-          if (r.cwd !== undefined) {
-            const c = pathArg(r.cwd, "cwd");
+          if (cwd !== undefined) {
+            const c = pathArg(cwd, "cwd");
             own(a, "cwd", c.arg);
             repository = c.repository;
           }
-          if (r.timeoutMs !== undefined) own(a, "timeoutMs", r.timeoutMs);
-          const command = `${r.shell} script`;
+          if (timeoutMs !== undefined) own(a, "timeoutMs", timeoutMs);
+          const command = `${name} script`;
           return finish(host("shell.run", a, { repository, command }), command, repository);
         },
         available() {

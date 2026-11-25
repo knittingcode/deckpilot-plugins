@@ -781,14 +781,25 @@ fn a_bigint_or_a_changing_value_never_reaches_the_agent() {
         let k = 0;
         const where = { get repository() { return k++ === 0 ? "cms" : 7 }, relative: "" };
         deckpilot.fs.exists(where);
+        // A command that is "git" when checked and "make" afterwards.
+        let c = 0;
+        deckpilot.process.run({ get command() { return c++ === 0 ? "git" : "make" }, args: ["--version"] });
+        // A shell, a cwd and a maxBytes that change after their first read.
+        let sh = 0;
+        deckpilot.shell.run({ get shell() { return sh++ === 0 ? "sh" : "fish" }, script: "true" });
+        let w = 0;
+        deckpilot.git.run(["status"], { get cwd() { return w++ === 0 ? "/w/a" : "/w/b" } });
+        let m = 0;
+        deckpilot.fs.readFile("/w/f", { get maxBytes() { return m++ === 0 ? 10 : 4194304 } });
         out
     "#;
     let mock = Mock::with(
         src,
-        json!({}),
+        json!({ "shell": ["sh"] }),
         Box::new(|op, _| match op {
-            "process.run" => exit(0, "", ""),
+            "process.run" | "shell.run" => exit(0, "", ""),
             "fs.exists" => ok(json!({ "exists": true })),
+            "fs.readFile" => ok(json!({ "content": "aGk=", "bytes": 2, "size": 2, "eof": true })),
             other => panic!("{other} sent"),
         }),
     );
@@ -797,7 +808,12 @@ fn a_bigint_or_a_changing_value_never_reaches_the_agent() {
         json!({ "bigint": "invalidArgument" })
     );
     let s = mock.0.borrow();
-    assert_eq!(s.of("process.run")[0]["args"], json!(["status"]));
+    let runs = s.of("process.run");
+    assert_eq!(runs[0]["args"], json!(["status"]));
+    assert_eq!(runs[1]["command"], "git", "the command as checked");
+    assert_eq!(runs[2]["cwd"], json!({ "path": "/w/a" }));
+    assert_eq!(s.of("shell.run")[0]["shell"], "sh");
+    assert_eq!(s.of("fs.readFile")[0]["maxBytes"], 10);
     assert_eq!(
         s.of("fs.exists")[0],
         &json!({ "path": { "repository": "cms", "relative": "" } })
