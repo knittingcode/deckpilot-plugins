@@ -3,6 +3,13 @@
   "officialVersion": 1,
   "plugins": [
     {
+      "path": "calls",
+      "id": "deckpilot.calls",
+      "permissions": ["calls", "device"],
+      "held": "needs plugin API 1.16 (Calls: the `calls` permission, `contributes.callOverlay`, `contributes.layoutTemplates`), which no DeckPilot has yet: its contracts (knittingcode/deckpilot#450) and host side (#489), the agent's plugin API 1.16, the reviewed privileged policy entry of 0.1.0 and bundling come first, then its security review and release. Microsoft Teams is detection only (no supported control since 2026-06-30)",
+      "hostApi": "1.16"
+    },
+    {
       "path": "docker",
       "id": "deckpilot.docker",
       "permissions": ["device", "profile", "resources", "tools"]

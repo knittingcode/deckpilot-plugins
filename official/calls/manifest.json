@@ -1,0 +1,629 @@
+{
+  "$schema": "https://knittingcode.github.io/deckpilot-plugins/v1/schemas/plugin-manifest.schema.json",
+  "manifestVersion": 1,
+  "id": "deckpilot.calls",
+  "name": "t:plugin.name",
+  "version": "0.1.0",
+  "publisher": {
+    "id": "deckpilot",
+    "name": "DeckPilot",
+    "url": "https://github.com/knittingcode/deckpilot"
+  },
+  "description": "t:plugin.description",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/knittingcode/deckpilot-plugins",
+    "directory": "official/calls"
+  },
+  "license": "Apache-2.0",
+  "keywords": [
+    "calls",
+    "meetings",
+    "microphone",
+    "camera"
+  ],
+  "categories": [
+    "productivity"
+  ],
+  "engines": {
+    "deckpilot": ">=0.17.0 <1.0.0",
+    "pluginApi": "^1.16",
+    "sdk": "0.1.0"
+  },
+  "runtime": {
+    "kind": "wasm",
+    "abi": 1
+  },
+  "entry": "src/lib.rs",
+  "icons": {
+    "128": "assets/icon-128.png"
+  },
+  "defaultLocale": "en",
+  "locales": [
+    "en",
+    "pl"
+  ],
+  "permissions": [
+    {
+      "kind": "calls",
+      "control": true,
+      "justification": "t:permissions.calls"
+    },
+    {
+      "kind": "device",
+      "state": true,
+      "justification": "t:permissions.device"
+    }
+  ],
+  "contributes": {
+    "actions": [
+      {
+        "id": "answer",
+        "name": "t:actions.answer.name",
+        "description": "t:actions.answer.description",
+        "category": "t:category",
+        "parameters": [],
+        "state": {
+          "refresh": "every",
+          "intervalSeconds": 5
+        },
+        "contexts": [
+          "key",
+          "gesture",
+          "workflow"
+        ],
+        "requiresPermissions": [
+          "calls:control"
+        ]
+      },
+      {
+        "id": "reject",
+        "name": "t:actions.reject.name",
+        "description": "t:actions.reject.description",
+        "category": "t:category",
+        "parameters": [],
+        "state": {
+          "refresh": "every",
+          "intervalSeconds": 5
+        },
+        "contexts": [
+          "key",
+          "gesture",
+          "workflow"
+        ],
+        "requiresPermissions": [
+          "calls:control"
+        ]
+      },
+      {
+        "id": "cancel-outgoing",
+        "name": "t:actions.cancel-outgoing.name",
+        "description": "t:actions.cancel-outgoing.description",
+        "category": "t:category",
+        "parameters": [],
+        "state": {
+          "refresh": "every",
+          "intervalSeconds": 5
+        },
+        "contexts": [
+          "key",
+          "gesture",
+          "workflow"
+        ],
+        "requiresPermissions": [
+          "calls:control"
+        ]
+      },
+      {
+        "id": "end",
+        "name": "t:actions.end.name",
+        "description": "t:actions.end.description",
+        "category": "t:category",
+        "parameters": [],
+        "state": {
+          "refresh": "every",
+          "intervalSeconds": 5
+        },
+        "contexts": [
+          "key",
+          "gesture",
+          "workflow"
+        ],
+        "requiresPermissions": [
+          "calls:control"
+        ]
+      },
+      {
+        "id": "mic-toggle",
+        "name": "t:actions.mic-toggle.name",
+        "description": "t:actions.mic-toggle.description",
+        "category": "t:category",
+        "parameters": [],
+        "state": {
+          "refresh": "every",
+          "intervalSeconds": 5
+        },
+        "contexts": [
+          "key",
+          "gesture",
+          "workflow"
+        ],
+        "requiresPermissions": [
+          "calls:control"
+        ]
+      },
+      {
+        "id": "mic-mute",
+        "name": "t:actions.mic-mute.name",
+        "description": "t:actions.mic-mute.description",
+        "category": "t:category",
+        "parameters": [],
+        "state": {
+          "refresh": "every",
+          "intervalSeconds": 5
+        },
+        "contexts": [
+          "key",
+          "gesture",
+          "workflow"
+        ],
+        "requiresPermissions": [
+          "calls:control"
+        ]
+      },
+      {
+        "id": "mic-unmute",
+        "name": "t:actions.mic-unmute.name",
+        "description": "t:actions.mic-unmute.description",
+        "category": "t:category",
+        "parameters": [],
+        "state": {
+          "refresh": "every",
+          "intervalSeconds": 5
+        },
+        "contexts": [
+          "key",
+          "gesture",
+          "workflow"
+        ],
+        "requiresPermissions": [
+          "calls:control"
+        ]
+      },
+      {
+        "id": "camera-toggle",
+        "name": "t:actions.camera-toggle.name",
+        "description": "t:actions.camera-toggle.description",
+        "category": "t:category",
+        "parameters": [],
+        "state": {
+          "refresh": "every",
+          "intervalSeconds": 5
+        },
+        "contexts": [
+          "key",
+          "gesture",
+          "workflow"
+        ],
+        "requiresPermissions": [
+          "calls:control"
+        ]
+      },
+      {
+        "id": "camera-on",
+        "name": "t:actions.camera-on.name",
+        "description": "t:actions.camera-on.description",
+        "category": "t:category",
+        "parameters": [],
+        "state": {
+          "refresh": "every",
+          "intervalSeconds": 5
+        },
+        "contexts": [
+          "key",
+          "gesture",
+          "workflow"
+        ],
+        "requiresPermissions": [
+          "calls:control"
+        ]
+      },
+      {
+        "id": "camera-off",
+        "name": "t:actions.camera-off.name",
+        "description": "t:actions.camera-off.description",
+        "category": "t:category",
+        "parameters": [],
+        "state": {
+          "refresh": "every",
+          "intervalSeconds": 5
+        },
+        "contexts": [
+          "key",
+          "gesture",
+          "workflow"
+        ],
+        "requiresPermissions": [
+          "calls:control"
+        ]
+      },
+      {
+        "id": "return-to-work",
+        "name": "t:actions.return-to-work.name",
+        "description": "t:actions.return-to-work.description",
+        "category": "t:category",
+        "parameters": [
+          {
+            "key": "mode",
+            "label": "t:params.mode.label",
+            "description": "t:params.mode.description",
+            "required": false,
+            "kind": {
+              "type": "choice",
+              "options": [
+                "timer",
+                "completion",
+                "completionOrTimeout"
+              ]
+            },
+            "default": {
+              "type": "choice",
+              "value": "completionOrTimeout"
+            }
+          },
+          {
+            "key": "seconds",
+            "label": "t:params.seconds.label",
+            "description": "t:params.seconds.description",
+            "required": false,
+            "kind": {
+              "type": "integer",
+              "min": 5,
+              "max": 600
+            },
+            "default": {
+              "type": "integer",
+              "value": 30
+            }
+          },
+          {
+            "key": "maxSeconds",
+            "label": "t:params.maxSeconds.label",
+            "description": "t:params.maxSeconds.description",
+            "required": false,
+            "kind": {
+              "type": "integer",
+              "min": 10,
+              "max": 1800
+            },
+            "default": {
+              "type": "integer",
+              "value": 60
+            }
+          },
+          {
+            "key": "onFailure",
+            "label": "t:params.onFailure.label",
+            "description": "t:params.onFailure.description",
+            "required": false,
+            "kind": {
+              "type": "choice",
+              "options": [
+                "resume",
+                "stay"
+              ]
+            },
+            "default": {
+              "type": "choice",
+              "value": "resume"
+            }
+          },
+          {
+            "key": "onCancel",
+            "label": "t:params.onCancel.label",
+            "description": "t:params.onCancel.description",
+            "required": false,
+            "kind": {
+              "type": "choice",
+              "options": [
+                "resume",
+                "stay"
+              ]
+            },
+            "default": {
+              "type": "choice",
+              "value": "stay"
+            }
+          },
+          {
+            "key": "returnAllDevices",
+            "label": "t:params.returnAllDevices.label",
+            "description": "t:params.returnAllDevices.description",
+            "required": false,
+            "kind": {
+              "type": "boolean"
+            },
+            "default": {
+              "type": "boolean",
+              "value": false
+            }
+          },
+          {
+            "key": "countNavigation",
+            "label": "t:params.countNavigation.label",
+            "description": "t:params.countNavigation.description",
+            "required": false,
+            "kind": {
+              "type": "boolean"
+            },
+            "default": {
+              "type": "boolean",
+              "value": false
+            }
+          }
+        ],
+        "contexts": [
+          "key"
+        ]
+      }
+    ],
+    "callOverlay": {
+      "pages": [
+        "incoming",
+        "outgoing",
+        "active"
+      ]
+    },
+    "layoutTemplates": [
+      {
+        "shape": "grid-small",
+        "version": 1,
+        "pages": [
+          {
+            "page": "incoming",
+            "controls": [
+              {
+                "control": "key",
+                "index": 0,
+                "action": "answer"
+              },
+              {
+                "control": "key",
+                "index": 2,
+                "action": "reject"
+              }
+            ]
+          },
+          {
+            "page": "outgoing",
+            "controls": [
+              {
+                "control": "key",
+                "index": 2,
+                "action": "cancel-outgoing"
+              }
+            ]
+          },
+          {
+            "page": "active",
+            "controls": [
+              {
+                "control": "key",
+                "index": 0,
+                "action": "mic-toggle"
+              },
+              {
+                "control": "key",
+                "index": 1,
+                "action": "camera-toggle"
+              },
+              {
+                "control": "key",
+                "index": 2,
+                "action": "end"
+              },
+              {
+                "control": "key",
+                "index": 3,
+                "action": "return-to-work"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "shape": "grid",
+        "version": 1,
+        "pages": [
+          {
+            "page": "incoming",
+            "controls": [
+              {
+                "control": "key",
+                "index": 6,
+                "action": "answer"
+              },
+              {
+                "control": "key",
+                "index": 8,
+                "action": "reject"
+              }
+            ]
+          },
+          {
+            "page": "outgoing",
+            "controls": [
+              {
+                "control": "key",
+                "index": 7,
+                "action": "cancel-outgoing"
+              }
+            ]
+          },
+          {
+            "page": "active",
+            "controls": [
+              {
+                "control": "key",
+                "index": 5,
+                "action": "mic-toggle"
+              },
+              {
+                "control": "key",
+                "index": 6,
+                "action": "camera-toggle"
+              },
+              {
+                "control": "key",
+                "index": 7,
+                "action": "end"
+              },
+              {
+                "control": "key",
+                "index": 10,
+                "action": "return-to-work"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "shape": "grid-large",
+        "version": 1,
+        "pages": [
+          {
+            "page": "incoming",
+            "controls": [
+              {
+                "control": "key",
+                "index": 10,
+                "action": "answer"
+              },
+              {
+                "control": "key",
+                "index": 13,
+                "action": "reject"
+              }
+            ]
+          },
+          {
+            "page": "outgoing",
+            "controls": [
+              {
+                "control": "key",
+                "index": 12,
+                "action": "cancel-outgoing"
+              }
+            ]
+          },
+          {
+            "page": "active",
+            "controls": [
+              {
+                "control": "key",
+                "index": 10,
+                "action": "mic-toggle"
+              },
+              {
+                "control": "key",
+                "index": 11,
+                "action": "camera-toggle"
+              },
+              {
+                "control": "key",
+                "index": 12,
+                "action": "end"
+              },
+              {
+                "control": "key",
+                "index": 24,
+                "action": "return-to-work"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "shape": "keys-dials",
+        "version": 1,
+        "pages": [
+          {
+            "page": "incoming",
+            "controls": [
+              {
+                "control": "key",
+                "index": 0,
+                "action": "answer"
+              },
+              {
+                "control": "key",
+                "index": 3,
+                "action": "reject"
+              }
+            ]
+          },
+          {
+            "page": "outgoing",
+            "controls": [
+              {
+                "control": "key",
+                "index": 3,
+                "action": "cancel-outgoing"
+              }
+            ]
+          },
+          {
+            "page": "active",
+            "controls": [
+              {
+                "control": "dial",
+                "index": 0,
+                "action": "mic-toggle"
+              },
+              {
+                "control": "dial",
+                "index": 1,
+                "action": "camera-toggle"
+              },
+              {
+                "control": "key",
+                "index": 3,
+                "action": "end"
+              },
+              {
+                "control": "key",
+                "index": 4,
+                "action": "return-to-work"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "shape": "no-display",
+        "version": 1,
+        "pages": [
+          {
+            "page": "active",
+            "controls": [
+              {
+                "control": "key",
+                "index": 0,
+                "action": "mic-toggle"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "errorCodes": {
+      "calls-not-in-call": "t:errors.calls-not-in-call",
+      "calls-unsupported": "t:errors.calls-unsupported",
+      "calls-unconfirmed": "t:errors.calls-unconfirmed",
+      "calls-provider-offline": "t:errors.calls-provider-offline",
+      "calls-consent": "t:errors.calls-consent",
+      "calls-locked": "t:errors.calls-locked",
+      "calls-pages-only": "t:errors.calls-pages-only"
+    }
+  }
+}

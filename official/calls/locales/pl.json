@@ -1,0 +1,96 @@
+{
+  "plugin": {
+    "name": "Rozmowy",
+    "description": "Pokazuje rozmowy i spotkania na Twoich urządzeniach: strony Rozmów w trakcie rozmowy, klawisze ze stanem rozmowy i „Wróć do pracy”. Steruje rozmową tylko tam, gdzie pozwala na to aplikacja do rozmów; Microsoft Teams można tylko wykryć."
+  },
+  "permissions": {
+    "calls": "Sprawdza, czy jesteś w trakcie rozmowy lub spotkania, a za Twoją osobną zgodą prosi aplikację do rozmów o odebranie, zakończenie, wyciszenie lub włączenie i wyłączenie kamery, jeśli na to pozwala. Nie nagrywa dźwięku ani obrazu. Microsoft Teams można tylko wykryć.",
+    "device": "Pokazuje stan rozmowy na klawiszach tych akcji."
+  },
+  "category": "Rozmowy",
+  "actions": {
+    "answer": {
+      "name": "Odbierz",
+      "description": "Odbiera przychodzącą rozmowę, jeśli aplikacja do rozmów na to pozwala."
+    },
+    "reject": {
+      "name": "Odrzuć",
+      "description": "Odrzuca przychodzącą rozmowę, jeśli aplikacja do rozmów na to pozwala."
+    },
+    "cancel-outgoing": {
+      "name": "Anuluj połączenie",
+      "description": "Anuluje połączenie, które nawiązujesz, jeśli aplikacja do rozmów na to pozwala."
+    },
+    "end": {
+      "name": "Zakończ",
+      "description": "Kończy rozmowę lub opuszcza spotkanie, jeśli aplikacja do rozmów na to pozwala."
+    },
+    "mic-toggle": {
+      "name": "Mikrofon",
+      "description": "Wycisza lub włącza Twój mikrofon w rozmowie, jeśli aplikacja do rozmów na to pozwala. Klawisz pokazuje stan potwierdzony przez aplikację."
+    },
+    "mic-mute": {
+      "name": "Wycisz",
+      "description": "Wycisza Cię w rozmowie, jeśli aplikacja do rozmów na to pozwala."
+    },
+    "mic-unmute": {
+      "name": "Wyłącz wyciszenie",
+      "description": "Wyłącza wyciszenie w rozmowie, jeśli aplikacja do rozmów na to pozwala."
+    },
+    "camera-toggle": {
+      "name": "Kamera",
+      "description": "Włącza lub wyłącza Twoją kamerę w rozmowie, jeśli aplikacja do rozmów na to pozwala."
+    },
+    "camera-on": {
+      "name": "Włącz kamerę",
+      "description": "Włącza Twoją kamerę w rozmowie, jeśli aplikacja do rozmów na to pozwala."
+    },
+    "camera-off": {
+      "name": "Wyłącz kamerę",
+      "description": "Wyłącza Twoją kamerę w rozmowie, jeśli aplikacja do rozmów na to pozwala."
+    },
+    "return-to-work": {
+      "name": "Wróć do pracy",
+      "description": "Na stronach Rozmów: pokazuje to, co urządzenie pokazywało przed rozmową, i wraca do rozmowy po czasie albo gdy skończy się to, co uruchomisz."
+    }
+  },
+  "params": {
+    "mode": {
+      "label": "Powrót",
+      "description": "timer: po czasie; completion: gdy skończy się to, co uruchomisz; completionOrTimeout: co nastąpi pierwsze."
+    },
+    "seconds": {
+      "label": "Po (sekundach)",
+      "description": "Dla timer: od 5 do 600 sekund."
+    },
+    "maxSeconds": {
+      "label": "Najwyżej (sekund)",
+      "description": "Dla completionOrTimeout: od 10 do 1800 sekund."
+    },
+    "onFailure": {
+      "label": "Gdy się nie uda",
+      "description": "resume: pokaż rozmowę ponownie; stay: zostań przy swoich klawiszach."
+    },
+    "onCancel": {
+      "label": "Gdy zostanie anulowane",
+      "description": "resume: pokaż rozmowę ponownie; stay: zostań przy swoich klawiszach."
+    },
+    "returnAllDevices": {
+      "label": "Wszystkie urządzenia",
+      "description": "Do pracy wracają wszystkie urządzenia, nie tylko to."
+    },
+    "countNavigation": {
+      "label": "Licz zmiany stron",
+      "description": "Otwarcie strony lub folderu liczy się jako to, co uruchomiono."
+    }
+  },
+  "errors": {
+    "calls-not-in-call": "Nie ma rozmowy, której dotyczy ta akcja.",
+    "calls-unsupported": "Aplikacja do rozmów na to nie pozwala.",
+    "calls-unconfirmed": "Aplikacja do rozmów tego nie potwierdziła.",
+    "calls-provider-offline": "Żadna aplikacja do rozmów nie jest połączona.",
+    "calls-consent": "Nie pozwolono DeckPilotowi sterować rozmowami.",
+    "calls-locked": "DeckPilot jest zablokowany.",
+    "calls-pages-only": "„Wróć do pracy” działa na stronach Rozmów, w trakcie rozmowy."
+  }
+}

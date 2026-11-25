@@ -10,6 +10,7 @@
 resolver = "3"
 # One line per member, sorted. Every member is listed in plugins.json.
 members = [
+    "calls",
     "docker",
     "git",
     "git-providers",

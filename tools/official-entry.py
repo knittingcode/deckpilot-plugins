@@ -137,7 +137,7 @@ OFFICIAL_REGISTRY_MIN_HOST = "0.11.0"
 # will bundle them, with the plugin API they need.
 BUNDLED_ONLY_IDS = frozenset({
     "deckpilot.docker", "deckpilot.git", "deckpilot.projects", "deckpilot.workflows", "deckpilot.workspace",
-    "deckpilot.git-providers", "deckpilot.scripts",
+    "deckpilot.calls", "deckpilot.git-providers", "deckpilot.scripts",
 })
 REGISTRY = ROOT / "registry"
 

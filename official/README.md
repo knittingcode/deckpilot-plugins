@@ -63,6 +63,7 @@ with a new version of every official plugin; the tooling pin
 | `deckpilot.workflows` | 0.1.1 (0.1.0) | `hostViews` | released, exactly the reviewed policy |
 | `deckpilot.workspace` | 0.1.1 (0.1.0) | `openUrl` (`fromParams`), `profile`, `resources` | released, exactly the reviewed policy |
 | `deckpilot.git-providers` | 0.1.0 (new) | `connections`, `dialogs`, `openUrl` (`connections`) | **held ahead of the pin** (`hostApi` 1.14): built and tested, never packaged or released |
+| `deckpilot.calls` | 0.1.0 (new) | `calls` (with `control`), `device` | **held ahead of the pin** (`hostApi` 1.16): built and tested, never packaged or released. Microsoft Teams is detection only ([its README](calls/README.md)) |
 
 The optional dependencies of Docker, Git and Workspace on
 `deckpilot.projects` (`>=0.1.0 <1.0.0`) are DeckPilot's, unchanged, and
@@ -166,7 +167,9 @@ shipped.
 
 A plugin may need a plugin API that no DeckPilot has yet: `deckpilot.scripts`
 needs 1.13 (the `scripts` permission), `deckpilot.git-providers` needs
-1.14 (the `connections` permission) and `deckpilot.projects` 0.2.0 needs
+1.14 (the `connections` permission), `deckpilot.calls` needs 1.16 (the
+`calls` permission, with `contributes.callOverlay` and
+`contributes.layoutTemplates`) and `deckpilot.projects` 0.2.0 needs
 1.12 (the typed repository variables, no new permission). `tools/check-official.py` fixes each
 id's level and new permission kinds (`AHEAD_OF_PIN`). The plugin's
 `plugins.json` entry is `held` with `hostApi`, exactly that level, accepted
@@ -193,6 +196,41 @@ otherwise:
 
 Its release removes `hostApi` and `held` once the pinned DeckPilot has the
 API, its contract and, for a privileged plugin, its reviewed policy entry.
+
+#### A privileged plugin held ahead: `deckpilot.calls` 0.1.0
+
+`deckpilot.calls` ([its README](calls/README.md)) is new and privileged
+at its level. In DeckPilot (`calls_rules.rs`, knittingcode/deckpilot#450)
+the `calls` permission, `contributes.callOverlay` and
+`contributes.layoutTemplates` are privileged usages: bundled only, the
+id `deckpilot.calls` only, `^1.16`, and never together with `network`,
+`credentials`, `openUrl`, `tools` or `connections`. Its manifest uses
+`calls` (with `control`) and `device` (key state) only. The pinned
+packager refuses the manifest as a whole (it does not know `calls`), and
+`tools/check-official.py`'s privileged-usage mirror is plugin API 1.9's,
+so the 1.16 usages do not hold it there; the hold is `hostApi`.
+
+Its module reaches the host only through the raw host call
+(`call.state`, `call.control`, the JSON of DeckPilot's
+`plugins/runtime/crates/abi/src/calls.rs`). The SDK pin does not move.
+
+**What its release needs** (all in DeckPilot first, then a reviewed change
+here):
+
+1. the agent's plugin API at 1.16 and the host side (#489) in a published
+   DeckPilot;
+2. the reviewed privileged policy entry of `deckpilot.calls` 0.1.0: its
+   exact `permissions` and three constructs (`permissions[0]`,
+   `contributes.callOverlay`, `contributes.layoutTemplates`, with their
+   JSON values), in both copies of `privileged-policy.json` with the
+   security review recorded. Here it also needs `deckpilot.calls` among
+   the privileged plugins `check` accepts in the policy, and the 1.16
+   usages in `privileged_usages` once the pin has them;
+3. its contract at the pin (bundled by DeckPilot), then the pin move,
+   removing `hostApi` and `held`;
+4. the owner's check, on a real Mac, that the operating-system signals
+   trigger no microphone or camera permission prompt, and the release tag
+   `deckpilot.calls--v0.1.0`, which only the owner authorizes.
 
 #### A released plugin held ahead: `deckpilot.projects` 0.2.0
 

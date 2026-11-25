@@ -1,0 +1,96 @@
+{
+  "plugin": {
+    "name": "Calls",
+    "description": "Shows your calls and meetings on your devices: the Calls pages during a call, call keys with the call's state, and Back to work. Controls a call only where the call app allows it; Microsoft Teams can only be detected."
+  },
+  "permissions": {
+    "calls": "Reads whether you are in a call or meeting and, with your separate consent, asks the call app to answer, end, mute or turn the camera on or off where it allows that. No sound or picture is recorded. Microsoft Teams can only be detected.",
+    "device": "Shows the call's state on the keys of these actions."
+  },
+  "category": "Calls",
+  "actions": {
+    "answer": {
+      "name": "Answer",
+      "description": "Answers the incoming call, where the call app allows it."
+    },
+    "reject": {
+      "name": "Reject",
+      "description": "Rejects the incoming call, where the call app allows it."
+    },
+    "cancel-outgoing": {
+      "name": "Cancel call",
+      "description": "Cancels the call you are making, where the call app allows it."
+    },
+    "end": {
+      "name": "Leave",
+      "description": "Ends or leaves the call, where the call app allows it."
+    },
+    "mic-toggle": {
+      "name": "Microphone",
+      "description": "Mutes or unmutes you in the call, where the call app allows it. The key shows the state the app confirmed."
+    },
+    "mic-mute": {
+      "name": "Mute",
+      "description": "Mutes you in the call, where the call app allows it."
+    },
+    "mic-unmute": {
+      "name": "Unmute",
+      "description": "Unmutes you in the call, where the call app allows it."
+    },
+    "camera-toggle": {
+      "name": "Camera",
+      "description": "Turns your camera in the call on or off, where the call app allows it."
+    },
+    "camera-on": {
+      "name": "Camera on",
+      "description": "Turns your camera in the call on, where the call app allows it."
+    },
+    "camera-off": {
+      "name": "Camera off",
+      "description": "Turns your camera in the call off, where the call app allows it."
+    },
+    "return-to-work": {
+      "name": "Back to work",
+      "description": "On the Calls pages: shows what the device showed before the call, and brings the call back after a time or when what you start next is done."
+    }
+  },
+  "params": {
+    "mode": {
+      "label": "Come back",
+      "description": "timer: after a time; completion: when what you start is done; completionOrTimeout: whichever comes first."
+    },
+    "seconds": {
+      "label": "After (seconds)",
+      "description": "For timer: 5 to 600 seconds."
+    },
+    "maxSeconds": {
+      "label": "At most (seconds)",
+      "description": "For completionOrTimeout: 10 to 1800 seconds."
+    },
+    "onFailure": {
+      "label": "When it fails",
+      "description": "resume: show the call again; stay: stay on your keys."
+    },
+    "onCancel": {
+      "label": "When it is cancelled",
+      "description": "resume: show the call again; stay: stay on your keys."
+    },
+    "returnAllDevices": {
+      "label": "Every device",
+      "description": "Every device goes back to work, not only this one."
+    },
+    "countNavigation": {
+      "label": "Count page changes",
+      "description": "Opening a page or folder counts as what you started."
+    }
+  },
+  "errors": {
+    "calls-not-in-call": "There is no call this action applies to.",
+    "calls-unsupported": "The call app does not allow this.",
+    "calls-unconfirmed": "The call app did not confirm it.",
+    "calls-provider-offline": "No call app is connected.",
+    "calls-consent": "You have not allowed DeckPilot to control calls.",
+    "calls-locked": "DeckPilot is locked.",
+    "calls-pages-only": "Back to work works on the Calls pages, during a call."
+  }
+}
