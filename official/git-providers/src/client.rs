@@ -163,6 +163,17 @@ impl Api {
                     ),
                 ));
             }
+            // A next page named but not readable: the list is incomplete,
+            // never taken for its end.
+            None if raw.mentions_link("next") => {
+                return Err(fail(
+                    codes::INVALID_RESPONSE,
+                    format!(
+                        "{}'s answer for {what} names a next page that cannot be read",
+                        self.kind.name()
+                    ),
+                ));
+            }
             None => None,
         };
         Ok(Reply {

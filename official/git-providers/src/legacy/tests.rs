@@ -385,3 +385,78 @@ fn action_params(id: &str) -> Vec<String> {
         .map(|p| p["key"].as_str().unwrap().to_owned())
         .collect()
 }
+
+/// The legacy GitLab actions keep paging projects named by path: a next
+/// link with the project's `group%2Fapp` is followed (the main clients
+/// refuse a `%2f` the request did not have; this one had it).
+#[test]
+fn a_legacy_gitlab_list_follows_a_next_link_with_the_encoded_project_path() {
+    use deckpilot_plugin_sdk::testing::MockHost;
+    use deckpilot_plugin_sdk::{ActionOutcome, ParamValue};
+
+    use crate::provider::{ConnectionInfo, ConnectionStatus, Deployment};
+    use crate::transport::{Method, mock::MockTransport};
+
+    let api = "https://gitlab.com/api/v4";
+    let first = format!(
+        "{api}/projects/group%2Fapp/merge_requests?state=opened&order_by=updated_at&sort=desc&per_page=50"
+    );
+    let second = format!(
+        "{api}/projects/group%2Fapp/merge_requests?order_by=updated_at&page=2&per_page=50&sort=desc&state=opened"
+    );
+    let items = |from: usize, count: usize| {
+        Value::Array(
+            (from..from + count)
+                .map(|n| json!({"iid": n, "title": format!("MR {n}"), "author": {"username": "dev"},
+                                "references": {"full": format!("group/app!{n}")},
+                                "web_url": format!("https://gitlab.com/group/app/-/merge_requests/{n}")}))
+                .collect(),
+        )
+        .to_string()
+    };
+    let t = MockTransport::new()
+        .on_with(
+            Method::Get,
+            &first,
+            200,
+            &[
+                ("link", &format!("<{second}>; rel=\"next\"")),
+                ("x-total", "70"),
+            ],
+            &items(1, 50),
+        )
+        .on_with(
+            Method::Get,
+            &second,
+            200,
+            &[("x-total", "70")],
+            &items(51, 20),
+        );
+    let t = std::rc::Rc::new(std::cell::RefCell::new(t));
+    let id = "cn_01JD7Q0000000000000000000P";
+    crate::host::test_binding::set(
+        ConnectionInfo {
+            id: id.into(),
+            type_id: "gitlab".into(),
+            deployment: Deployment::Cloud,
+            api_base: api.into(),
+            web_base: "https://gitlab.com".into(),
+            methods: vec![Method::Get],
+            status: ConnectionStatus::Ok,
+            capabilities: None,
+        },
+        Box::new(Watched(t.clone())),
+    );
+    let mut host = MockHost::new(|request| panic!("unexpected request {request:?}"));
+    let out = host.invoke(
+        &crate::plugin(),
+        "legacy-gitlab-merge-requests",
+        json!({"connection": id, "project": "group/app", "limit": 70}),
+    );
+    let ActionOutcome::Ok { data, .. } = &out else {
+        panic!("{out:?}")
+    };
+    assert_eq!(data["listed"], ParamValue::Integer(70));
+    assert_eq!(data["count"], ParamValue::Integer(70));
+    assert_eq!(t.borrow().urls(), [first, second]);
+}

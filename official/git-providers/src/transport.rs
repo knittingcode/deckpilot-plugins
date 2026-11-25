@@ -106,20 +106,117 @@ impl HttpReply {
     /// GitLab send it).
     pub fn link(&self, rel: &str) -> Option<String> {
         let value = self.header("link")?;
-        value.split(',').find_map(|entry| {
-            // `<target>; params`: the target may itself hold `;`.
-            let (target, params) = entry.trim().strip_prefix('<')?.split_once('>')?;
-            let params = params.trim_start().strip_prefix(';')?;
-            params
-                .split(';')
-                .filter_map(|p| p.trim().split_once('='))
-                .any(|(k, v)| {
-                    k.trim().eq_ignore_ascii_case("rel")
-                        && v.trim().trim_matches('"').split(' ').any(|r| r == rel)
-                })
-                .then(|| target.to_owned())
+        link_entries(value)
+            .into_iter()
+            .map(parse_link_entry)
+            .find_map(|entry| entry.has(rel).then_some(entry.target).flatten())
+    }
+
+    /// Whether the `link` header gives a `rel` relation at all, readable
+    /// or not (from the parsed entries' `rel` values): a `next` whose
+    /// target [`HttpReply::link`] cannot read is then an incomplete
+    /// answer, never the end of a list.
+    pub fn mentions_link(&self, rel: &str) -> bool {
+        self.header("link").is_some_and(|value| {
+            link_entries(value)
+                .into_iter()
+                .map(parse_link_entry)
+                .any(|entry| entry.has(rel))
         })
     }
+}
+
+/// One entry of a `link` header: its target, when it is a readable
+/// `<…>`, and the words of its `rel` parameters.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinkEntry {
+    pub target: Option<String>,
+    pub rels: Vec<String>,
+}
+
+impl LinkEntry {
+    pub fn has(&self, rel: &str) -> bool {
+        self.rels.iter().any(|r| r.eq_ignore_ascii_case(rel))
+    }
+}
+
+/// Splits `value` at `separator`, never inside a quoted string and, with
+/// `targets`, never inside `<…>`.
+fn split_outside(value: &str, separator: char, targets: bool) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let (mut start, mut in_target, mut in_quotes, mut escaped) = (0, false, false, false);
+    for (i, c) in value.char_indices() {
+        if in_quotes {
+            match c {
+                _ if escaped => escaped = false,
+                '\\' => escaped = true,
+                '"' => in_quotes = false,
+                _ => {}
+            }
+            continue;
+        }
+        match c {
+            '<' if targets && !in_target => in_target = true,
+            '>' if in_target => in_target = false,
+            '"' if !in_target => in_quotes = true,
+            c if c == separator && !in_target => {
+                parts.push(&value[start..i]);
+                start = i + c.len_utf8();
+            }
+            _ => {}
+        }
+    }
+    parts.push(&value[start..]);
+    parts
+}
+
+/// The entries of a `link` header (RFC 8288), split at the commas that
+/// separate them: never one inside `<…>` or a quoted parameter value.
+pub fn link_entries(value: &str) -> Vec<&str> {
+    split_outside(value, ',', true)
+}
+
+/// One entry: `<target>` and its `;` parameters, split outside quotes, so
+/// a quoted `title="x;rel=next"` is one parameter. An entry whose target
+/// is not a closed `<…>` keeps its parameters (to tell that it named a
+/// relation) without a target.
+pub fn parse_link_entry(entry: &str) -> LinkEntry {
+    let entry = entry.trim();
+    let (target, params) = match entry
+        .strip_prefix('<')
+        .and_then(|rest| rest.split_once('>'))
+    {
+        Some((target, rest)) => (Some(target.to_owned()), rest),
+        None => (None, entry.trim_start_matches('<')),
+    };
+    // Without a readable target, the parameters may run into it: split at
+    // spaces too (outside quotes), to find a `rel` there.
+    let mut parts = split_outside(params, ';', false);
+    if target.is_none() {
+        parts = parts
+            .into_iter()
+            .flat_map(|p| split_outside(p, ' ', false))
+            .collect();
+    }
+    let rels = parts
+        .into_iter()
+        .filter_map(|p| p.trim().split_once('='))
+        .filter(|(k, _)| k.trim().eq_ignore_ascii_case("rel"))
+        .flat_map(|(_, v)| {
+            v.trim()
+                .trim_matches('"')
+                .split_whitespace()
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    // Parameters only after the target: a target followed by anything
+    // but `;` is not a readable entry.
+    let target = target.filter(|_| {
+        let rest = params.trim_start();
+        rest.is_empty() || rest.starts_with(';')
+    });
+    LinkEntry { target, rels }
 }
 
 /// Why a request got no answer.

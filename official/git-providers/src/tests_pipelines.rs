@@ -1012,3 +1012,28 @@ fn the_trigger_question_keeps_the_workflow_and_a_name_whatever_the_rest() {
     assert!(q.ends_with(" more?"), "{q}");
     assert!(!q.contains("  "), "{q}");
 }
+
+#[test]
+fn the_trigger_question_is_one_line_whatever_the_texts() {
+    use crate::changes::{MAX_QUESTION, trigger_question};
+    // A hostile path and host: runs of spaces, tabs, newlines, control
+    // and bidirectional characters. One line, single spaces, no panic.
+    let path = "team/\n\n  app\t\t \u{202e}x \u{0}\u{7}  y";
+    let host = "code.example.com  \r\n  evil";
+    let t = PipelineTrigger {
+        reference: "main  \t next".into(),
+        ..ci()
+    };
+    let q = trigger_question(&t, path, host);
+    assert!(!q.contains("  "), "{q:?}");
+    assert!(!q.chars().any(char::is_control), "{q:?}");
+    assert!(q.chars().count() <= MAX_QUESTION);
+    assert!(q.contains("team/ app x y"), "{q:?}");
+    assert!(q.contains("(code.example.com evil)"), "{q:?}");
+    let long = format!("{}{}", " ".repeat(300), "a ".repeat(300));
+    let q = trigger_question(&t, &long, &long);
+    assert!(
+        !q.contains("  ") && q.chars().count() <= MAX_QUESTION,
+        "{q:?}"
+    );
+}

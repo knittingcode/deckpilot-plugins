@@ -635,3 +635,84 @@ fn a_next_link_may_repeat_the_requests_own_encoded_slash() {
         }
     }
 }
+
+/// RFC 8288 link headers: a comma inside `<…>` or a quoted parameter
+/// splits nothing; a `next` that is named but cannot be read is an
+/// incomplete list, never its end.
+#[test]
+fn link_headers_are_split_outside_targets_and_quotes() {
+    use crate::transport::link_entries;
+    let reply = |link: &str| HttpReply {
+        status: 200,
+        headers: vec![("link".into(), link.into())],
+        body: "[]".into(),
+    };
+    let api = "https://code.example.com:8443/gitlab/api/v4";
+    for (header, next) in [
+        (
+            format!(
+                r#"<{api}/projects?ids=1,2&page=2>; rel="next", <{api}/projects?page=9>; rel="last""#
+            ),
+            Some(format!("{api}/projects?ids=1,2&page=2")),
+        ),
+        (
+            format!(
+                r#"<{api}/projects?page=1>; rel="first"; title="a, b", <{api}/projects?page=2>; rel="next""#
+            ),
+            Some(format!("{api}/projects?page=2")),
+        ),
+        (
+            format!(r#"<{api}/projects?page=2>; rel="prev next""#),
+            Some(format!("{api}/projects?page=2")),
+        ),
+        (format!(r#"<{api}/projects?page=9>; rel="last""#), None),
+    ] {
+        assert_eq!(reply(&header).link("next"), next, "{header}");
+    }
+    assert_eq!(
+        link_entries(r#"<a,b>; t="x,y", <c>"#),
+        [r#"<a,b>; t="x,y""#, " <c>"]
+    );
+    // A quoted parameter holding `;rel=next` is one parameter: not next.
+    let tricky =
+        r#"<https://code.example.com:8443/gitlab/api/v4/u>; title="x;rel=next"; rel="prev""#;
+    assert_eq!(reply(tricky).link("next"), None);
+    assert!(!reply(tricky).mentions_link("next"));
+    assert!(reply(tricky).mentions_link("prev"));
+    // A target followed by anything but parameters is not readable, but
+    // names its relation.
+    assert_eq!(reply(r#"<u>x; rel="next""#).link("next"), None);
+    assert!(reply(r#"<u>x; rel="next""#).mentions_link("next"));
+
+    // A next page named but unreadable: invalid-response, not the end.
+    let c = connection(
+        "gitlab",
+        Deployment::SelfHosted,
+        api,
+        "https://code.example.com:8443/gitlab",
+    );
+    let p = for_connection(&c).unwrap();
+    for broken in [
+        format!(r#"{api}/projects?page=2; rel="next""#),
+        format!(r#"<{api}/projects?page=2 rel="next""#),
+        r#"; rel="next""#.to_owned(),
+    ] {
+        let url = format!(
+            "{api}/projects/4711/merge_requests?state=opened&order_by=updated_at&sort=desc&per_page=20"
+        );
+        let mut t =
+            MockTransport::new().on_with(Method::Get, &url, 200, &[("link", &broken)], "[]");
+        let e = p
+            .list_change_requests(
+                &mut t,
+                Some(&repo(ProviderKind::Gitlab)),
+                &CrQuery {
+                    filter: CrFilter::Open,
+                    limit: 20,
+                },
+            )
+            .err()
+            .unwrap_or_else(|| panic!("{broken} was taken for the end"));
+        assert_eq!(e.code, codes::INVALID_RESPONSE, "{broken}");
+    }
+}

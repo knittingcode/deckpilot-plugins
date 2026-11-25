@@ -57,18 +57,44 @@ fn call(request: &Value) -> Result<Value, TransportError> {
     }
 }
 
+/// How the host's executor wraps a refused redirect (knittingcode/deckpilot
+/// #467 `executor/mod.rs`); the broker's code follows it.
+pub const REDIRECT_WRAPPER: &str = "a redirect was refused by the permission broker (";
+
+/// How the host's supervisor says that it stopped a call because the
+/// invocation was cancelled or ran out of time (#467 `supervisor/src/host.rs`).
+pub const SUPERVISOR_CANCELLED: [&str; 2] = [
+    "the action was cancelled or ran out of time; the call was stopped",
+    "the action was cancelled; no further capability calls are carried out",
+];
+
 /// The host's refusal as the transport's error. The host names the
 /// connection's own refusals by their code in the message
 /// (`connection-missing`, `connection-disabled`, `redirect-refused`).
 fn map_error(error: CallError) -> TransportError {
     let has = |token: &str| error.message.contains(token);
+    // The host names its connection refusals by a code at the start of the
+    // message (`redirect-refused: …`, knittingcode/deckpilot#467); the same
+    // word later in a message (a server's text, a URL) is not one.
+    // A refused redirect comes wrapped (#467's executor): "a redirect was
+    // refused by the permission broker (<code>: …)".
+    let message = error.message.trim_start();
+    let head = message.strip_prefix(REDIRECT_WRAPPER).unwrap_or(message);
+    let starts = |token: &str| {
+        head.strip_prefix(token)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with([':', ' ', ';', ',', '.']))
+    };
+    // A stopped call: `time.sleep`'s "cancelled: …", or the supervisor's
+    // own words when the invocation is cancelled or out of time.
+    let cancelled =
+        starts("cancelled") || SUPERVISOR_CANCELLED.iter().any(|s| message.starts_with(s));
     match error.code.as_str() {
         "unsupported-op" => TransportError::Unsupported,
         "throttled" => TransportError::Throttled,
-        _ if has("connection-missing") => TransportError::ConnectionMissing,
-        _ if has("connection-disabled") => TransportError::ConnectionDisabled,
-        _ if has("redirect-refused") => TransportError::RedirectRefused,
-        _ if has("cancelled") => TransportError::Cancelled,
+        _ if starts("connection-missing") => TransportError::ConnectionMissing,
+        _ if starts("connection-disabled") => TransportError::ConnectionDisabled,
+        _ if starts("redirect-refused") => TransportError::RedirectRefused,
+        _ if cancelled => TransportError::Cancelled,
         "failed" => match error.kind {
             Some(kind) => TransportError::Network(kind),
             None if has("too large") || has("exceeds") || has("larger than") => {
@@ -272,6 +298,76 @@ mod tests {
             e("not-permitted", "origin not granted", None),
             TransportError::Denied(_)
         ));
+        // The host's codes are prefixes (#467), with or without a reason.
+        for (message, want) in [
+            (
+                "connection-disabled: turned off",
+                TransportError::ConnectionDisabled,
+            ),
+            ("connection-missing", TransportError::ConnectionMissing),
+            (
+                "redirect-refused: to https://other.example",
+                TransportError::RedirectRefused,
+            ),
+            (
+                "cancelled: the action was cancelled",
+                TransportError::Cancelled,
+            ),
+            (" cancelled", TransportError::Cancelled),
+            // #467's literal strings: the executor's wrapped redirect
+            // refusals and the supervisor's cancellations.
+            (
+                "a redirect was refused by the permission broker (redirect-refused: the server \
+                 redirected the request away from the connection's server)",
+                TransportError::RedirectRefused,
+            ),
+            (
+                "a redirect was refused by the permission broker (connection-missing: the \
+                 connection is not one this action was given, or it was removed)",
+                TransportError::ConnectionMissing,
+            ),
+            (
+                "a redirect was refused by the permission broker (connection-disabled: the \
+                 connection is turned off in DeckPilot)",
+                TransportError::ConnectionDisabled,
+            ),
+            (
+                "the action was cancelled or ran out of time; the call was stopped",
+                TransportError::Cancelled,
+            ),
+            (
+                "the action was cancelled; no further capability calls are carried out",
+                TransportError::Cancelled,
+            ),
+        ] {
+            assert_eq!(e("not-permitted", message, None), want, "{message}");
+        }
+        // The supervisor's cancellation, with its own code.
+        for message in SUPERVISOR_CANCELLED {
+            assert_eq!(e("unavailable", message, None), TransportError::Cancelled);
+        }
+        // The same words anywhere else are no refusal of the host's: a
+        // server's text or a URL in the middle of a message.
+        for message in [
+            "the server said: redirect-refused",
+            "origin https://connection-missing.example not granted",
+            "GET /api/v4/projects/connection-disabled failed",
+            "500 Internal Server Error: pipeline status unknown",
+            "redirect-refusedx: not a code",
+            // The wrapper with another reason, or the code elsewhere.
+            "a redirect was refused by the permission broker (too-many-redirects)",
+            "a redirect was refused (redirect-refused: not the executor's words)",
+            "the action was cancelled by the server's job",
+        ] {
+            assert!(
+                matches!(e("not-permitted", message, None), TransportError::Denied(_)),
+                "{message}"
+            );
+            assert!(
+                matches!(e("failed", message, None), TransportError::Other(_)),
+                "{message}"
+            );
+        }
     }
 
     #[test]
