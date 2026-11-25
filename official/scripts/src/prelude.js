@@ -282,8 +282,28 @@
     throw new ScriptError("invalidArgument", `${what} is a path: an absolute string, a repository or repo.join(...)`);
   }
 
+  // The JSON of a repository, its `remote` and its `remotes` (decision K4:
+  // neither id in text the API makes, a log line of the object or the
+  // run's result). Each is an own toJSON, not enumerable, so the
+  // serialization never consults Object.prototype.toJSON or
+  // Array.prototype.toJSON, which a script can replace: each returns
+  // primitives, or objects that have their own toJSON (the remotes array
+  // returns the remote objects themselves), and never a function.
+  function ownJson(o, f) {
+    return defineProperty(o, "toJSON", { value: f });
+  }
+
+  const textOrNull = (v) => (typeof v === "string" ? v : null);
+
   function makeRepository(r) {
     const key = toStr(r.key);
+    const given = r.remote;
+    const remote = given
+      ? { url: given.url == null ? null : toStr(given.url), defaultBranch: given.defaultBranch == null ? null : toStr(given.defaultBranch) }
+      : null;
+    if (remote) ownJson(remote, () => ({ url: remote.url, defaultBranch: remote.defaultBranch }));
+    const remotes = isArray(r.remotes) ? map(r.remotes, makeRemote) : [];
+    ownJson(remotes, () => copy(remotes));
     const repo = {
       id: toStr(r.id),
       key,
@@ -292,10 +312,8 @@
       isDefault: r.isDefault === true,
       path: typeof r.path === "string" ? r.path : null,
       exists: r.exists === true,
-      remote: r.remote
-        ? { url: r.remote.url == null ? null : toStr(r.remote.url), defaultBranch: r.remote.defaultBranch == null ? null : toStr(r.remote.defaultBranch) }
-        : null,
-      remotes: isArray(r.remotes) ? map(r.remotes, makeRemote) : [],
+      remote,
+      remotes,
       join(...parts) {
         return freeze({ repository: key, relative: relativeJoin(key, parts) });
       },
@@ -303,17 +321,25 @@
         return `repository "${key}"`;
       },
     };
+    ownJson(repo, () => ({
+      id: repo.id,
+      key,
+      name: repo.name,
+      description: repo.description,
+      isDefault: repo.isDefault,
+      path: repo.path,
+      exists: repo.exists,
+      remote,
+      remotes,
+    }));
     wsAdd(repositories, repo);
     return deepFreeze(repo);
   }
 
-  const textOrNull = (v) => (typeof v === "string" ? v : null);
-
   // One of `Repository.remotes` (decision K4), from the reply that
   // api/projects.rs already checked and reduced to these members. The
-  // ids are the script's to read; no text the API builds carries them:
-  // JSON (a log line of the object, the run's result) omits both, through
-  // a toJSON that is not enumerable, so Object.keys shows the six members.
+  // ids are the script's to read; its JSON leaves both out (Object.keys
+  // still shows the six members).
   function makeRemote(m) {
     const remote = {
       name: toStr(m.name),
@@ -323,10 +349,7 @@
       connectionId: textOrNull(m.connectionId),
       remoteRepositoryId: textOrNull(m.remoteRepositoryId),
     };
-    defineProperty(remote, "toJSON", {
-      value: () => ({ name: remote.name, primary: remote.primary, url: remote.url, defaultBranch: remote.defaultBranch }),
-    });
-    return remote;
+    return ownJson(remote, () => ({ name: remote.name, primary: remote.primary, url: remote.url, defaultBranch: remote.defaultBranch }));
   }
 
   function makeProject(p, repos) {

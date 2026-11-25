@@ -102,7 +102,10 @@ repositories are frozen objects: `id`, `key`, `name`, `description`,
   error (a refused reply names the member, never a value), a repository's
   `toString`, the run's outcomes or its result. Each remote has a
   `toJSON` (not enumerable, so `Object.keys` shows the six members) that
-  leaves both out, so `deckpilot.log.info(repo)`, `JSON.stringify(repo)`
+  leaves both out. The repository, its `remote` and the `remotes` array
+  have their own `toJSON` too, so the guest's JSON never consults
+  `Object.prototype.toJSON` or `Array.prototype.toJSON`, which a script
+  can replace. So `deckpilot.log.info(repo)`, `JSON.stringify(repo)`
   and a returned repository have `name`, `primary`, `url` and
   `defaultBranch` only. A script that logs `remote.connectionId` itself
   does so by its own choice.

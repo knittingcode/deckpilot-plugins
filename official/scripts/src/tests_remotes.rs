@@ -423,3 +423,58 @@ fn no_text_the_guest_builds_carries_the_ids_k4() {
     let _ = run_mock(&mock);
     assert_eq!(mock.0.borrow().logs(), vec![CONN.to_owned()]);
 }
+
+#[test]
+fn a_replaced_prototype_to_json_never_reaches_the_guests_json_k4() {
+    // The script replaces both prototypes' toJSON with ones that would
+    // spill the ids. The guest's own JSON of a repository, its `remote`
+    // and its `remotes` (log lines, the run's result) uses only the
+    // objects' own toJSON, so neither is consulted.
+    let src = r#"
+        "use strict";
+        Object.prototype.toJSON = function () {
+            const first = this.remotes && this.remotes[0];
+            return "PROTO-OBJECT " + this.connectionId + " " + this.remoteRepositoryId + " " + (first ? first.connectionId : "");
+        };
+        Array.prototype.toJSON = function () {
+            let s = "PROTO-ARRAY";
+            for (let i = 0; i < this.length; i++) s += " " + (this[i] && this[i].connectionId) + " " + (this[i] && this[i].remoteRepositoryId);
+            return s;
+        };
+        const repo = deckpilot.repositories.current()[0];
+        deckpilot.log.info(repo);
+        deckpilot.log.info(repo.remotes);
+        deckpilot.log.info(repo.remotes[0]);
+        deckpilot.log.info(repo.remote);
+        deckpilot.log.info(repo.remotes[0], repo);
+        console.log(JSON.stringify(repo));
+        repo
+    "#;
+    let mock = with_remotes(src, Some(two_remotes()));
+    let r = run_mock(&mock);
+    let logs = mock.0.borrow().logs();
+    assert_eq!(logs.len(), 6, "{logs:?}");
+    for line in &logs {
+        assert!(!line.contains("PROTO"), "a prototype's toJSON in {line}");
+    }
+    assert!(
+        logs[0].contains("\"remotes\":[{\"name\":\"origin\""),
+        "{}",
+        logs[0]
+    );
+    assert_eq!(
+        logs[1],
+        r#"[{"name":"origin","primary":true,"url":"git@github.com:example/cms.git","defaultBranch":"main"},{"name":"mirror","primary":false,"url":null,"defaultBranch":null}]"#
+    );
+    assert_eq!(
+        logs[3],
+        r#"{"url":"git@github.com:example/cms.git","defaultBranch":"main"}"#
+    );
+    let all = texts(&mock, r);
+    assert!(!all.join("\n").contains("PROTO"), "{all:?}");
+    no_ids(&all);
+    let got = result(run_mock(&with_remotes(src, Some(two_remotes()))));
+    assert_eq!(got["key"], "cms");
+    assert_eq!(got["remotes"][1]["name"], "mirror");
+    assert_eq!(got["remote"]["defaultBranch"], "main");
+}
