@@ -33,6 +33,7 @@ fn serving(source: &str, file: Vec<u8>, edit: impl FnMut(usize, &mut Vec<u8>) + 
                 let end = (offset + length).min(f.len());
                 ok(json!({
                     "content": base64::encode(&f[start..end]),
+                    "bytes": end - start,
                     "size": f.len(),
                     "eof": end == f.len(),
                 }))
@@ -232,6 +233,7 @@ fn writing(source: &str, fail: impl Fn(&str, usize) -> Option<Value> + 'static) 
             }
             match op {
                 "fs.write.open" => ok(json!({ "handle": "wh-7f3a" })),
+                "fs.writeFile" => ok(json!({})),
                 "fs.write.chunk" | "fs.write.commit" | "fs.write.abort" => {
                     assert_eq!(args["handle"], "wh-7f3a");
                     ok(json!({}))
@@ -248,7 +250,10 @@ fn written(mock: &Mock) -> Vec<u8> {
         .borrow()
         .of("fs.write.chunk")
         .iter()
-        .flat_map(|a| base64::decode(a["data"].as_str().unwrap()).unwrap())
+        .flat_map(|a| {
+            assert_eq!(a["encoding"], "base64");
+            base64::decode(a["content"].as_str().unwrap()).unwrap()
+        })
         .collect()
 }
 
@@ -273,30 +278,108 @@ fn a_write_is_open_chunks_commit() {
     );
     assert_eq!(
         s.requests[0].1,
-        json!({ "path": { "repository": "cms", "relative": "dist/app.js" }, "encoding": "base64", "createOnly": false })
+        json!({ "path": { "repository": "cms", "relative": "dist/app.js" }, "createOnly": false })
     );
     drop(s);
     assert_eq!(written(&mock), "é".repeat(50000).into_bytes());
     for a in mock.0.borrow().of("fs.write.chunk") {
-        assert!(base64::decode(a["data"].as_str().unwrap()).unwrap().len() <= WRITE_CHUNK);
+        assert!(
+            base64::decode(a["content"].as_str().unwrap())
+                .unwrap()
+                .len()
+                <= WRITE_CHUNK
+        );
     }
 }
 
 #[test]
-fn an_empty_write_and_a_base64_write() {
+fn a_small_write_is_one_request_in_the_scripts_encoding() {
     let mock = writing("deckpilot.fs.writeFile('/w/e', '')", |_, _| None);
     run_mock(&mock).unwrap();
     assert_eq!(
-        mock.0.borrow().ops(),
-        vec!["fs.write.open", "fs.write.commit"]
+        mock.0.borrow().requests,
+        vec![(
+            "fs.writeFile".to_owned(),
+            json!({ "path": { "path": "/w/e" }, "content": "", "encoding": "utf8", "createOnly": false })
+        )]
     );
     let mock = writing(
         "deckpilot.fs.writeFile('/w/b', 'AAEC/w==', { encoding: 'base64', createOnly: true })",
         |_, _| None,
     );
     run_mock(&mock).unwrap();
-    assert_eq!(written(&mock), vec![0, 1, 2, 255]);
-    assert_eq!(mock.0.borrow().of("fs.write.open")[0]["createOnly"], true);
+    assert_eq!(
+        mock.0.borrow().of("fs.writeFile"),
+        vec![
+            &json!({ "path": { "path": "/w/b" }, "content": "AAEC/w==", "encoding": "base64", "createOnly": true })
+        ]
+    );
+    // Exactly 32 KiB is still one request; one byte more is chunked.
+    let mock = writing(
+        "deckpilot.fs.writeFile('/w/c', 'x'.repeat(32768))",
+        |_, _| None,
+    );
+    run_mock(&mock).unwrap();
+    assert_eq!(mock.0.borrow().ops(), vec!["fs.writeFile"]);
+    let mock = writing(
+        "deckpilot.fs.writeFile('/w/c', 'x'.repeat(32769))",
+        |_, _| None,
+    );
+    run_mock(&mock).unwrap();
+    assert_eq!(
+        mock.0.borrow().ops(),
+        vec![
+            "fs.write.open",
+            "fs.write.chunk",
+            "fs.write.chunk",
+            "fs.write.commit"
+        ]
+    );
+    assert_eq!(written(&mock), vec![b'x'; 32769]);
+}
+
+#[test]
+fn a_short_chunk_is_read_on_from_where_it_ended() {
+    let file = pattern(1000);
+    let served = file.clone();
+    let mock = Mock::with(
+        "deckpilot.fs.readFile('/w/a', { encoding: 'base64' })",
+        json!({}),
+        Box::new(move |_, args| {
+            // The agent sends at most 300 bytes per chunk.
+            let offset = args["offset"].as_u64().unwrap() as usize;
+            let end = (offset + 300).min(served.len());
+            ok(
+                json!({ "content": base64::encode(&served[offset..end]), "bytes": end - offset, "size": served.len(), "eof": end == served.len() }),
+            )
+        }),
+    );
+    assert_eq!(result(run_mock(&mock)), json!(base64::encode(&file)));
+    assert_eq!(
+        reads(&mock),
+        vec![(0, READ_CHUNK), (300, 700), (600, 400), (900, 100)]
+    );
+    // `bytes` must say what `content` holds.
+    let mock = Mock::with(
+        "try { deckpilot.fs.readFile('/w/a') } catch (e) { e.code }",
+        json!({}),
+        Box::new(|_, _| ok(json!({ "content": "aGk=", "bytes": 3, "size": 2, "eof": true }))),
+    );
+    assert_eq!(result(run_mock(&mock)), json!("hostError"));
+}
+
+#[test]
+fn heavily_escaped_small_text_goes_in_base64_chunks() {
+    let mock = writing(
+        "deckpilot.fs.writeFile('/w/x', '\\u0001'.repeat(20000))",
+        |_, _| None,
+    );
+    run_mock(&mock).unwrap();
+    assert_eq!(
+        mock.0.borrow().ops(),
+        vec!["fs.write.open", "fs.write.chunk", "fs.write.commit"]
+    );
+    assert_eq!(written(&mock), vec![1; 20000]);
 }
 
 #[test]
@@ -372,8 +455,8 @@ fn a_write_starts_only_when_all_its_calls_fit_the_budget() {
 #[test]
 fn an_open_without_a_handle_is_a_host_error_and_nothing_is_aborted() {
     let mock = writing(
-        "try { deckpilot.fs.writeFile('/w/x', 'x') } catch (e) { e.code }",
-        |op, _| (op == "fs.write.open").then(|| ok(json!({ "handle": "" }))),
+        "try { deckpilot.fs.writeFile('/w/x', 'x'.repeat(40000)) } catch (e) { e.code }",
+        |op, _| (op == "fs.write.open").then(|| ok(json!({ "handle": "a b" }))),
     );
     assert_eq!(result(run_mock(&mock)), json!("hostError"));
     assert_eq!(mock.0.borrow().ops(), vec!["fs.write.open"]);

@@ -343,7 +343,7 @@ fn sleep_is_a_host_call_and_its_timeout_ends_the_run() {
 #[test]
 fn a_memory_bomb_hits_the_memory_limit() {
     let mock = Mock::new("const a = []; while (true) a.push(new Array(65536).fill(7));");
-    mock.set(|s| s.load["settings"]["memoryMiB"] = json!(16));
+    mock.set(|s| s.load["settings"]["memoryMib"] = json!(16));
     let (code, message) = failed(run_mock(&mock));
     assert_eq!(code, "limit", "{message}");
     assert!(message.contains("memory"), "{message}");
@@ -807,7 +807,7 @@ fn fs_requests_have_their_canonical_shape() {
         json!({}),
         Box::new(|op, _| {
             ok(match op {
-                "fs.readFile" => json!({ "content": "aGk=", "size": 2, "eof": true }),
+                "fs.readFile" => json!({ "content": "aGk=", "bytes": 2, "size": 2, "eof": true }),
                 "fs.write.open" => json!({ "handle": "wh-1" }),
                 _ => json!({}),
             })
@@ -820,10 +820,8 @@ fn fs_requests_have_their_canonical_shape() {
         shapes,
         vec![
             json!(["fs.mkdir", { "path": { "repository": "cms", "relative": "a/b/c" }, "recursive": true }]),
-            json!(["fs.write.open", { "path": { "path": "/w/x.txt" }, "encoding": "base64", "createOnly": true }]),
-            json!(["fs.write.chunk", { "handle": "wh-1", "data": "aGk=" }]),
-            json!(["fs.write.commit", { "handle": "wh-1" }]),
-            json!(["fs.readFile", { "path": { "path": "/w/x.txt" }, "encoding": "base64", "offset": 0, "length": 10 }]),
+            json!(["fs.writeFile", { "path": { "path": "/w/x.txt" }, "content": "hi", "encoding": "utf8", "createOnly": true }]),
+            json!(["fs.readFile", { "path": { "path": "/w/x.txt" }, "encoding": "base64", "maxBytes": 10, "offset": 0, "length": 10 }]),
             json!(["fs.copy", { "src": { "path": "/w/a" }, "dst": { "path": "/w/b" }, "recursive": true, "overwrite": false }]),
             json!(["fs.removeContents", { "path": { "path": "/w/tmp" }, "dryRun": true, "keep": [".gitkeep"] }]),
         ]

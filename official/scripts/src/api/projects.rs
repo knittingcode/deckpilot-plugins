@@ -32,7 +32,9 @@ pub fn repositories(args: Value) -> Result<Value, ScriptFault> {
     if let Some(id) = &a.project
         && (id.is_empty()
             || id.len() > 64
-            || !id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-'))
+            || !id
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'))
     {
         return Err(invalid("project.repositories: `project` is a project id"));
     }

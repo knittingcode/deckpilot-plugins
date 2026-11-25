@@ -108,7 +108,7 @@ impl Mock {
             load: json!({
                 "source": source,
                 "platform": "linux",
-                "settings": { "timeoutMs": 60000, "stopOnError": true, "memoryMiB": 64 },
+                "settings": { "timeoutMs": 60000, "stopOnError": true, "memoryMib": 64 },
                 "grants": grants,
                 "run": { "id": "run-1", "origin": "editor", "userInitiated": true },
                 "nowUs": 1_700_000_000_000_000.0_f64,

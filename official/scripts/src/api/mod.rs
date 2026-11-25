@@ -46,8 +46,9 @@ pub const OPS: &[&str] = &[
     "shell.run",
 ];
 
-/// Every op the guest sends to the agent: the P6 bridge
-/// (`tests/fixtures/bridge-requests.json` has each of them).
+/// Every op the guest sends to the agent: the P6 bridge, the host's
+/// `scripts::OPS` (`tests/fixtures/script-requests.json`, the host's own
+/// fixture, has a request of each).
 pub const WIRE_OPS: &[&str] = &[
     "script.load",
     "script.poll",
@@ -61,6 +62,7 @@ pub const WIRE_OPS: &[&str] = &[
     "fs.list",
     "fs.mkdir",
     "fs.readFile",
+    "fs.writeFile",
     "fs.write.open",
     "fs.write.chunk",
     "fs.write.commit",

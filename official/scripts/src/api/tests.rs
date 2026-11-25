@@ -241,10 +241,27 @@ fn confirmation_tokens_and_sleep() {
 fn path_arguments_per_platform() {
     let arg = |f: Flavor, p: &str| dispatch("fs.exists", json!({ "path": { "path": p } }), f);
     for f in [Flavor::Linux, Flavor::MacOs] {
-        for ok in ["/", "/home/dev/repo", "/a/../b", "/a:b", "/x/CON", "/x\\y"] {
+        for ok in ["/", "/home/dev/repo", "/home/dev/repo/", "/x/CON", "/x\\y"] {
             assert!(arg(f, ok).is_ok(), "{f:?} {ok}");
         }
-        for bad in ["relative", "C:\\x", "./x", "", "~/x", "/a\0b"] {
+        // The host's canonical form: no `.`, `..` or empty names, no
+        // stream, no control or bidirectional character.
+        for bad in [
+            "relative",
+            "C:\\x",
+            "./x",
+            "",
+            "~/x",
+            "/a\0b",
+            "/a/../b",
+            "/a/./b",
+            "/a//b",
+            "/a:b",
+            "/x\\..\\y",
+            "/tmp/a\u{1b}b",
+            "/tmp/\u{202e}txt.exe",
+            "/tmp/a\u{200b}b",
+        ] {
             assert_eq!(
                 arg(f, bad).unwrap_err().code,
                 "invalidArgument",
@@ -258,8 +275,7 @@ fn path_arguments_per_platform() {
         "c:/work/repo",
         "D:\\",
         "\\\\srv\\share\\repo",
-        "//srv/share/repo",
-        "C:\\a\\..\\b",
+        "C:\\work\\cms\\",
         "C:\\console\\nulx",
     ] {
         assert!(arg(w, ok).is_ok(), "{ok}");
@@ -283,6 +299,10 @@ fn path_arguments_per_platform() {
         "C:\\dir\\lpt9.log",
         "C:\\dir\\AUX \\x",
         "C:\\CONOUT$",
+        "C:\\a\\..\\b",
+        "C:\\a\\\\b",
+        // UNC only with backslashes, as the host takes it.
+        "//srv/share/repo",
     ] {
         assert_eq!(arg(w, bad).unwrap_err().code, "invalidArgument", "{bad}");
     }

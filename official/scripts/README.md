@@ -31,7 +31,7 @@ with its fuel, epoch and memory limits.
   generator and async function constructors throw. The `deckpilot`,
   `ScriptError` and `console` globals are frozen and non-writable.
 - **Limits** (§5.4):
-  - memory: QuickJS's own limit, the script's `memoryMiB` (16–128,
+  - memory: QuickJS's own limit, the script's `memoryMib` (16–128,
     default 64) less 8 MiB of headroom;
   - a 256 KiB stack;
   - an interrupt handler that polls `script.poll` every 256 interrupts and
@@ -65,7 +65,7 @@ with its fuel, epoch and memory limits.
 | `src/bridge.rs` | the wire envelope, the per-run budget, the `host_call` transport |
 | `src/api/` | one marshaller per op group: `fs`, `process` (and `shell`), `projects`, `confirm` (and `sleep`), `log`, and `path` (pure, per host OS) |
 | `src/mock.rs`, `src/tests.rs`, `src/tests_io.rs`, `src/bridge/tests.rs`, `src/api/tests.rs`, `src/api/path/tests.rs` | native tests against a mock bridge |
-| `tests/fixtures/bridge-requests.json`, `src/tests_fixture.rs` | the shared request fixture (below) and the test that the guest emits exactly its requests |
+| `tests/fixtures/script-requests.json`, `tests/fixtures/bridge-replies.json`, `src/tests_fixture.rs` | the shared request fixture (DeckPilot's, copied byte for byte), the guest's replies fixture, and the test that the guest emits only the fixture's requests |
 | `deckpilot.d.ts` | the API's types, for the editor's completion (P7) |
 
 ## The bridge contract (for P6)
@@ -84,19 +84,20 @@ is not trusted.
 
 | Op | Args | Ok value |
 | --- | --- | --- |
-| `script.load` | `{script}`: the invocation's own parameter only | `{source, platform: "macos"\|"windows"\|"linux", settings: {timeoutMs, stopOnError, memoryMiB}, grants: {shell?: string[]\|null, …}, run: {id, origin, userInitiated}, remainingMs?, nowUs?}`; refuse untrusted with `script.code` `scriptNeedsReview`, and missing with `scriptMissing` |
+| `script.load` | `{script}`: the invocation's own parameter only | `{source, platform: "macos"\|"windows"\|"linux", settings: {timeoutMs, stopOnError, memoryMib}, grants: {shell?: string[]\|null, …}, run: {id, origin, userInitiated}, nowUs}` (an optional `remainingMs` is read when present; without it the guest takes `settings.timeoutMs`); refuse untrusted with `script.code` `scriptNeedsReview`, and missing with `scriptMissing` |
 | `script.poll` | `{}` | `{cancelled, remainingMs, nowUs?}`; not counted in the 4,096 calls (the guest caps it at 8,192 per run); **must not reset the epoch deadline** (see below) |
 | `script.log` | `{level: debug\|info\|warn\|error, message}` | `null`; **must not reset the epoch deadline** |
-| `script.sleep` | `{ms}` (≤ 600,000) | `null`; `timedOut` / `cancelled` on the deadline or Stop |
+| `script.sleep` | `{ms}` (≤ 600,000) | `{nowUs}`; `timedOut` / `cancelled` on the deadline or Stop |
 | `script.confirm` | `{token}` | `{confirmed}`: the agent shows **its own stored plan** for the token (dialogs 1.5), only in user-started runs |
 | `project.list` | `{}` | `{projects: [{id, key, name}]}` (active profile) |
 | `project.repositories` | `{project: id\|null}` (`null`: the current one) | `{project: {id, key, name}\|null, repositories: [{id, key, name, description, isDefault, path\|null, exists, remote}]}` |
 | `fs.exists`, `fs.stat` | `{path}` | `{exists}`, `{stat\|null}` |
 | `fs.list` | `{path}` | `{entries: [{name, kind}]}` |
 | `fs.mkdir` | `{path, recursive}` | `{}` |
-| `fs.readFile` | `{path, encoding: "base64", offset, length}` (`length` ≤ 524,288) | `{content, size, eof}`: the base64 of the bytes from `offset` to `min(offset + length, size)`, the file's current `size`, and `eof` when they reach it |
-| `fs.write.open` | `{path, encoding: "base64", createOnly}` | `{handle}`: a temporary file in the target's directory |
-| `fs.write.chunk` | `{handle, data}` (`data`: the base64 of ≤ 32,768 bytes) | `{}`; appended in order |
+| `fs.readFile` | `{path, encoding: "base64", maxBytes, offset, length}` (`length` ≤ 524,288; the guest never sends the whole-file form without `offset` and `length`) | `{content, bytes, size, eof}`: `bytes` bytes from `offset` (at most `length`, maybe fewer), the file's current `size`, and `eof` when they reach it |
+| `fs.writeFile` | `{path, content, encoding, createOnly}` (content ≤ 32,768 bytes) | `{}`: a small file in one request |
+| `fs.write.open` | `{path, createOnly}` | `{handle}`: a temporary file in the target's directory |
+| `fs.write.chunk` | `{handle, content, encoding: "base64"}` (≤ 32,768 bytes) | `{}`; appended in order |
 | `fs.write.commit` | `{handle}` | `{}`: renamed atomically onto the target (`createOnly`: only if it does not exist) |
 | `fs.write.abort` | `{handle}` | `{}`: the temporary file removed |
 | `fs.copy`, `fs.move` | `{src, dst, recursive?, overwrite, confirmation?}` | `{}` |
@@ -113,20 +114,22 @@ at most 64 KiB (`MAX_HOST_CALL_REQUEST`) and a reply at most 1 MiB
 chunks:
 
 - `readFile` is a loop of `fs.readFile`, 512 KiB at a time. The first
-  reply's `size` is the file's; a later reply with another size, or a
-  chunk that is not exactly the bytes asked for with `eof` exactly at the
-  end, fails the read with `fileChanged`. Two versions of a file are
-  never spliced together.
-- `writeFile` is `fs.write.open`, then `fs.write.chunk` per 32 KiB, then
+  reply's `size` is the file's; a later reply with another size, a chunk
+  longer than asked or past that size, or `eof` anywhere but exactly at
+  the end, fails the read with `fileChanged`. A shorter chunk is read on
+  from where it ended. Two versions of a file are never spliced together.
+- `writeFile` of at most 32 KiB is one `fs.writeFile` in the script's
+  encoding (unless JSON escaping would take it past 64 KiB). A larger one
+  is `fs.write.open`, then `fs.write.chunk` per 32 KiB, then
   `fs.write.commit`. The agent writes a temporary file in the same
   directory and renames it onto the target on commit. Any failure after
   the open (a refusal, an error, a Stop, the end of the run's time) sends
   `fs.write.abort`, the one request the guest sends after a Stop; the
   agent drops the temporary file at the run's end in any case. A write
   starts only when all its calls (and the abort) fit the run's budget.
-- The wire encoding of file data is always base64: a chunk of text may
-  end inside a character, and JSON escaping could grow 32 KiB of text
-  past the request cap.
+- Chunks (read and write) travel as base64: a chunk of text may end
+  inside a character, and JSON escaping could grow 32 KiB of text past
+  the request cap.
 - `process.run` args and stdin, and `shell.run` scripts, are at most
   48 KiB each (a larger input goes through a file the script writes), and
   the whole request is checked against the 64 KiB before it is sent.
@@ -142,19 +145,30 @@ less the agent time (`nowUs`) since. With none left, nothing is sent and
 the run ends `timedOut`. The agent applies the same rule with its own
 clock.
 
-**The shared fixture.** `tests/fixtures/bridge-requests.json` is every
-request the guest can send, exactly as it sends it, and representative
-replies (with the `script` detail of errors). `src/tests_fixture.rs`
-drives the prelude and the marshallers against the mock bridge and holds
-every emitted request equal to the fixture's, byte for byte in canonical
-JSON (compact, keys sorted). DeckPilot's ABI crate parses the same
-requests into its `CapabilityRequest` variants, which keeps the two sides
-in lockstep.
+**The shared fixture.** `tests/fixtures/script-requests.json` is a
+byte-for-byte copy of DeckPilot's
+`plugins/runtime/crates/abi/tests/fixtures/script-requests.json`
+(knittingcode/deckpilot #465 at 5c1c4c84), the one contract of both
+repositories: never edit it here. Its `valid` requests are what the host
+parses and serializes back unchanged, its `invalid` ones what it refuses.
+`src/tests_fixture.rs` drives the prelude and the marshallers against the
+mock bridge (answered from `tests/fixtures/bridge-replies.json`) and holds
+every emitted request byte-equal (canonical JSON: compact, keys sorted)
+to a `valid` one, or of exactly its shape where the fixture's example
+has other values; every `valid` request but the whole-file read is
+emitted byte for byte; and the guest never emits an `invalid` one: it
+refuses or normalizes each it could be given.
 
 A **path** is `{"path": "<absolute>"}` (fully qualified on Windows) or
-`{"repository": "<key>", "relative": "a/b"}`. The guest normalizes the
-relative part to `/` separators, with no `.` segments, never empty segments
-and never escaping the root. The agent resolves both forms against the
+`{"repository": "<key>", "relative": "a/b"}`, in the host's canonical
+form. The guest normalizes the relative part to `/` separators, with no
+`.` segments, never empty segments and never escaping the root. It
+refuses an absolute path with `.`, `..` or empty names (a trailing
+separator is fine), a stream, a control or bidirectional character, a
+verbatim or device form, or (on Windows) a reserved device name. A
+command is a bare name (`^[A-Za-z0-9][A-Za-z0-9._+-]*$`) or a canonical
+absolute path, never UNC or a batch file, and the environment denylist
+is the host's `scripts::env_denied`. The agent resolves both forms against the
 grants (§5.3), with cap-std.
 
 **Destructive operations** with `destructive: "ask"`: the agent answers

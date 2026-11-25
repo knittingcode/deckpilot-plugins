@@ -178,6 +178,19 @@ fn run_with(
             PluginError::new("invalid-parameters", format!("`inputs` is not JSON: {e}"))
         })?,
     };
+    // A script id, as the core makes them (the host's `is_id`): never a
+    // path or anything else to send.
+    if script.is_empty()
+        || script.len() > 64
+        || !script
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    {
+        return Err(PluginError::new(
+            "invalid-parameters",
+            "`script` is not a script id",
+        ));
+    }
     let mut session = Session::new(transport);
     let loaded = session
         .call("script.load", json!({ "script": script }))

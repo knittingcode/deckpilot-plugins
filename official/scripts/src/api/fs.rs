@@ -11,20 +11,27 @@
 //! chunks, while the script sees one call:
 //!
 //! * `readFile` is a loop of `fs.readFile {path, encoding: "base64",
-//!   offset, length}` (at most [`READ_CHUNK`] bytes each), answered with
-//!   `{content, size, eof}`. A file whose size changes between chunks
-//!   fails with `fileChanged`; two versions are never spliced together.
-//! * `writeFile` is `fs.write.open {path, encoding: "base64", createOnly}`
-//!   → `{handle}`, then `fs.write.chunk {handle, data}` (at most
-//!   [`WRITE_CHUNK`] bytes of data each), then `fs.write.commit {handle}`.
-//!   The agent writes a temporary file in the same directory and renames
-//!   it into place on commit. Any failure after the open sends
+//!   maxBytes, offset, length}` (at most [`READ_CHUNK`] bytes each),
+//!   answered with `{content, bytes, size, eof}`. A file whose size
+//!   changes between chunks fails with `fileChanged`; two versions are
+//!   never spliced together.
+//! * `writeFile` of at most [`WRITE_CHUNK`] bytes is one `fs.writeFile
+//!   {path, content, encoding, createOnly}`. A larger file is
+//!   `fs.write.open {path, createOnly}` → `{handle}`, then
+//!   `fs.write.chunk {handle, content, encoding: "base64"}` (at most
+//!   [`WRITE_CHUNK`] bytes each), then `fs.write.commit {handle}`. The
+//!   agent writes a temporary file in the same directory and renames it
+//!   into place on commit. Any failure after the open sends
 //!   `fs.write.abort {handle}` (also after a Stop), and the agent drops
 //!   the temporary file at the run's end in any case.
 //!
-//! The wire encoding is always base64: a chunk of text cut at a byte
-//! offset may split a character, and JSON escaping could grow 32 KiB of
-//! text past the request cap (a control character is six bytes).
+//! Chunks travel as base64: a chunk of text cut at a byte offset may split
+//! a character, and JSON escaping could grow 32 KiB of text past the
+//! request cap (a control character is six bytes).
+//!
+//! The request shapes are the host's
+//! (`tests/fixtures/script-requests.json`, DeckPilot's
+//! `plugins/runtime/crates/abi`).
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -82,6 +89,13 @@ impl PathArg {
                 {
                     return Err(invalid(format!("{what}: `{p}` is {why}")));
                 }
+                if !is_canonical_absolute(p) {
+                    return Err(invalid(format!(
+                        "{what}: `{p}` is not a canonical absolute path (no `.`, `..` or empty \
+                         names, no stream, no control or bidirectional character); use \
+                         deckpilot.path.normalize"
+                    )));
+                }
                 Ok(self)
             }
             (None, Some(key)) => {
@@ -109,6 +123,55 @@ impl PathArg {
             ))),
         }
     }
+}
+
+/// A character no path or command holds: a control character or a
+/// bidirectional formatting character (which could make a path in a
+/// confirmation read as another). The host's `is_hidden_char`.
+pub fn is_hidden_char(c: char) -> bool {
+    c.is_control()
+        || matches!(
+            c,
+            '\u{061c}'
+                | '\u{200b}'..='\u{200f}'
+                | '\u{2028}'..='\u{202e}'
+                | '\u{2066}'..='\u{2069}'
+                | '\u{feff}'
+        )
+}
+
+fn is_name(name: &str) -> bool {
+    !name.is_empty() && name != "." && name != ".." && !name.chars().any(is_hidden_char)
+}
+
+/// The canonical absolute form the host accepts (its `is_absolute_path`):
+/// `/a/b`, `C:\\a\\b` or `C:/a/b`, or UNC `\\\\server\\share\\a`; never
+/// verbatim or device, without `.`, `..` or empty names (a trailing
+/// separator is fine), a stream or a hidden character. Separators are
+/// `/` and `\\` on every host, as on the host's side.
+pub fn is_canonical_absolute(path: &str) -> bool {
+    let b = path.as_bytes();
+    let rest = if let Some(rest) = path.strip_prefix('/') {
+        rest
+    } else if b.len() >= 3
+        && b[0].is_ascii_alphabetic()
+        && b[1] == b':'
+        && matches!(b[2], b'\\' | b'/')
+    {
+        &path[3..]
+    } else if let Some(unc) = path.strip_prefix("\\\\") {
+        if unc.starts_with(['?', '.']) {
+            return false;
+        }
+        unc
+    } else {
+        return false;
+    };
+    if rest.contains(':') {
+        return false;
+    }
+    let rest = rest.strip_suffix(['/', '\\']).unwrap_or(rest);
+    rest.is_empty() || rest.split(['/', '\\']).all(is_name)
 }
 
 /// A device name Windows reserves in every directory (`CON`, `nul.txt`,
@@ -177,6 +240,14 @@ pub fn repository_relative(what: &str, key: &str, relative: &str) -> Result<Stri
     };
     if relative.starts_with('/') || relative.starts_with('\\') || relative.contains(':') {
         return Err(escape());
+    }
+    if relative.chars().any(is_hidden_char) {
+        return Err(ScriptFault {
+            repository: Some(key.to_owned()),
+            ..invalid(format!(
+                "{what}: a path never holds a control or bidirectional formatting character"
+            ))
+        });
     }
     let mut parts: Vec<&str> = Vec::new();
     for segment in relative.split(['/', '\\']) {
@@ -273,17 +344,23 @@ fn read_args(args: Value, flavor: Flavor) -> Result<ReadFile, ScriptFault> {
 
 /// One `fs.readFile` chunk request.
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ReadChunk<'a> {
     path: &'a PathArg,
     encoding: Encoding,
+    max_bytes: u64,
     offset: u64,
     length: u64,
 }
 
-/// One `fs.readFile` reply.
+/// One `fs.readFile` reply: `content` holds `bytes` bytes from the
+/// request's offset, `size` is the whole file's, `eof` whether they reach
+/// its end.
 #[derive(Debug, Deserialize)]
 struct ReadReply {
     content: String,
+    #[serde(default)]
+    bytes: Option<u64>,
     size: u64,
     eof: bool,
 }
@@ -304,10 +381,11 @@ fn malformed(op: &str) -> ScriptFault {
 }
 
 /// `readFile`: the chunks, in order, of one size of the file. The first
-/// reply's `size` is the file's; a reply with another size, or a chunk
-/// that is not exactly the bytes from its offset to `min(offset + length,
-/// size)` with `eof` exactly at the end, means the file changed in
-/// between, and the read fails.
+/// reply's `size` is the file's; a reply with another size, a chunk that
+/// runs past it or longer than asked, or `eof` anywhere but exactly at the
+/// end, means the file changed in between, and the read fails. A chunk
+/// may be shorter than asked (the agent may shorten one); the next starts
+/// where it ended.
 pub fn read(session: &mut Session, args: Value, flavor: Flavor) -> Result<Value, ScriptFault> {
     let a = read_args(args, flavor)?;
     let max = a.max_bytes.unwrap_or(MAX_FILE);
@@ -322,6 +400,7 @@ pub fn read(session: &mut Session, args: Value, flavor: Flavor) -> Result<Value,
         let request = ReadChunk {
             path: &a.path,
             encoding: Encoding::Base64,
+            max_bytes: max,
             offset,
             length,
         };
@@ -329,6 +408,9 @@ pub fn read(session: &mut Session, args: Value, flavor: Flavor) -> Result<Value,
         let reply: ReadReply =
             serde_json::from_value(reply).map_err(|_| malformed("fs.readFile"))?;
         let chunk = base64::decode(&reply.content).ok_or_else(|| malformed("fs.readFile"))?;
+        if reply.bytes.is_some_and(|n| n != chunk.len() as u64) {
+            return Err(malformed("fs.readFile"));
+        }
         let total = match size {
             None => {
                 if reply.size > max {
@@ -344,7 +426,7 @@ pub fn read(session: &mut Session, args: Value, flavor: Flavor) -> Result<Value,
                         )
                     });
                 }
-                // Every later chunk must fit the run's call budget.
+                // The later chunks must fit the run's call budget.
                 let chunks = reply.size.saturating_sub(length).div_ceil(READ_CHUNK);
                 session.reserve(u32::try_from(chunks).unwrap_or(u32::MAX))?;
                 size = Some(reply.size);
@@ -353,14 +435,19 @@ pub fn read(session: &mut Session, args: Value, flavor: Flavor) -> Result<Value,
             Some(size) if size != reply.size => return Err(changed(&a.path)),
             Some(size) => size,
         };
-        let want = length.min(total.saturating_sub(offset));
         let end = offset + chunk.len() as u64;
-        if chunk.len() as u64 != want || reply.eof != (end == total) {
+        if chunk.len() as u64 > length || end > total || reply.eof != (end == total) {
             return Err(changed(&a.path));
         }
         bytes.extend_from_slice(&chunk);
         if reply.eof {
             break;
+        }
+        if chunk.is_empty() {
+            return Err(ScriptFault::new(
+                "hostError",
+                "fs.readFile: the agent sent an empty chunk before the end of the file",
+            ));
         }
     }
     let content = match a.encoding {
@@ -415,27 +502,46 @@ fn write_args(args: Value, flavor: Flavor) -> Result<(WriteFile, Vec<u8>), Scrip
 #[serde(rename_all = "camelCase")]
 struct WriteOpen<'a> {
     path: &'a PathArg,
-    encoding: Encoding,
     create_only: bool,
 }
 
-/// An agent's handle, opaque: only its shape is checked.
-fn handle_of(reply: &Value) -> Option<String> {
+/// An agent's handle, opaque: only its shape is checked (the host's
+/// `MAX_WRITE_HANDLE`).
+pub fn handle_of(reply: &Value) -> Option<String> {
     let h = reply.get("handle")?.as_str()?;
-    (!h.is_empty() && h.len() <= 128 && h.bytes().all(|b| b.is_ascii_graphic()))
+    (!h.is_empty() && h.len() <= MAX_HANDLE && h.bytes().all(|b| b.is_ascii_graphic()))
         .then(|| h.to_owned())
 }
 
-/// `writeFile`: open, the chunks, commit. It starts only when every call
-/// it may need fits the run's budget (open, the chunks, commit, and an
-/// abort), and once the agent holds a handle, any failure aborts it.
+/// The longest write handle.
+pub const MAX_HANDLE: usize = 64;
+
+/// `writeFile`. A file of at most [`WRITE_CHUNK`] bytes whose request fits
+/// is one `fs.writeFile` in the script's encoding. A larger one (or text
+/// that JSON escapes past the request cap) is open, base64 chunks,
+/// commit: it starts only when every call it may need fits the run's
+/// budget (open, the chunks, commit and an abort), and once the agent
+/// holds a handle, any failure aborts it.
 pub fn write(session: &mut Session, args: Value, flavor: Flavor) -> Result<Value, ScriptFault> {
     let (a, bytes) = write_args(args, flavor)?;
+    if bytes.len() <= WRITE_CHUNK {
+        let content = match a.encoding {
+            Encoding::Utf8 => a.content.clone(),
+            Encoding::Base64 => base64::encode(&bytes),
+        };
+        let single = serde_json::json!({
+            "path": a.path, "content": content, "encoding": a.encoding, "createOnly": a.create_only,
+        });
+        // The envelope adds `{"args":…,"op":"fs.writeFile"}`.
+        if single.to_string().len() + 32 <= crate::bridge::limits::REQUEST {
+            session.call("fs.writeFile", single)?;
+            return Ok(serde_json::json!({}));
+        }
+    }
     let chunks = bytes.len().div_ceil(WRITE_CHUNK);
     session.reserve(u32::try_from(chunks + 3).unwrap_or(u32::MAX))?;
     let open = WriteOpen {
         path: &a.path,
-        encoding: Encoding::Base64,
         create_only: a.create_only,
     };
     let reply = session.call("fs.write.open", to_value(&open)?)?;
@@ -448,7 +554,7 @@ pub fn write(session: &mut Session, args: Value, flavor: Flavor) -> Result<Value
         for chunk in bytes.chunks(WRITE_CHUNK) {
             session.call(
                 "fs.write.chunk",
-                serde_json::json!({ "handle": handle, "data": base64::encode(chunk) }),
+                serde_json::json!({ "handle": handle, "content": base64::encode(chunk), "encoding": "base64" }),
             )?;
         }
         session.call("fs.write.commit", serde_json::json!({ "handle": handle }))
