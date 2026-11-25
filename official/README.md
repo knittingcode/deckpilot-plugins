@@ -211,14 +211,19 @@ it is **always compared** with it, missing or not. Only the additions of
 plugin API 1.12 may differ (`tools/check-official.py` `compare_contract`,
 and the plugin's own `src/contract.rs`, the same rule):
 
-- `version` is newer than the contract's, and `engines` may differ
-  (`pluginApi` exactly `^1.12`, `deckpilot` `>=0.16.0 <1.0.0`);
+- `version` is newer than the contract's; of `engines`, only `pluginApi`
+  (exactly `^1.12`) and `deckpilot` (`>=0.16.0 <1.0.0`) may differ,
+  `sdk` and any other key stay equal;
 - `contributes.variables` is the contract's list unchanged and in order,
-  followed only by variables of a host source of exactly 1.12, with that
-  source's value type and scope `project`;
-- the locales are the same files; every text of the contract keeps its
-  value, and the only new keys are the `t:` texts of the appended
-  variables;
+  followed only by variables of a host source of exactly 1.12, each source
+  at most once, with exactly the fields `id`, `name`, `description`,
+  `valueType`, `scope`, `requires` and `source` (no `sensitive` or
+  `deprecated`), that source's value type, scope `project` and `requires:
+  ["project"]`;
+- the locales are the same files, with no subdirectory; every text of the
+  contract keeps its value, the only new keys are the `t:` texts of the
+  appended variables, and a key reached twice (a dotted key next to a
+  nested one) is refused;
 - every other field (actions, settings, permissions, views, error codes,
   `statusItems`, `dashboardCards`, ...), `assets/` and `LICENSE` are equal.
 

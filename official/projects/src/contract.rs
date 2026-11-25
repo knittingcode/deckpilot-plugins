@@ -72,8 +72,29 @@ fn added_variables(ours: &Value, theirs: &Value, api: &str) -> BTreeSet<String> 
         "the contract's variables are not unchanged and in order at the start of ours"
     );
     let mut keys = BTreeSet::new();
+    let mut seen: BTreeSet<String> = b
+        .iter()
+        .filter_map(|v| v["source"].as_str().map(str::to_owned))
+        .collect();
     for v in &a[b.len()..] {
         let id = &v["id"];
+        let fields: BTreeSet<&str> = v
+            .as_object()
+            .map(|o| o.keys().map(String::as_str).collect())
+            .unwrap_or_default();
+        assert_eq!(
+            fields,
+            BTreeSet::from([
+                "id",
+                "name",
+                "description",
+                "valueType",
+                "scope",
+                "requires",
+                "source"
+            ]),
+            "variable {id}: exactly these fields (no `sensitive`, `deprecated` or other)"
+        );
         let source = v["source"].as_str().unwrap_or_default();
         let (level, value_type) = host_source(source).unwrap_or_else(|| {
             panic!("variable {id}: appended without a host source ({source:?})")
@@ -87,6 +108,11 @@ fn added_variables(ours: &Value, theirs: &Value, api: &str) -> BTreeSet<String> 
             "variable {id}: the value type of `{source}`"
         );
         assert_eq!(v["scope"], "project", "variable {id}: scope");
+        assert_eq!(v["requires"], json!(["project"]), "variable {id}: requires");
+        assert!(
+            seen.insert(source.to_owned()),
+            "variable {id}: `{source}` is declared twice"
+        );
         for field in ["name", "description"] {
             if let Some(key) = v[field].as_str().and_then(|t| t.strip_prefix("t:")) {
                 keys.insert(key.to_owned());
@@ -111,7 +137,13 @@ fn flat(text: &[u8]) -> BTreeMap<String, Value> {
                 }
             }
             other => {
-                out.insert(prefix.to_owned(), other.clone());
+                // A dotted key next to a nested one (`{"a": {"b": x},
+                // "a.b": y}`) must not collapse into one.
+                let previous = out.insert(prefix.to_owned(), other.clone());
+                assert!(
+                    previous.is_none(),
+                    "the locale key `{prefix}` is reached twice"
+                );
             }
         }
     }
@@ -286,8 +318,11 @@ fn only_version_and_repository_differ_from_deckpilot() {
         object.remove("repository");
         if api.is_some() {
             // `contributes` is compared, but for the appended variables,
-            // by same_settings_credentials_and_permissions_as_deckpilot.
-            object.remove("engines");
+            // by same_settings_credentials_and_permissions_as_deckpilot;
+            // of `engines`, only the host it needs may differ.
+            let engines = object["engines"].as_object_mut().unwrap();
+            engines.remove("pluginApi");
+            engines.remove("deckpilot");
             object.remove("contributes");
         }
     }
@@ -310,6 +345,11 @@ fn same_shipped_files_as_deckpilot() {
             };
             for entry in entries {
                 let path = entry.unwrap().path();
+                assert!(
+                    path.is_file(),
+                    "{}: only files, no subdirectory",
+                    path.display()
+                );
                 let rel = format!("{dir}/{}", path.file_name().unwrap().to_str().unwrap());
                 files.push((rel, std::fs::read(&path).unwrap()));
             }

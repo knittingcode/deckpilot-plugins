@@ -80,13 +80,16 @@ neither cargo nor the manifest schema does:
   usage. A plugin DeckPilot does not bundle yet may have no contract at
   the pin; a contract that exists, and always that of a bundled plugin, is
   compared with only the additions of that API level allowed
-  (compare_contract with `ahead_api`): `version` newer, `engines` free,
-  `contributes.variables` the contract's list unchanged and in order, then
-  only variables of a host source of exactly that level (HOST_SOURCES:
-  DeckPilot's VariableHostSource, its value type, scope `project`), the
-  locales the same files with every text of the contract unchanged plus
-  only the texts those variables name; every other field, `assets/` and
-  LICENSE equal. Everything else applies (the permission set, the reviewed
+  (compare_contract with `ahead_api`): `version` newer, `engines` equal
+  but for `pluginApi` and `deckpilot`, `contributes.variables` the
+  contract's list unchanged and in order, then only variables of a host
+  source of exactly that level (HOST_SOURCES: DeckPilot's
+  VariableHostSource, its value type, scope `project`, `requires`
+  ["project"], exactly the fields APPENDED_VARIABLE_FIELDS, each source at
+  most once), the locales the same files (no subdirectory) with every
+  text of the contract unchanged plus only the texts those variables name
+  (a key reached twice, dotted and nested, refused); every other field
+  (JSON-strict), `assets/` and LICENSE equal. Everything else applies (the permission set, the reviewed
   sources, and the privileged policy, which is the pin's: a privileged
   plugin held ahead is not compared with its entry, being held); and the
   kinds of AHEAD_OF_PIN are refused in every manifest but their own
@@ -759,22 +762,33 @@ MOVED_FIELDS = ("version", "repository")
 CONTRACTS = Path("plugins/first-party/contracts")
 
 
-def flat_strings(doc, prefix=""):
-    """A locale file as {dotted key: value}, objects walked."""
-    out = {}
+def flat_strings(doc, prefix="", out=None, collisions=None):
+    """A locale file as {dotted key: value}, objects walked. A dotted key
+    reached twice (`{"a": {"b": x}, "a.b": y}`) is recorded in `collisions`
+    (and the first value kept), never silently merged."""
+    out = {} if out is None else out
     if isinstance(doc, dict):
         for k, v in doc.items():
-            out.update(flat_strings(v, f"{prefix}.{k}" if prefix else k))
+            flat_strings(v, f"{prefix}.{k}" if prefix else k, out, collisions)
+    elif prefix in out:
+        if collisions is not None:
+            collisions.append(prefix)
     else:
         out[prefix] = doc
     return out
+
+
+# The fields of a variable an ahead plugin may append: exactly these, so no
+# `sensitive`, `deprecated` or other field rides along.
+APPENDED_VARIABLE_FIELDS = frozenset({"id", "name", "description", "valueType", "scope", "requires", "source"})
 
 
 def ahead_additions(where, manifest, original, api):
     """What a plugin held ahead of the pin at `api` adds to the contract of
     its release: `contributes.variables` must be the contract's list,
     unchanged and in order, then only variables of a host source of exactly
-    that level (with its value type, scope `project`). Returns the locale
+    that level (with its value type, scope `project`, `requires`
+    ["project"], exactly APPENDED_VARIABLE_FIELDS, each source once). Returns the locale
     keys those variables name (`t:`), the only keys the locales may add;
     every other difference is a problem."""
     contributes = manifest.get("contributes") if isinstance(manifest.get("contributes"), dict) else {}
@@ -792,6 +806,7 @@ def ahead_additions(where, manifest, original, api):
                 "unchanged and in order; a variable of the release is never changed, removed or moved")
         return set()
     keys = set()
+    seen = {v.get("source") for v in base if isinstance(v, dict)}
     for i, v in enumerate(ours_vars[len(base):], start=len(base)):
         at = f"{where}/manifest.json: contributes.variables[{i}]"
         source = v.get("source") if isinstance(v, dict) else None
@@ -800,10 +815,18 @@ def ahead_additions(where, manifest, original, api):
             problem(f"{at}: appended without a host source of plugin API {api} (it has {source!r}); held "
                     f"ahead of the pin, only the variables of {api}'s host sources may be added")
             continue
+        if set(v) != APPENDED_VARIABLE_FIELDS:
+            problem(f"{at}: fields {sorted(v)}; an appended variable has exactly "
+                    f"{sorted(APPENDED_VARIABLE_FIELDS)} (no `sensitive`, `deprecated` or other field)")
+        if source in seen:
+            problem(f"{at}: `{source}` is declared twice; each host source is appended at most once")
+        seen.add(source)
         if not strict_equal(v.get("valueType"), value_type):
             problem(f"{at}: `{source}` takes exactly the value type {json.dumps(value_type)}")
         if v.get("scope") != "project":
             problem(f"{at}: `{source}` is a project value: its scope is `project`")
+        if not strict_equal(v.get("requires"), ["project"]):
+            problem(f"{at}: `{source}` requires exactly [\"project\"]")
         for field in ("name", "description"):
             text = v.get(field)
             if isinstance(text, str) and text.startswith("t:"):
@@ -816,8 +839,13 @@ def compare_ahead_locales(where, ours, theirs, added):
     contract; every key of the contract with the same value; new keys only
     those its added variables name."""
     def names(base):
-        return sorted(p.name for p in base.iterdir() if p.is_file()) if base.is_dir() else []
+        return sorted(str(p.relative_to(base)) for p in base.rglob("*")) if base.is_dir() else []
     a, b = names(ours / "locales"), names(theirs / "locales")
+    for side, base, found in (("", ours, a), ("DeckPilot's ", theirs, b)):
+        nested = [n for n in found if not (base / "locales" / n).is_file() or "/" in n]
+        if nested:
+            problem(f"{where}/locales: {side}locales/ holds {nested}; only files, no subdirectory")
+            return
     if a != b:
         problem(f"{where}/locales: files differ from DeckPilot's: {sorted(set(a) ^ set(b))}")
         return
@@ -825,7 +853,13 @@ def compare_ahead_locales(where, ours, theirs, added):
         mine, original = load(ours / "locales" / name), load(theirs / "locales" / name)
         if mine is None or original is None:
             continue
-        mine, original = flat_strings(mine), flat_strings(original)
+        collisions = []
+        mine = flat_strings(mine, collisions=collisions)
+        original = flat_strings(original, collisions=collisions)
+        if collisions:
+            problem(f"{where}/locales/{name}: the keys {sorted(set(collisions))} are reached twice (a dotted "
+                    "key and a nested one); a locale key is named once")
+            continue
         for key in sorted(original):
             if key not in mine or not strict_equal(mine[key], original[key]):
                 problem(f"{where}/locales/{name}: `{key}` differs from DeckPilot's at the pinned commit (an "
@@ -842,7 +876,8 @@ def compare_contract(where, ours, manifest, theirs, ahead_api=None):
     """A moved plugin keeps the contract of the release DeckPilot bundles.
 
     `ahead_api` (a plugin held ahead of the pin at that level whose release
-    DeckPilot bundles): `engines` may differ, `version` must be newer, and
+    DeckPilot bundles): `engines.pluginApi` and `engines.deckpilot` may
+    differ, `version` must be newer, and
     the only other differences are the additions of that API level
     (ahead_additions, compare_ahead_locales)."""
     if not (theirs / "manifest.json").is_file():
@@ -861,9 +896,18 @@ def compare_contract(where, ours, manifest, theirs, ahead_api=None):
                 f"of the pin (plugin API {ahead_api}), it is a newer version")
     moved = MOVED_FIELDS if ahead_api is None else (*MOVED_FIELDS, "engines", "contributes")
     for key in sorted(set(manifest) | set(original)):
-        if key not in moved and manifest.get(key) != original.get(key):
+        if key not in moved and not strict_equal(manifest.get(key), original.get(key)):
             problem(f"{where}/manifest.json: `{key}` differs from DeckPilot's {theirs.name} at the pinned "
                     "commit; ids, actions, settings, permissions and views are its contract")
+    if ahead_api is not None:
+        # Only the host the plugin needs may change: engines.pluginApi and
+        # engines.deckpilot. engines.sdk and every other key stay the contract's.
+        def rest(engines):
+            return {k: v for k, v in engines.items() if k not in ("pluginApi", "deckpilot")} \
+                if isinstance(engines, dict) else engines
+        if not strict_equal(rest(manifest.get("engines")), rest(original.get("engines"))):
+            problem(f"{where}/manifest.json: `engines` differs from DeckPilot's {theirs.name} at the pinned "
+                    "commit beyond `pluginApi` and `deckpilot`")
     added = ahead_additions(where, manifest, original, ahead_api) if ahead_api is not None else set()
     if ahead_api is not None:
         compare_ahead_locales(where, ours, theirs, added)

@@ -459,6 +459,39 @@ case("projects held ahead: other asset bytes",
 case("projects held ahead: another LICENSE",
      lambda r: (r / PROJECTS / "LICENSE").write_text((r / PROJECTS / "LICENSE").read_text() + " "), False,
      "LICENSE differs", deckpilot=lambda dp: None)
+# Review fixes of #98: JSON-strict top-level fields, bounded appended
+# variables, locale keys reached twice, locale subdirectories, engines.
+case("projects held ahead: a permission value of another JSON type (1 for true)",
+     projects(lambda m: m["permissions"][0].update(select=1)), False,
+     r"official/projects/manifest\.json: `permissions` differs from DeckPilot's", deckpilot=lambda dp: None)
+case("projects held ahead: an appended variable marked sensitive",
+     projects(lambda m: m["contributes"]["variables"][3].update(sensitive=False)), False,
+     r"variables\[3\]: fields .*exactly", deckpilot=lambda dp: None)
+case("projects held ahead: an appended variable marked deprecated",
+     projects(lambda m: m["contributes"]["variables"][4].update(deprecated=True)), False,
+     r"variables\[4\]: fields .*exactly", deckpilot=lambda dp: None)
+case("projects held ahead: an appended variable with another field",
+     projects(lambda m: m["contributes"]["variables"][4].update(extra="x")), False,
+     r"variables\[4\]: fields .*exactly", deckpilot=lambda dp: None)
+case("projects held ahead: an appended variable without its description",
+     projects(lambda m: m["contributes"]["variables"][4].pop("description")), False,
+     r"variables\[4\]: fields .*exactly", deckpilot=lambda dp: None)
+case("projects held ahead: an appended variable that requires nothing",
+     projects(lambda m: m["contributes"]["variables"][3].update(requires=[])), False,
+     r"variables\[3\]: `host:project\.repositories` requires exactly", deckpilot=lambda dp: None)
+case("projects held ahead: a 1.12 source appended twice",
+     projects(lambda m: m["contributes"]["variables"].append(dict(m["contributes"]["variables"][4], id="current.again"))),
+     False, r"variables\[5\]: `host:project\.repository` is declared twice", deckpilot=lambda dp: None)
+case("projects held ahead: a locale key reached twice (dotted and nested)",
+     projects_locale("en.json", lambda d: (d["variables"]["id"].update(name="X"), d.update({"variables.id.name": "Project id"}))),
+     False, r"locales/en\.json: the keys \['variables\.id\.name'\] are reached twice", deckpilot=lambda dp: None)
+case("projects held ahead: a subdirectory under locales/",
+     lambda r: ((r / PROJECTS / "locales/sub").mkdir(), shutil.copy(r / PROJECTS / "locales/en.json", r / PROJECTS / "locales/sub/en.json")),
+     False, r"official/projects/locales: locales/ holds \['sub', 'sub/en\.json'\]", deckpilot=lambda dp: None)
+case("projects held ahead: another engines.sdk", projects(lambda m: m["engines"].update(sdk="0.2.0")), False,
+     r"`engines` differs from DeckPilot's deckpilot\.projects at the pinned commit beyond", deckpilot=lambda dp: None)
+case("projects held ahead: another engines key", projects(lambda m: m["engines"].update(abi="2")), False,
+     r"`engines` differs from DeckPilot's deckpilot\.projects at the pinned commit beyond", deckpilot=lambda dp: None)
 case("projects held ahead: its reviewed sources still apply", lambda r: (r / PROJECTS / "src/lib.rs").write_text(
      (r / PROJECTS / "src/lib.rs").read_text() + "\n"), False, r"official/projects/src/lib\.rs differs from its reviewed bytes")
 case("projects held ahead: its kinds stay the policy's",

@@ -35,7 +35,7 @@
       "files": {
         "Cargo.toml": "3009d227071fa63fe965e57feba947081af519d7c0a5346f0296e18b77bfb221",
         "manifest.json": "30b4feafe7cafd59bc8c10ea566e820f0cdbbe09cac030e0934a48f9f4c18668",
-        "src/contract.rs": "886a997b737366687e2a548975eb8fa142ce869233a1da33f3475ee5a030f5d0",
+        "src/contract.rs": "6016e4415d3d90fefab1e2c0e8d9beec5858353bafdb976042db949b44cbb46d",
         "src/lib.rs": "ef2d3f72ff2964beece5b911b36a00fb8634a7379fade3aee344e3229c01b80e",
         "src/tests.rs": "4fcb7e7efe465816073858b4f9e9c0cf99f3007d1b6d2245bf20268cc45c3c21"
       }
