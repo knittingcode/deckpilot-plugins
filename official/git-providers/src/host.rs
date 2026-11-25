@@ -62,13 +62,23 @@ fn call(request: &Value) -> Result<Value, TransportError> {
 /// (`connection-missing`, `connection-disabled`, `redirect-refused`).
 fn map_error(error: CallError) -> TransportError {
     let has = |token: &str| error.message.contains(token);
+    // The host names its connection refusals by a code at the start of the
+    // message (`redirect-refused: …`, knittingcode/deckpilot#467); the same
+    // word later in a message (a server's text, a URL) is not one.
+    let starts = |token: &str| {
+        error
+            .message
+            .trim_start()
+            .strip_prefix(token)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with([':', ' ', ';', ',', '.']))
+    };
     match error.code.as_str() {
         "unsupported-op" => TransportError::Unsupported,
         "throttled" => TransportError::Throttled,
-        _ if has("connection-missing") => TransportError::ConnectionMissing,
-        _ if has("connection-disabled") => TransportError::ConnectionDisabled,
-        _ if has("redirect-refused") => TransportError::RedirectRefused,
-        _ if has("cancelled") => TransportError::Cancelled,
+        _ if starts("connection-missing") => TransportError::ConnectionMissing,
+        _ if starts("connection-disabled") => TransportError::ConnectionDisabled,
+        _ if starts("redirect-refused") => TransportError::RedirectRefused,
+        _ if starts("cancelled") => TransportError::Cancelled,
         "failed" => match error.kind {
             Some(kind) => TransportError::Network(kind),
             None if has("too large") || has("exceeds") || has("larger than") => {
@@ -272,6 +282,43 @@ mod tests {
             e("not-permitted", "origin not granted", None),
             TransportError::Denied(_)
         ));
+        // The host's codes are prefixes (#467), with or without a reason.
+        for (message, want) in [
+            (
+                "connection-disabled: turned off",
+                TransportError::ConnectionDisabled,
+            ),
+            ("connection-missing", TransportError::ConnectionMissing),
+            (
+                "redirect-refused: to https://other.example",
+                TransportError::RedirectRefused,
+            ),
+            (
+                "cancelled: the action was cancelled",
+                TransportError::Cancelled,
+            ),
+            (" cancelled", TransportError::Cancelled),
+        ] {
+            assert_eq!(e("not-permitted", message, None), want, "{message}");
+        }
+        // The same words anywhere else are no refusal of the host's: a
+        // server's text or a URL in the middle of a message.
+        for message in [
+            "the server said: redirect-refused",
+            "origin https://connection-missing.example not granted",
+            "GET /api/v4/projects/connection-disabled failed",
+            "the job was cancelled by the server",
+            "redirect-refusedx: not a code",
+        ] {
+            assert!(
+                matches!(e("not-permitted", message, None), TransportError::Denied(_)),
+                "{message}"
+            );
+            assert!(
+                matches!(e("failed", message, None), TransportError::Other(_)),
+                "{message}"
+            );
+        }
     }
 
     #[test]

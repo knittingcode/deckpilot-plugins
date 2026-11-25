@@ -128,6 +128,15 @@ pub fn trigger_pipeline(
     Ok(ops::trigger_pipeline(p, t, connection, r, trigger)?)
 }
 
+/// A text of the question: cleaned (control characters out), every run
+/// of whitespace one space, at most `max` characters.
+fn one_line(text: &str, max: usize) -> String {
+    // Cleaning turns control characters into spaces: collapse after it.
+    let cleaned = crate::errors::clean(text, text.chars().count());
+    let words: Vec<&str> = cleaned.split_whitespace().collect();
+    crate::errors::clean(&words.join(" "), max)
+}
+
 /// Longest confirmation question (the dialog's message bound).
 pub const MAX_QUESTION: usize = 400;
 
@@ -140,15 +149,12 @@ pub fn trigger_question(trigger: &PipelineTrigger, path: &str, host: &str) -> St
     // name (at most 64) always fits before the 400-character cut.
     let mut question = format!(
         "Start a pipeline on {} in {} ({})",
-        crate::errors::clean(&trigger.reference, 45),
-        crate::errors::clean(path, 120),
-        crate::errors::clean(host, 80)
+        one_line(&trigger.reference, 45),
+        one_line(path, 120),
+        one_line(host, 80)
     );
     if let Some(workflow) = &trigger.workflow {
-        question.push_str(&format!(
-            " with the workflow {}",
-            crate::errors::clean(workflow, 100)
-        ));
+        question.push_str(&format!(" with the workflow {}", one_line(workflow, 100)));
     }
     if !trigger.variables.is_empty() {
         question.push_str(" with the variables ");
@@ -176,7 +182,6 @@ pub fn trigger_question(trigger: &PipelineTrigger, path: &str, host: &str) -> St
         if more > 0 {
             question.push_str(&format!(" and {more} more"));
         }
-        debug_assert!(!question.contains("  "));
     }
     question.push('?');
     question.chars().take(MAX_QUESTION).collect()

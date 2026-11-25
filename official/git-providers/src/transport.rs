@@ -106,7 +106,7 @@ impl HttpReply {
     /// GitLab send it).
     pub fn link(&self, rel: &str) -> Option<String> {
         let value = self.header("link")?;
-        value.split(',').find_map(|entry| {
+        link_entries(value).into_iter().find_map(|entry| {
             // `<target>; params`: the target may itself hold `;`.
             let (target, params) = entry.trim().strip_prefix('<')?.split_once('>')?;
             let params = params.trim_start().strip_prefix(';')?;
@@ -120,6 +120,50 @@ impl HttpReply {
                 .then(|| target.to_owned())
         })
     }
+
+    /// Whether the `link` header names a `rel` relation at all, readable
+    /// or not: a `next` that [`HttpReply::link`] cannot read is then an
+    /// incomplete answer, never the end of a list.
+    pub fn mentions_link(&self, rel: &str) -> bool {
+        self.header("link").is_some_and(|value| {
+            let lower = value.to_ascii_lowercase();
+            let rel = rel.to_ascii_lowercase();
+            lower.contains(&format!("rel=\"{rel}\""))
+                || lower.contains(&format!("rel={rel}"))
+                || lower.contains(&format!(" {rel}\""))
+                || lower.contains(&format!("\"{rel} "))
+        })
+    }
+}
+
+/// The entries of a `link` header (RFC 8288), split at the commas that
+/// separate them: never one inside `<…>` or a quoted parameter value.
+pub fn link_entries(value: &str) -> Vec<&str> {
+    let mut entries = Vec::new();
+    let (mut start, mut in_target, mut in_quotes, mut escaped) = (0, false, false, false);
+    for (i, c) in value.char_indices() {
+        if in_quotes {
+            match c {
+                _ if escaped => escaped = false,
+                '\\' => escaped = true,
+                '"' => in_quotes = false,
+                _ => {}
+            }
+            continue;
+        }
+        match c {
+            '<' if !in_target => in_target = true,
+            '>' if in_target => in_target = false,
+            '"' if !in_target => in_quotes = true,
+            ',' if !in_target => {
+                entries.push(&value[start..i]);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    entries.push(&value[start..]);
+    entries
 }
 
 /// Why a request got no answer.
