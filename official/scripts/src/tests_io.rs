@@ -493,6 +493,21 @@ fn a_missing_version_before_the_end_or_a_malformed_one_is_an_invalid_response() 
 }
 
 #[test]
+fn an_empty_chunk_before_the_end_is_a_host_error_after_one_call() {
+    let mock = Mock::with(
+        "try { deckpilot.fs.readFile('/w/a'); 'read' } catch (e) { e.code }",
+        json!({}),
+        Box::new(|_, _| {
+            ok(
+                json!({ "content": "", "bytes": 0, "size": 10, "eof": false, "version": version_of(0) }),
+            )
+        }),
+    );
+    assert_eq!(result(run_mock(&mock)), json!("hostError"));
+    assert_eq!(mock.0.borrow().of("fs.readFile").len(), 1);
+}
+
+#[test]
 fn text_that_is_not_utf8_is_refused_and_base64_reads_it() {
     let src = "const out = {}; try { deckpilot.fs.readFile('/w/x') } catch (e) { out.utf8 = e.code } out.b64 = deckpilot.fs.readFile('/w/x', { encoding: 'base64' }); out";
     let mock = serving(src, vec![0xff, 0xfe, 0x00], |_, _| {});
@@ -865,6 +880,8 @@ fn script_load_remaining_ms_is_the_runs_deadline_with_a_fallback_only_when_absen
         // Absent: the setting, else the default timeout.
         (None, Some(4000), 4000),
         (None, None, limits::TIMEOUT_MS_DEFAULT),
+        // Never more than a run may have.
+        (Some(u64::MAX), Some(60000), limits::TIMEOUT_MS_MAX),
     ] {
         let mock = Mock::with(src, json!({ "shell": ["sh"] }), handler());
         mock.set(|s| {

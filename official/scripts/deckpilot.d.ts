@@ -77,7 +77,9 @@ declare const deckpilot: {
      * file: DeckPilot detects the file being replaced, or its size or
      * modification time changing, between chunks. So you get the whole
      * file as it was, or a `fileChanged` error naming the path (read it
-     * again); never a mix of two versions. `utf8` (the default) refuses
+     * again); never a mix of two versions. (The one change it cannot see:
+     * a rewrite while DeckPilot takes its first snapshot that keeps both
+     * the size and the modification time.) `utf8` (the default) refuses
      * bytes that are not UTF-8.
      */
     readFile(path: PathLike, opts?: { encoding?: "utf8" | "base64"; maxBytes?: number }): string;

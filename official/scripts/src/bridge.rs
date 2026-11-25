@@ -269,7 +269,8 @@ impl Session {
                 let cancelled = v.get("cancelled").and_then(Value::as_bool).unwrap_or(false);
                 let remaining = v.get("remainingMs").and_then(Value::as_u64);
                 if let Some(ms) = remaining {
-                    self.budget.set_remaining(ms);
+                    // As at the load: never more than a run may have.
+                    self.budget.set_remaining(ms.min(limits::TIMEOUT_MS_MAX));
                 }
                 if cancelled {
                     self.budget.cancelled = true;

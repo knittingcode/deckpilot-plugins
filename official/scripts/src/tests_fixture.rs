@@ -299,8 +299,7 @@ fn every_request_the_guest_emits_is_a_valid_one_of_the_shared_fixture() {
             "{}: nothing after script.load: {got:?}",
             driver.name
         );
-        for raw in &got {
-            let request = raw;
+        for request in &got {
             if valid.contains(request) {
                 sent.insert(request.clone());
             } else {
@@ -312,7 +311,7 @@ fn every_request_the_guest_emits_is_a_valid_one_of_the_shared_fixture() {
                 );
             }
             // A later chunk of a read names the read's version.
-            let v: Value = serde_json::from_str(raw).unwrap();
+            let v: Value = serde_json::from_str(request).unwrap();
             if v["op"] == "fs.readFile" && v["args"]["offset"].as_u64() != Some(0) {
                 assert_eq!(
                     v["args"]["ifVersion"], READ_VERSION,
@@ -322,8 +321,8 @@ fn every_request_the_guest_emits_is_a_valid_one_of_the_shared_fixture() {
             }
             // The guest's own bytes are canonical.
             assert_eq!(
-                raw,
-                &canonical(&serde_json::from_str(raw).unwrap()),
+                request,
+                &canonical(&serde_json::from_str(request).unwrap()),
                 "{}",
                 driver.name
             );
