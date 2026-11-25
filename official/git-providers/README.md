@@ -60,6 +60,11 @@ and
     `timeoutSeconds`. **Open:** `timeoutSeconds` is not carried over; it is
     20 s; the decision is pending (owner, DeckPilot PR-10).
 - **Read-only.** `GET` only, even on a connection that allows changes.
+- **Next pages (threat T1).** As in the old plugins, a next-page link is
+  followed only when `Server::contains` puts it under the connection's
+  API base. Encoded slashes are allowed, so GitLab's `group%2Fapp` paths
+  keep paging. The host enforces the rest of design §4.2 on every request:
+  origin, path prefix, methods and redirects.
 - **No credentials in the plugin.** The old plugins kept a token in their
   own credential slot. The host copies it into the connection
   (DeckPilot's migration, PR-10), after you approve it, and keeps the old
