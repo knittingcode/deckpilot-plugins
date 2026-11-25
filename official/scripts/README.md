@@ -148,7 +148,7 @@ clock.
 **The shared fixture.** `tests/fixtures/script-requests.json` is a
 byte-for-byte copy of DeckPilot's
 `plugins/runtime/crates/abi/tests/fixtures/script-requests.json`
-(knittingcode/deckpilot #465 at 5c1c4c84), the one contract of both
+(knittingcode/deckpilot #465 at 2fc870da), the one contract of both
 repositories: never edit it here. Its `valid` requests are what the host
 parses and serializes back unchanged, its `invalid` ones what it refuses.
 `src/tests_fixture.rs` drives the prelude and the marshallers against the

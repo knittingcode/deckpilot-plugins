@@ -2,8 +2,8 @@
 //! byte-for-byte copy of DeckPilot's
 //! `plugins/runtime/crates/abi/tests/fixtures/script-requests.json`
 //! (knittingcode/deckpilot PR #465, commit
-//! 5c1c4c8460b096427dc599812b2713875293fb88, sha256
-//! 75b079ff820f00301e581b5906d90e59fbdba76dc73bad22c3b04dd0f6e70af3). It is
+//! 2fc870dad2e6438413a200c751f142134cae7517, sha256
+//! e2e12b2ec6db4e207114f9134f0fe3f3c885429d7025d30db45f5c8842becfe4). It is
 //! the one contract of the two repositories: never edit it here; change it
 //! in DeckPilot and copy it again.
 //!

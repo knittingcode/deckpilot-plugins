@@ -299,9 +299,7 @@
             "relative": "var/cache"
           },
           "dryRun": false,
-          "keep": [
-            ".gitkeep"
-          ]
+          "keep": [".gitkeep"]
         }
       }
     },
@@ -311,10 +309,7 @@
         "op": "process.run",
         "args": {
           "command": "git",
-          "args": [
-            "pull",
-            "--ff-only"
-          ],
+          "args": ["pull", "--ff-only"],
           "cwd": {
             "repository": "cms",
             "relative": ""
@@ -378,11 +373,7 @@
         "op": "process.run",
         "args": {
           "command": "docker",
-          "args": [
-            "compose",
-            "up",
-            "-d"
-          ],
+          "args": ["compose", "up", "-d"],
           "env": {
             "GIT_AUTHOR_NAME": "Me",
             "COMPOSE_PROJECT_NAME": "cms"
@@ -627,9 +618,7 @@
             "path": "/tmp/a"
           },
           "dryRun": true,
-          "keep": [
-            "a/b"
-          ]
+          "keep": ["a/b"]
         }
       }
     },
@@ -642,9 +631,7 @@
             "path": "/tmp/a"
           },
           "dryRun": true,
-          "keep": [
-            ".."
-          ]
+          "keep": [".."]
         }
       }
     },
