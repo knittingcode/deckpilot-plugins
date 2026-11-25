@@ -118,8 +118,14 @@ impl Transport for AgentTransport {
         }
         let mut agent = self.0.borrow_mut();
         agent.fetched.push(request.url.clone());
+        // The host's refusals go through the module's own reading of them
+        // (`host::map_error`), as on the agent.
         if let Some(kind) = agent.unreachable.get(&request.url) {
-            return Err(TransportError::Network(kind.code().to_owned()));
+            return Err(crate::host::refusal_of(
+                "failed",
+                &format!("{} (canned)", kind.code()),
+                Some(kind.code()),
+            ));
         }
         let found = agent
             .answers
@@ -128,7 +134,11 @@ impl Transport for AgentTransport {
             .max_by_key(|(prefix, _)| prefix.len())
             .map(|(_, a)| a.clone());
         match found {
-            Some(a) if a.too_large => Err(TransportError::TooLarge),
+            Some(a) if a.too_large => Err(crate::host::refusal_of(
+                "failed",
+                "the response is larger than 524288 bytes",
+                None,
+            )),
             Some(a) => Ok(HttpReply {
                 status: a.status,
                 headers: a
@@ -138,7 +148,7 @@ impl Transport for AgentTransport {
                     .collect(),
                 body: a.body,
             }),
-            None => Err(TransportError::Other("no route".into())),
+            None => Err(crate::host::refusal_of("failed", "no route", None)),
         }
     }
 

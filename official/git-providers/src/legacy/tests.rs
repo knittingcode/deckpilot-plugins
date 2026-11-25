@@ -353,6 +353,11 @@ fn legacy_actions_only_read_and_never_touch_a_credential() {
             let declared: Vec<String> = action_params(action);
             params.retain(|k, _| declared.contains(k));
             let _ = host.invoke(&crate::plugin(), action, Value::Object(params));
+            // Every action but `open` reads something: the checks below
+            // are never vacuous.
+            if !action.ends_with("-open") {
+                assert!(!t.borrow().requests.is_empty(), "{action} sent nothing");
+            }
             for request in &t.borrow().requests {
                 assert_eq!(request.method, Method::Get, "{action}: {}", request.url);
                 for (name, _) in &request.headers {
@@ -363,7 +368,7 @@ fn legacy_actions_only_read_and_never_touch_a_credential() {
                     );
                 }
                 assert!(
-                    request.url.starts_with(api),
+                    request.url.starts_with(&format!("{api}/")),
                     "{action}: {} is off the connection",
                     request.url
                 );

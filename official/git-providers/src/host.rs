@@ -81,6 +81,18 @@ fn map_error(error: CallError) -> TransportError {
     }
 }
 
+/// Tests only: what the module makes of a host refusal with `code`,
+/// `message` and `kind` (the reply of a refused `http.fetch`), so tests
+/// that script refusals go through the same reading.
+#[cfg(test)]
+pub(crate) fn refusal_of(code: &str, message: &str, kind: Option<&str>) -> TransportError {
+    map_error(CallError {
+        code: code.into(),
+        message: message.into(),
+        kind: kind.map(str::to_owned),
+    })
+}
+
 /// The connection `id`, when the invocation is bound to it.
 pub fn connection(id: &str) -> Result<ConnectionInfo, Failure> {
     if !is_connection_id(id) {
@@ -224,6 +236,22 @@ mod tests {
         };
         assert_eq!(e("unsupported-op", "x", None), TransportError::Unsupported);
         assert_eq!(e("throttled", "x", None), TransportError::Throttled);
+        // A too-large answer, in each wording the agent has used.
+        for message in [
+            "the response is larger than 524288 bytes",
+            "the answer is too large",
+            "the body exceeds 512 KiB",
+        ] {
+            assert_eq!(
+                e("failed", message, None),
+                TransportError::TooLarge,
+                "{message}"
+            );
+        }
+        assert_eq!(
+            e("failed", "no route", None),
+            TransportError::Other("no route".into())
+        );
         assert_eq!(
             e("failed", "x", Some("tls-failed")),
             TransportError::Network("tls-failed".into())

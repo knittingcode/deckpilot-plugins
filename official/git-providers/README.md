@@ -57,7 +57,8 @@ and
   - the server is the connection's API and web bases, not the old `apiUrl`
     setting;
   - the time limit is the old default of 20 s, since Git Providers has no
-    `timeoutSeconds`.
+    `timeoutSeconds`. **Open:** `timeoutSeconds` is not carried over; it is
+    20 s; the decision is pending (owner, DeckPilot PR-10).
 - **Read-only.** `GET` only, even on a connection that allows changes.
 - **No credentials in the plugin.** The old plugins kept a token in their
   own credential slot. The host copies it into the connection
