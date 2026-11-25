@@ -149,8 +149,12 @@
     "capability-unsupported": "This server or provider cannot do that.",
     "needs-confirmation": "This action asks first, so it does not run unattended.",
     "url-not-allowed": "Only pages of the connection's server can be opened.",
-    "timed-out": "The pipeline did not end in time.",
-    "cancelled": "Cancelled."
+    "timed-out": "A time limit passed: a pipeline did not end, or the server did not answer in time.",
+    "cancelled": "Cancelled.",
+    "invalid-api-url": "The connection's address is not an https address of a GitHub or GitLab API (legacy actions).",
+    "invalid-project": "The project is not group/project or a numeric id (legacy GitLab actions).",
+    "github-error": "Another error status from GitHub (legacy GitHub actions).",
+    "gitlab-error": "Another error status from GitLab (legacy GitLab actions)."
   },
   "plugin": {
     "name": "Git Providers",

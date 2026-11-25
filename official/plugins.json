@@ -42,7 +42,9 @@
     {
       "path": "projects",
       "id": "deckpilot.projects",
-      "permissions": ["hostViews", "profile", "projectContext", "resources"]
+      "permissions": ["hostViews", "profile", "projectContext", "resources"],
+      "held": "0.2.0 needs plugin API 1.12 (the typed repository variables: `host:project.repositories`, `host:project.repository`, knittingcode/deckpilot#460), which no published DeckPilot provides yet: P8 (plugin API in the agent, the privileged policy entry of 0.2.0 in both repositories) and a published DeckPilot providing 1.12 come first, then its release (P9). While it is held, no 0.1.x patch is released from main",
+      "hostApi": "1.12"
     },
     {
       "path": "scripts",

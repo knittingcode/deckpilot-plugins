@@ -22,6 +22,7 @@ pub mod changes;
 pub mod client;
 pub mod errors;
 pub mod host;
+pub mod legacy;
 pub mod ops;
 pub mod provider;
 pub mod records;
@@ -84,7 +85,7 @@ pub fn plugin() -> Plugin {
     let repository = || Param::text("repository").max_length(128);
     let limit = || Param::integer("limit").min(1.0).max(100.0).default(20_i64);
     let reference = || Param::text("ref").max_length(250);
-    Plugin::new(ID, VERSION)
+    let plugin = Plugin::new(ID, VERSION)
         .action(Action::new("probe", probe).param(connection()))
         .action(
             Action::new("list-repositories", list_repositories)
@@ -213,7 +214,125 @@ pub fn plugin() -> Plugin {
                         .max(120.0)
                         .default(15_i64),
                 ),
+        );
+    legacy_actions(plugin)
+}
+
+/// The legacy GitHub and GitLab actions (`legacy`): the old plugins'
+/// parameters, exactly, after the `connection` the host injects.
+fn legacy_actions(plugin: Plugin) -> Plugin {
+    let action = |id: &str, handler: deckpilot_plugin_sdk::Handler| {
+        Action::new(id, handler).param(legacy_connection())
+    };
+    let repository = || Param::text("repository").max_length(140);
+    let pull_request = || Param::integer("pullRequest").min(1.0);
+    let project = || Param::text("project").max_length(1000);
+    let merge_request = || Param::integer("mergeRequest").min(1.0);
+    let limit = || Param::integer("limit").min(1.0).max(100.0).default(20_i64);
+    let filter = || Param::choice("filter", &legacy::github::FILTERS).default("all");
+    plugin
+        .action(action(
+            "legacy-github-current-user",
+            legacy_github_current_user,
+        ))
+        .action(
+            action("legacy-github-repository", legacy_github_repository)
+                .param(repository().required()),
         )
+        .action(
+            action("legacy-github-pull-requests", legacy_github_pull_requests)
+                .param(repository())
+                .param(filter())
+                .param(limit()),
+        )
+        .action(
+            action(
+                "legacy-github-review-requests",
+                legacy_github_review_requests,
+            )
+            .param(repository())
+            .param(limit()),
+        )
+        .action(
+            action("legacy-github-checks", legacy_github_checks)
+                .param(repository().required())
+                .param(Param::text("ref").max_length(250))
+                .param(pull_request()),
+        )
+        .action(
+            action("legacy-github-open", legacy_github_open)
+                .param(Param::text("url").max_length(2048))
+                .param(repository())
+                .param(pull_request()),
+        )
+        .action(action(
+            "legacy-gitlab-current-user",
+            legacy_gitlab_current_user,
+        ))
+        .action(action("legacy-gitlab-project", legacy_gitlab_project).param(project().required()))
+        .action(
+            action("legacy-gitlab-merge-requests", legacy_gitlab_merge_requests)
+                .param(project())
+                .param(Param::choice("filter", &legacy::gitlab::FILTERS).default("all"))
+                .param(limit()),
+        )
+        .action(
+            action(
+                "legacy-gitlab-review-requests",
+                legacy_gitlab_review_requests,
+            )
+            .param(project())
+            .param(limit()),
+        )
+        .action(
+            action("legacy-gitlab-pipeline", legacy_gitlab_pipeline)
+                .param(project().required())
+                .param(Param::text("ref").max_length(250))
+                .param(merge_request()),
+        )
+        .action(
+            action("legacy-gitlab-open", legacy_gitlab_open)
+                .param(Param::text("url").max_length(2048))
+                .param(project())
+                .param(merge_request()),
+        )
+}
+
+/// The connection of a legacy action: the one the host injects
+/// (`ParamRule::InjectConnection`), never one the user picks.
+fn legacy_connection() -> Param {
+    Param::text("connection").required().max_length(64)
+}
+
+/// Runs an old action's code on the bound connection.
+fn legacy_run(ctx: &mut Context<'_>, args: &Args<'_>, run: legacy::Handler) -> ActionResult {
+    let (connection, mut transport) = connect(args)?;
+    run(ctx, args, &connection, transport.as_mut())
+}
+
+macro_rules! legacy_handlers {
+    ($($name:ident => $run:path),* $(,)?) => {
+        $(
+            fn $name(ctx: &mut Context<'_>, args: &Args<'_>) -> ActionResult {
+                legacy_run(ctx, args, $run)
+            }
+        )*
+    };
+}
+
+legacy_handlers! {
+    legacy_github_current_user => legacy::github::current_user,
+    legacy_github_repository => legacy::github::repository_info,
+    legacy_github_pull_requests => legacy::github::pull_requests,
+    legacy_github_review_requests => legacy::github::review_requests,
+    legacy_github_checks => legacy::github::checks,
+    legacy_github_open => legacy::github::open,
+    legacy_gitlab_current_user => legacy::gitlab::current_user,
+    legacy_gitlab_project => legacy::gitlab::project_info,
+    legacy_gitlab_merge_requests => legacy::gitlab::merge_requests,
+    legacy_gitlab_review_requests => legacy::gitlab::review_requests,
+    legacy_gitlab_pipeline => legacy::gitlab::pipeline,
+    legacy_gitlab_open => legacy::gitlab::open,
 }
 
 deckpilot_plugin_sdk::plugin!(plugin);
@@ -222,15 +341,28 @@ deckpilot_plugin_sdk::plugin!(plugin);
 struct Bound {
     connection: ConnectionInfo,
     provider: Box<dyn Provider>,
-    transport: host::HostTransport,
+    transport: Box<dyn transport::Transport>,
+}
+
+/// The connection the invocation names, and how to reach it.
+fn connect(args: &Args<'_>) -> Result<(ConnectionInfo, Box<dyn transport::Transport>), Failure> {
+    #[cfg(test)]
+    if let Some(bound) = host::test_binding::take() {
+        return Ok(bound);
+    }
+    let id: String = args
+        .get("connection")
+        .map_err(|_| fail(codes::CONNECTION_MISSING, "choose a connection"))?;
+    let connection = host::connection(id.trim())?;
+    let transport = Box::new(host::HostTransport::new(&connection));
+    Ok((connection, transport))
 }
 
 fn bind(args: &Args<'_>) -> Result<Bound, PluginError> {
-    let id: String = args.get("connection")?;
-    let connection = host::connection(id.trim())?;
+    let (connection, transport) = connect(args)?;
     let provider = adapters::for_connection(&connection)?;
     Ok(Bound {
-        transport: host::HostTransport::new(&connection),
+        transport,
         provider,
         connection,
     })

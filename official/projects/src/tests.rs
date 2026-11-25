@@ -23,10 +23,31 @@ fn manifest() -> Value {
     serde_json::from_str(MANIFEST).unwrap()
 }
 
+/// The plugin API 1.12 the manifest needs (the typed repository
+/// variables); the pinned SDK and schema know 1.9 only.
+const REPOSITORY_VARIABLES_API: &str = "^1.12";
+
+/// The manifest as the pinned SDK and schema can read it: without the
+/// variables of plugin API 1.12 (asserted exactly below), at the SDK's
+/// level.
+fn manifest_at_the_pinned_api() -> Value {
+    let mut m = manifest();
+    assert_eq!(m["engines"]["pluginApi"], REPOSITORY_VARIABLES_API);
+    m["engines"]["pluginApi"] = json!(format!("^{}", plugin().api_level()));
+    m["contributes"]["variables"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|v| !matches!(v["valueType"]["type"].as_str(), Some("map" | "object")));
+    m
+}
+
 #[test]
 fn the_definition_matches_the_manifest() {
+    // The pinned SDK describes at most plugin API 1.9 (the module needs
+    // nothing newer: the host computes the 1.12 variables).
+    assert_eq!(plugin().api_level(), PRIVILEGED_API_LEVEL);
     assert_eq!(
-        manifest_mismatches(&plugin(), &manifest()),
+        manifest_mismatches(&plugin(), &manifest_at_the_pinned_api()),
         Vec::<String>::new()
     );
     plugin().validate().unwrap();
@@ -37,11 +58,12 @@ fn the_manifest_is_valid_and_declares_the_projects_screen() {
     let schema: Value = serde_json::from_str(SCHEMA).unwrap();
     let validator = jsonschema::validator_for(&schema).unwrap();
     let errors: Vec<String> = validator
-        .iter_errors(&manifest())
+        .iter_errors(&manifest_at_the_pinned_api())
         .map(|e| format!("{}: {e}", e.instance_path()))
         .collect();
     assert!(errors.is_empty(), "{errors:?}");
     let m = manifest();
+    assert_eq!(m["engines"]["deckpilot"], ">=0.16.0 <1.0.0");
     let kinds: Vec<Value> = m["permissions"]
         .as_array()
         .unwrap()
@@ -68,19 +90,43 @@ fn the_manifest_is_valid_and_declares_the_projects_screen() {
     assert_eq!(m["contributes"]["navigation"][0]["view"], "projects");
     assert_eq!(m["contributes"]["statusItems"], json!(["activeProject"]));
     assert_eq!(m["contributes"]["dashboardCards"], json!(["activeProject"]));
-    // The host-published variables: the built-in's `projects.current.*`.
-    let variables: Vec<(&str, &str)> = m["contributes"]["variables"]
+    // The host-published variables: the built-in's `projects.current.*`,
+    // then the typed repository variables of plugin API 1.12 (DeckPilot's
+    // VariableHostSource::value_type), all project values.
+    let variables: Vec<(&str, &str, Value)> = m["contributes"]["variables"]
         .as_array()
         .unwrap()
         .iter()
-        .map(|v| (v["id"].as_str().unwrap(), v["source"].as_str().unwrap()))
+        .map(|v| {
+            assert_eq!(v["scope"], "project");
+            assert_eq!(v["requires"], json!(["project"]));
+            (
+                v["id"].as_str().unwrap(),
+                v["source"].as_str().unwrap(),
+                v["valueType"].clone(),
+            )
+        })
         .collect();
     assert_eq!(
         variables,
         [
-            ("current.id", "host:project.id"),
-            ("current.key", "host:project.key"),
-            ("current.name", "host:project.name"),
+            ("current.id", "host:project.id", json!({"type": "string"})),
+            ("current.key", "host:project.key", json!({"type": "string"})),
+            (
+                "current.name",
+                "host:project.name",
+                json!({"type": "string"})
+            ),
+            (
+                "current.repositories",
+                "host:project.repositories",
+                json!({"type": "map", "of": "repository"})
+            ),
+            (
+                "current.repository",
+                "host:project.repository",
+                json!({"type": "object", "shape": "repository"})
+            ),
         ]
     );
     // Every action of the built-in, the deprecated ones flagged and

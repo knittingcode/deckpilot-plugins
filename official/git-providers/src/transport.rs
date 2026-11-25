@@ -261,6 +261,26 @@ pub trait Transport {
     fn now_ms(&mut self) -> Option<u64>;
 }
 
+/// A boxed transport is a transport (the actions hold the invocation's
+/// one as `Box<dyn Transport>`).
+impl<T: Transport + ?Sized> Transport for Box<T> {
+    fn send(&mut self, request: &HttpRequest) -> Result<HttpReply, TransportError> {
+        (**self).send(request)
+    }
+
+    fn report(&mut self, status: ConnectionStatus, detail: Option<&str>) {
+        (**self).report(status, detail);
+    }
+
+    fn sleep(&mut self, ms: u32) -> Result<(), TransportError> {
+        (**self).sleep(ms)
+    }
+
+    fn now_ms(&mut self) -> Option<u64> {
+        (**self).now_ms()
+    }
+}
+
 /// A scripted transport for unit tests: routes by method and URL, records
 /// every request. Never a network.
 pub mod mock {

@@ -25,7 +25,7 @@ The nine plugins DeckPilot bundles, as this repository builds, signs and
 | `deckpilot.gitlab` | `official/gitlab` | 0.1.2 | 0.1.2 | `>=0.6.0 <1.0.0` | `^1.0` | `network`, `credentials`, `openUrl` | none | 0.1.2: verified, pinned keys (8f3f9b211a1f2bad, 98a1f76b2dddce87) | yes, 0.1.2 (DeckPilot >= 0.11.0) |
 | `deckpilot.jira` | `official/jira` | 0.1.2 | 0.1.2 | `>=0.6.0 <1.0.0` | `^1.0` | `network`, `credentials`, `openUrl` | none | 0.1.2: verified, pinned keys (8f3f9b211a1f2bad, 98a1f76b2dddce87) | yes, 0.1.2 (DeckPilot >= 0.11.0) |
 | `deckpilot.notifications` | `official/notifications` | 0.1.2 | 0.1.2 | `>=0.6.0 <1.0.0` | `^1.0` | `notifications` | none | 0.1.2: verified, pinned keys (8f3f9b211a1f2bad, 98a1f76b2dddce87) | yes, 0.1.2 (DeckPilot >= 0.11.0) |
-| `deckpilot.projects` | `official/projects` | 0.1.1 | 0.1.1 | `>=0.10.0 <1.0.0` | `^1.9` | `projectContext*`, `resources*`, `profile`, `hostViews*` | none | no signed release | no: privileged (bundled in DeckPilot only) |
+| `deckpilot.projects` | `official/projects` | 0.2.0 | 0.1.1 | `>=0.16.0 <1.0.0` | `^1.12` | `projectContext*`, `resources*`, `profile`, `hostViews*` | none | no signed release | no: held (source only; released one at a time by a reviewed change; bundled in DeckPilot only) |
 | `deckpilot.workflows` | `official/workflows` | 0.1.1 | 0.1.1 | `>=0.10.0 <1.0.0` | `^1.9` | `hostViews*` | none | no signed release | no: privileged (bundled in DeckPilot only) |
 | `deckpilot.workspace` | `official/workspace` | 0.1.1 | 0.1.1 | `>=0.10.0 <1.0.0` | `^1.9` | `resources*`, `openUrl`, `profile` | `deckpilot.projects` `>=0.1.0 <1.0.0` (optional) | no signed release | no: privileged (bundled in DeckPilot only) |
 
@@ -35,3 +35,8 @@ Marketplace entry (bundled in DeckPilot only). *Shipped in DeckPilot*: the
 highest version DeckPilot's `released-pins.json` records (the rollback floor of
 `release verify`). *Version*: the source (`official/<name>` once moved, else DeckPilot's
 at the pin).
+
+Held (`official/plugins.json` `held`): the source is on main, built, tested and compared;
+`package --first-party` must refuse it, and it is never signed, released or listed.
+
+* `deckpilot.projects` 0.2.0: 0.2.0 needs plugin API 1.12 (the typed repository variables: `host:project.repositories`, `host:project.repository`, knittingcode/deckpilot#460), which no published DeckPilot provides yet: P8 (plugin API in the agent, the privileged policy entry of 0.2.0 in both repositories) and a published DeckPilot providing 1.12 come first, then its release (P9). While it is held, no 0.1.x patch is released from main

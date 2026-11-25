@@ -59,7 +59,7 @@ with a new version of every official plugin; the tooling pin
 | --- | --- | --- | --- |
 | `deckpilot.docker` | 0.1.1 (0.1.0) | `device`, `profile`, `resources`, `tools` (docker) | released, exactly the reviewed policy |
 | `deckpilot.git` | 0.1.1 (0.1.0) | `device`, `profile`, `resources`, `tools` (git) | released, exactly the reviewed policy |
-| `deckpilot.projects` | 0.1.1 (0.1.0) | `hostViews`, `profile`, `projectContext`, `resources` | released, exactly the reviewed policy |
+| `deckpilot.projects` | 0.2.0 (0.1.0; 0.1.1 released and bundled) | `hostViews`, `profile`, `projectContext`, `resources` | **held ahead of the pin** (`hostApi` 1.12): 0.2.0 declares the typed repository variables; built and tested, never packaged or released. While it is held, no 0.1.x patch of it can be released from main ("Held ahead of the pin" below) |
 | `deckpilot.workflows` | 0.1.1 (0.1.0) | `hostViews` | released, exactly the reviewed policy |
 | `deckpilot.workspace` | 0.1.1 (0.1.0) | `openUrl` (`fromParams`), `profile`, `resources` | released, exactly the reviewed policy |
 | `deckpilot.git-providers` | 0.1.0 (new) | `connections`, `dialogs`, `openUrl` (`connections`) | **held ahead of the pin** (`hostApi` 1.14): built and tested, never packaged or released |
@@ -68,11 +68,13 @@ The optional dependencies of Docker, Git and Workspace on
 `deckpilot.projects` (`>=0.1.0 <1.0.0`) are DeckPilot's, unchanged, and
 0.1.1 satisfies them.
 
-None of the five is `held` any more (2026-11-21, owner-authorized, after
-the security review of DeckPilot's
+None of the five is `held` for its privileged kinds any more (2026-11-21,
+owner-authorized, after the security review of DeckPilot's
 `docs/marketplace/publisher-review-request.md` opened the gate here and in
-DeckPilot for exactly `privileged-policy.json`): each is a released
-plugin, so `package --first-party` packages it, `sign-test` signs it with
+DeckPilot for exactly `privileged-policy.json`). `deckpilot.projects` is
+held again, but only ahead of the pin: its 0.2.0 needs plugin API 1.12
+(below), and its released 0.1.1 stays what DeckPilot bundles. Each of the
+other four is a released plugin, so `package --first-party` packages it, `sign-test` signs it with
 throwaway keys and `official-release.yml` accepts its tag
 `deckpilot.<name>--v0.1.1`. Its manifest must stay exactly what the
 reviewed policy admits (see "The reviewed privileged policy" below), and
@@ -155,15 +157,17 @@ plugin again in a copy of `official/` to test every rule above. Removing
 `held` is a reviewed change after the security review of DeckPilot's
 `docs/marketplace/publisher-review-request.md` opens the gate here and in
 DeckPilot; for the five privileged plugins it was made on 2026-11-21, so
-no plugin on main is held. Until a plugin's release is in DeckPilot's
+no plugin on main is held for its privileged kinds (`deckpilot.projects`
+0.2.0 is held ahead of the pin, below). Until a plugin's release is in DeckPilot's
 `artifacts.json`, DeckPilot keeps bundling its own build of the version it
 shipped.
 
 ### Held ahead of the pin
 
 A plugin may need a plugin API that no DeckPilot has yet: `deckpilot.scripts`
-needs 1.13 (the `scripts` permission) and `deckpilot.git-providers` needs
-1.14 (the `connections` permission). `tools/check-official.py` fixes each
+needs 1.13 (the `scripts` permission), `deckpilot.git-providers` needs
+1.14 (the `connections` permission) and `deckpilot.projects` 0.2.0 needs
+1.12 (the typed repository variables, no new permission). `tools/check-official.py` fixes each
 id's level and new permission kinds (`AHEAD_OF_PIN`). The plugin's
 `plugins.json` entry is `held` with `hostApi`, exactly that level, accepted
 only while the pinned plugin API is lower; a pin that reaches it fails until
@@ -172,7 +176,9 @@ only while the pinned plugin API is lower; a pin that reaches it fails until
 - it need not be bundled by the pinned DeckPilot yet;
 - `engines.pluginApi` is exactly `^<hostApi>`;
 - it is held without a plugin API 1.9 privileged usage;
-- it has no contract at the pin yet (one that exists is compared).
+- if DeckPilot does not bundle it yet, it may have no contract at the pin;
+  one that exists, and always that of a bundled plugin, is compared with
+  only the additions of its API level allowed (`deckpilot.projects`, below).
 
 Everything else applies. Its new permission kinds are refused in every other
 manifest. It is `held` in every step, and its source is not trusted to say
@@ -187,6 +193,71 @@ otherwise:
 
 Its release removes `hostApi` and `held` once the pinned DeckPilot has the
 API, its contract and, for a privileged plugin, its reviewed policy entry.
+
+#### A released plugin held ahead: `deckpilot.projects` 0.2.0
+
+`deckpilot.projects` is released (0.1.1, bundled by DeckPilot) and
+privileged. Its 0.2.0 adds the typed repository variables of plugin API
+1.12 (knittingcode/deckpilot#460): `current.repositories` (`{"type": "map",
+"of": "repository"}`, source `host:project.repositories`) and
+`current.repository` (`{"type": "object", "shape": "repository"}`, source
+`host:project.repository`), both scope `project`, `requires: ["project"]`,
+named in `en` and `pl`. The module is unchanged: the host computes the
+values. Its `AHEAD_OF_PIN` entry is `1.12` with no new permission kinds,
+and `plugins.json` carries `held` and `hostApi: "1.12"`.
+
+Unlike a new plugin, it has a contract at the pin (the 0.1.1 release), and
+it is **always compared** with it, missing or not. Only the additions of
+plugin API 1.12 may differ (`tools/check-official.py` `compare_contract`,
+and the plugin's own `src/contract.rs`, the same rule):
+
+- `version` is newer than the contract's; of `engines`, only `pluginApi`
+  (exactly `^1.12`) and `deckpilot` (`>=0.16.0 <1.0.0`) may differ,
+  `sdk` and any other key stay equal;
+- `contributes.variables` is the contract's list unchanged and in order,
+  followed only by variables of a host source of exactly 1.12, each source
+  at most once, with exactly the fields `id`, `name`, `description`,
+  `valueType`, `scope`, `requires` and `source` (no `sensitive` or
+  `deprecated`), that source's value type, scope `project` and `requires:
+  ["project"]`;
+- the locales are the same files, with no subdirectory; every text of the
+  contract keeps its value, the only new keys are the `t:` texts of the
+  appended variables, and a key reached twice (a dotted key next to a
+  nested one) is refused;
+- every other field (actions, settings, permissions, views, error codes,
+  `statusItems`, `dashboardCards`, ...), `assets/` and `LICENSE` are equal.
+
+A changed action, a removed or reordered variable, an appended variable
+without a 1.12 source, a changed locale text or a new permission fails.
+`privileged-policy.json` stays the pin's, byte for byte (it still reviews
+0.1.1); being held, 0.2.0 is not compared with that entry. Its code is
+still frozen: `reviewed-sources.json` records the 0.2.0 bytes, a reviewed
+change. It is refused everywhere a held plugin is (sign-test, `resolve`,
+`release-build`, `official-entry.py`, `check-submission.py`, `publish.yml`,
+`resolve-tag.sh`), and `package` runs `ahead_refused` on it.
+
+**Consequence:** while it is held, `official-release.yml` refuses every
+`deckpilot.projects` tag, so no 0.1.x patch can be released from main. A
+fix to 0.1.1 would need 0.2.0's hold lifted first, or a branch decision by
+the owner.
+
+**What P8 and P9 must do to release it:**
+
+1. P8 (DeckPilot): the agent's plugin API reaches 1.12 (or later); the
+   privileged policy entry of `deckpilot.projects` becomes 0.2.0 with the
+   two new constructs, `contributes.variables[3].source` and
+   `contributes.variables[4].source` (the host sources
+   `host:project.repositories` and `host:project.repository`), in
+   DeckPilot's `crates/deckpilot-plugin-registry/publisher/privileged-policy.json`
+   and in `official/privileged-policy.json` here, byte-identical, with the
+   security review recorded; and a published DeckPilot provides 1.12.
+2. P9 (here): move the pin (`tools/deckpilot.env`) to that DeckPilot; remove
+   `hostApi` and `held` from the `deckpilot.projects` entry of
+   `plugins.json` (a pin that reaches 1.12 fails until `hostApi` is
+   removed); the plugin is then checked like any other, exactly as the
+   reviewed policy admits it.
+3. The release tag `deckpilot.projects--v0.2.0`, which only the owner
+   authorizes (docs/release-governance.md).
 
 The `ahead_refused` step of `tools/official.sh` runs only when an ahead
 plugin is a member, so it was added untested in CI. Its first run is the CI
@@ -227,7 +298,7 @@ entry: it reaches users only bundled in DeckPilot.
 | --- | --- |
 | `deckpilot.docker` 0.1.1 | the `tools` permission (docker only), the `resources` permission, `resource` action parameters |
 | `deckpilot.git` 0.1.1 | the `tools` permission (git only), the `resources` permission, `resource` action parameters |
-| `deckpilot.projects` 0.1.1 | the `projectContext`, `resources` and `hostViews` permissions, `node.changesContext`, `host:project.*` variable sources, the `projects` view, `statusItems`, `dashboardCards` |
+| `deckpilot.projects` 0.1.1 | the `projectContext`, `resources` and `hostViews` permissions, `node.changesContext`, `host:project.*` variable sources, the `projects` view, `statusItems`, `dashboardCards` (0.2.0, held ahead of the pin, adds the sources `host:project.repositories` and `host:project.repository`: P8 records them in both copies) |
 | `deckpilot.workflows` 0.1.1 | the `hostViews` permission and the `workflows` host view |
 | `deckpilot.workspace` 0.1.1 | the `resources` permission, `resource` action parameters, `openUrl.fromParams` |
 

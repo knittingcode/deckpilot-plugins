@@ -3,7 +3,7 @@
   "manifestVersion": 1,
   "id": "deckpilot.projects",
   "name": "t:plugin.name",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "publisher": {
     "id": "deckpilot",
     "name": "DeckPilot",
@@ -19,8 +19,8 @@
   "keywords": ["projects", "context", "switcher"],
   "categories": ["productivity"],
   "engines": {
-    "deckpilot": ">=0.10.0 <1.0.0",
-    "pluginApi": "^1.9",
+    "deckpilot": ">=0.16.0 <1.0.0",
+    "pluginApi": "^1.12",
     "sdk": "0.1.0"
   },
   "runtime": {
@@ -599,6 +599,30 @@
         "scope": "project",
         "requires": ["project"],
         "source": "host:project.name"
+      },
+      {
+        "id": "current.repositories",
+        "name": "t:variables.repositories.name",
+        "description": "t:variables.repositories.description",
+        "valueType": {
+          "type": "map",
+          "of": "repository"
+        },
+        "scope": "project",
+        "requires": ["project"],
+        "source": "host:project.repositories"
+      },
+      {
+        "id": "current.repository",
+        "name": "t:variables.repository.name",
+        "description": "t:variables.repository.description",
+        "valueType": {
+          "type": "object",
+          "shape": "repository"
+        },
+        "scope": "project",
+        "requires": ["project"],
+        "source": "host:project.repository"
       }
     ],
     "navigation": [

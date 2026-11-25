@@ -210,11 +210,22 @@ pin 2 2
 expect fail "the pinned verifier accepts one signature alone" "accept .* alone: the threshold is not two" -- env STUB_ACCEPT_ONE=1 "$root/tools/official.sh" release-verify "$ID" "$two" "$VERSION" "$SHA" "$SIZE" "$KA" "$KB"
 
 echo "== held plugins (official/plugins.json \`held\`): no release"
-# The committed plugins.json holds none: the five privileged plugins are
-# released plugins (--release accepts each, at its manifest version).
+# The committed plugins.json holds none for its privileged kinds: the five
+# privileged plugins are released plugins (--release accepts each, at its
+# manifest version), but those held ahead of the pin (deckpilot.projects
+# 0.2.0, plugin API 1.12), which --release refuses.
 . "$root/tools/deckpilot.env"
 privileged="deckpilot.docker deckpilot.git deckpilot.projects deckpilot.workflows deckpilot.workspace"
+ahead_ids=" $(python3 -I "$root/tools/check-official.py" --root "$root/official" --commit "$DECKPILOT_SDK_COMMIT" \
+  --app-version "$DECKPILOT_VERSION" --plugin-api "$DECKPILOT_PLUGIN_API" --ahead | cut -d' ' -f1 | tr '\n' ' ') "
+[[ $ahead_ids == *" deckpilot.projects "* ]] && ok "deckpilot.projects is held ahead of the pin" || bad "ahead: $ahead_ids"
 for pid in $privileged; do
+  if [[ $ahead_ids == *" $pid "* ]]; then
+    expect fail "$pid, held ahead of the pin, is not a released official plugin" "is not a released official plugin" -- \
+      python3 -I "$root/tools/check-official.py" --root "$root/official" --commit "$DECKPILOT_SDK_COMMIT" \
+      --app-version "$DECKPILOT_VERSION" --plugin-api "$DECKPILOT_PLUGIN_API" --release "$pid"
+    continue
+  fi
   expect pass "$pid is a released official plugin" "member\\(s\\) checked" -- \
     python3 -I "$root/tools/check-official.py" --root "$root/official" --commit "$DECKPILOT_SDK_COMMIT" \
     --app-version "$DECKPILOT_VERSION" --plugin-api "$DECKPILOT_PLUGIN_API" --release "$pid"
@@ -229,7 +240,8 @@ rsync -a --exclude target "$root/official/" "$copy/official/"
 jq --arg ids "$privileged" '(.plugins[] | select(.id as $i | ($ids | split(" ")) | index($i))) += {held: "held by the test"}' \
   "$root/official/plugins.json" > "$copy/official/plugins.json"
 held=$(jq -r '.plugins[] | select(.held != null and .hostApi == null) | .id' "$copy/official/plugins.json")
-[ "$(echo $held)" = "$privileged" ] && ok "the copy holds the five privileged plugins" || bad "the copy holds: $held"
+want=$(for pid in $privileged; do [[ $ahead_ids == *" $pid "* ]] || echo "$pid"; done)
+[ "$(echo $held)" = "$(echo $want)" ] && ok "the copy holds the privileged plugins not held ahead" || bad "the copy holds: $held"
 # Plugins held ahead of the pin (check-official.py AHEAD_OF_PIN) are refused
 # the same way.
 held="$held $(jq -r '.plugins[] | select(.held != null and .hostApi != null) | .id' "$copy/official/plugins.json")"
@@ -257,6 +269,7 @@ for ahead in $(python3 -I "$root/tools/check-official.py" --root "$root/official
   grep -qx -- "$crate" <<<"$crates" && bad "compare builds $ahead, held ahead of the pin" || ok "compare skips $ahead, held ahead of the pin"
 done
 for pid in $privileged; do
+  [[ $ahead_ids == *" $pid "* ]] && continue
   crate=deckpilot-${pid#deckpilot.}
   grep -qx -- "$crate" <<<"$crates" && ok "compare builds $pid" || bad "compare does not build $pid"
 done
