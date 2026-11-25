@@ -1,6 +1,6 @@
 //! `Repository.remotes` (decision K4, deckpilot #491): the script objects
 //! of a reply with remotes and of one from an agent before them, the
-//! host's limits (8 remotes, one primary), malformed replies, frozen
+//! host's limits (8 remotes, one primary, unique names), malformed replies, frozen
 //! objects, and the K4 isolation: no text the guest builds (log lines,
 //! errors, the run's outcomes and result, every request it sends) carries
 //! a `connectionId` or a `remoteRepositoryId`.
@@ -162,7 +162,7 @@ fn linked(name: &str, primary: bool) -> Value {
 }
 
 #[test]
-fn more_than_eight_remotes_or_two_primaries_refuse_the_reply() {
+fn more_than_eight_remotes_two_primaries_or_a_duplicate_name_refuse_the_reply() {
     let eight: Vec<Value> = (0..8).map(|i| linked(&format!("r{i}"), i == 0)).collect();
     assert_eq!(
         result(run_mock(&with_remotes(DESCRIBE, Some(json!(eight)))))["cms"]
@@ -185,6 +185,19 @@ fn more_than_eight_remotes_or_two_primaries_refuse_the_reply() {
         got["message"],
         "malformed reply to project.repositories: more than one primary remote (repository \"cms\")"
     );
+    // Names are unique on the host; a duplicate is named by its place.
+    let got = refused(json!([linked("origin", true), linked("origin", false)]));
+    assert_eq!(
+        got["message"],
+        "malformed reply to project.repositories: remote 2: duplicate `name` (repository \"cms\")"
+    );
+    // The primary need not come first: the agent sends the stored order.
+    let got = result(run_mock(&with_remotes(
+        DESCRIBE,
+        Some(json!([linked("mirror", false), linked("origin", true)])),
+    )));
+    assert_eq!(got["cms"][0]["name"], "mirror");
+    assert_eq!(got["cms"][1]["primary"], true);
     // None primary is the host's to allow (a repository whose remotes the
     // user has not ranked yet).
     let got = result(run_mock(&with_remotes(

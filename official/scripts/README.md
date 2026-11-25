@@ -79,7 +79,9 @@ repositories are frozen objects: `id`, `key`, `name`, `description`,
   (design §11 C1), unchanged.
 - **`remotes`** (decision K4, deckpilot #491) is a frozen array of
   frozen `{name, primary, url, defaultBranch, connectionId,
-  remoteRepositoryId}`, the primary first, as the agent sends them:
+  remoteRepositoryId}`, in the order the agent sends them (the
+  profile's; the host does not sort the primary first, so find it by
+  `primary`):
   - a text member the agent sends as `null`, or leaves out, is `null`;
     a member the guest does not know is dropped;
   - **an agent before K4** sends no `remotes` (and the host leaves out an
@@ -88,7 +90,8 @@ repositories are frozen objects: `id`, `key`, `name`, `description`,
     no derivation;
   - **a malformed list refuses the whole reply** (`invalidResponse`,
     naming the repository): `remotes` that is not an array, more than 8
-    entries (K1), more than one `primary`, an entry that is not an
+    entries (K1), more than one `primary`, two entries with the same
+    `name` (the host keeps names unique), an entry that is not an
     object, a `name` that is not a string of 1 to 64 characters, a
     `primary` that is not a boolean, or a text member that is neither a
     string nor `null`. Dropping an entry could make another remote look

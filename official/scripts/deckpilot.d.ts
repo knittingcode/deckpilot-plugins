@@ -181,8 +181,9 @@ interface Repository {
   /** The primary remote's URL and default branch (design §11 C1), as before `remotes`. */
   remote: { url: string | null; defaultBranch: string | null } | null;
   /**
-   * Every git remote of the repository, the primary first (decision K4):
-   * at most 8, at most one `primary`. Frozen. `[]` from an agent before
+   * Every git remote of the repository (decision K4), in the profile's
+   * order: at most 8, unique names, at most one `primary` (which need not
+   * be first; find it by `primary`). Frozen. `[]` from an agent before
    * K4 (it is not derived from `remote`).
    */
   readonly remotes: readonly RepositoryRemote[];

@@ -2,7 +2,7 @@
   "$comment": [
     "Representative replies of the Scripts host bridge, one or more per op, as the deckpilot.scripts guest expects them: {\"ok\": value} or {\"error\": {code: CallErrorCode, message, script?: {code: ErrorCode, message, repository?, command?, path?, confirmation?: {token}}}}.",
     "The requests are not here: they are script-requests.json, a byte-for-byte copy of DeckPilot's plugins/runtime/crates/abi/tests/fixtures/script-requests.json (the one contract of both repositories). The guest's tests (src/tests_fixture.rs) answer their drivers with these replies, hold every reply under maxReplyBytes and check that the guest accepts each.",
-    "project.repositories: `ok` is an agent before decision K4 (no `remotes`; the guest gives `remotes: []`), `withRemotes` an agent with it (deckpilot #491: `remotes` with `name`, `primary`, `url`, `defaultBranch`, `connectionId` and `remoteRepositoryId`, the primary first, at most 8, at most one primary; the host omits an empty list)."
+    "project.repositories: `ok` is an agent before decision K4 (no `remotes`; the guest gives `remotes: []`), `withRemotes` an agent with it (deckpilot #491: `remotes` with `name`, `primary`, `url`, `defaultBranch`, `connectionId` and `remoteRepositoryId`, in the profile's order, at most 8, unique names, at most one primary; the host omits an empty list)."
   ],
   "limits": {
     "maxRequestBytes": 65536,

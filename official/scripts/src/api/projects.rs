@@ -51,7 +51,9 @@ pub fn repositories(args: Value) -> Result<Value, ScriptFault> {
 }
 
 /// The agent's `project.repositories` reply, with every repository's
-/// `remotes` (decision K4) in the guest's form: an array of at most
+/// `remotes` (decision K4) in the guest's form, in the agent's order (the
+/// order the profile stores; the host does not put the primary first): an
+/// array of at most
 /// [`MAX_REMOTES`] objects of exactly `name`, `primary`, `url`,
 /// `defaultBranch`, `connectionId` and `remoteRepositoryId` (an absent
 /// or `null` text member is `null`; members the guest does not know are
@@ -62,9 +64,10 @@ pub fn repositories(args: Value) -> Result<Value, ScriptFault> {
 ///   the name nor the ids (design §11 C1 says nothing of a derivation).
 /// - Anything else is refused whole, `invalidResponse`, and no repository
 ///   is given to the script: `remotes` that is not an array, more than
-///   [`MAX_REMOTES`], more than one primary, or an entry that is not an
-///   object, or has no `name` (a non-empty string of at most
-///   [`MAX_REMOTE_NAME`] characters), no boolean `primary`, or a text
+///   [`MAX_REMOTES`], more than one primary, two with the same `name` (the
+///   host keeps names unique), or an entry that is not an object, or has
+///   no `name` (a non-empty string of at most [`MAX_REMOTE_NAME`]
+///   characters), no boolean `primary`, or a text
 ///   member that is neither a string nor `null`. A remote silently
 ///   dropped could make another one look like the primary.
 ///
@@ -115,6 +118,9 @@ fn remotes(given: Option<&Value>) -> Result<Vec<Value>, String> {
             .get("primary")
             .and_then(Value::as_bool)
             .ok_or_else(|| format!("remote {n}: `primary` is not a boolean"))?;
+        if out.iter().any(|o: &Value| o["name"] == name) {
+            return Err(format!("remote {n}: duplicate `name`"));
+        }
         primaries += usize::from(primary);
         let mut remote = serde_json::Map::new();
         remote.insert("name".into(), Value::from(name));
