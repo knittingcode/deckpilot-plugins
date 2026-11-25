@@ -12,18 +12,18 @@ use super::*;
 use crate::mock::{Mock, exit, ok, refuse, repository};
 use deckpilot_plugin_sdk::ParamValue;
 
-fn run_mock(mock: &Mock) -> ActionResult {
+pub(crate) fn run_mock(mock: &Mock) -> ActionResult {
     run(mock.boxed(), "11111111-2222-4333-8444-555555555555", None)
 }
 
-fn failed(r: ActionResult) -> (String, String) {
+pub(crate) fn failed(r: ActionResult) -> (String, String) {
     match r {
         Err(e) => (e.code().to_owned(), e.message().to_owned()),
         Ok(o) => panic!("expected a failure, got {o:?}"),
     }
 }
 
-fn result(r: ActionResult) -> Value {
+pub(crate) fn result(r: ActionResult) -> Value {
     let out = r.unwrap_or_else(|e| panic!("expected success, got {}: {}", e.code(), e.message()));
     match out.data().get("result") {
         Some(ParamValue::String(s)) => serde_json::from_str(s).unwrap(),
@@ -588,9 +588,11 @@ fn git_pull_and_docker_compose_are_structured_requests() {
             runs[2 * i],
             &json!({ "command": "git", "args": ["pull", "--ff-only"], "cwd": { "repository": key, "relative": "" }, "env": {} })
         );
+        // The script asked for 120 s; the run has 60 s (its timeoutMs
+        // setting, as script.load said): the request never outlasts it.
         assert_eq!(
             runs[2 * i + 1],
-            &json!({ "command": "docker", "args": ["compose", "up", "-d"], "cwd": { "repository": key, "relative": "" }, "env": {}, "timeoutMs": 120000 })
+            &json!({ "command": "docker", "args": ["compose", "up", "-d"], "cwd": { "repository": key, "relative": "" }, "env": {}, "timeoutMs": 60000 })
         );
     }
     assert_eq!(
@@ -805,7 +807,8 @@ fn fs_requests_have_their_canonical_shape() {
         json!({}),
         Box::new(|op, _| {
             ok(match op {
-                "fs.readFile" => json!({ "content": "hi" }),
+                "fs.readFile" => json!({ "content": "aGk=", "size": 2, "eof": true }),
+                "fs.write.open" => json!({ "handle": "wh-1" }),
                 _ => json!({}),
             })
         }),
@@ -817,8 +820,10 @@ fn fs_requests_have_their_canonical_shape() {
         shapes,
         vec![
             json!(["fs.mkdir", { "path": { "repository": "cms", "relative": "a/b/c" }, "recursive": true }]),
-            json!(["fs.writeFile", { "path": { "path": "/w/x.txt" }, "content": "hi", "encoding": "utf8", "createOnly": true }]),
-            json!(["fs.readFile", { "path": { "path": "/w/x.txt" }, "encoding": "utf8", "maxBytes": 10 }]),
+            json!(["fs.write.open", { "path": { "path": "/w/x.txt" }, "encoding": "base64", "createOnly": true }]),
+            json!(["fs.write.chunk", { "handle": "wh-1", "data": "aGk=" }]),
+            json!(["fs.write.commit", { "handle": "wh-1" }]),
+            json!(["fs.readFile", { "path": { "path": "/w/x.txt" }, "encoding": "base64", "offset": 0, "length": 10 }]),
             json!(["fs.copy", { "src": { "path": "/w/a" }, "dst": { "path": "/w/b" }, "recursive": true, "overwrite": false }]),
             json!(["fs.removeContents", { "path": { "path": "/w/tmp" }, "dryRun": true, "keep": [".gitkeep"] }]),
         ]
@@ -997,4 +1002,68 @@ fn the_outcomes_output_is_capped() {
     let parsed: Value = serde_json::from_str(&outcomes_json(few)).unwrap();
     assert_eq!(parsed.as_array().unwrap().len(), 3);
     assert_eq!(outcomes_json(&[]), "[]");
+}
+
+#[test]
+fn replaced_iterators_species_regexps_and_accessors_do_not_change_the_api() {
+    let src = r#"
+        const boom = (what) => () => { throw new Error("polluted " + what) };
+        Array.prototype[Symbol.iterator] = boom("iterator");
+        Object.defineProperty(Array, Symbol.species, { get: boom("species") });
+        RegExp.prototype.exec = boom("exec");
+        RegExp.prototype[Symbol.split] = boom("split");
+        String.prototype[Symbol.split] = boom("string split");
+        Object.prototype.toJSON = boom("toJSON");
+        Array.prototype.toJSON = boom("array toJSON");
+        const names = ["path", "cwd", "timeoutMs", "confirmation", "name", "code", "repository", "CI", "0", "1"];
+        for (let i = 0; i < names.length; i++) {
+            Object.defineProperty(Object.prototype, names[i], { set: boom("setter " + names[i]), configurable: true });
+        }
+        Math.min = boom("min");
+        String = boom("String");
+        const repo = deckpilot.repositories.default();
+        const r = deckpilot.git.run(["pull", "--ff-only"], { cwd: repo, timeoutMs: 1000 });
+        const m = deckpilot.process.run({ command: "make", args: ["a b"], env: { CI: "1" } });
+        deckpilot.sleep(5);
+        let error;
+        try { repo.join("x/../..") } catch (e) { error = e.code }
+        // The run's result is the script's own JSON: its own toJSON applies.
+        delete Object.prototype.toJSON;
+        delete Array.prototype.toJSON;
+        ({ key: repo.key, ref: repo.join("a\\b", "c"), command: r.command, make: m.command,
+           msg: ScriptError.fromResult(r).message, error })
+    "#;
+    let mock = three_repositories(src, |_| {
+        exit(
+            1,
+            "",
+            "hint: x\nfatal: Not possible to fast-forward, aborting.\r\n",
+        )
+    });
+    mock.set(|s| {
+        let h = std::mem::replace(&mut s.handler, Box::new(|_, _| json!(null)));
+        let mut h = h;
+        s.handler = Box::new(move |op, a| {
+            if op == "script.sleep" {
+                ok(json!(null))
+            } else {
+                h(op, a)
+            }
+        });
+    });
+    assert_eq!(
+        result(run_mock(&mock)),
+        json!({ "key": "cms", "ref": { "repository": "cms", "relative": "a/b/c" }, "command": "git pull --ff-only",
+                "make": "make \"a b\"",
+                "msg": "git pull --ff-only failed in repository \"cms\" (exit 1): fatal: Not possible to fast-forward, aborting.",
+                "error": "outsideScope" })
+    );
+    let s = mock.0.borrow();
+    let runs = s.of("process.run");
+    assert_eq!(
+        runs[0],
+        &json!({ "command": "git", "args": ["pull", "--ff-only"], "cwd": { "repository": "cms", "relative": "" }, "env": {}, "timeoutMs": 1000 })
+    );
+    assert_eq!(runs[1]["env"], json!({ "CI": "1" }));
+    assert_eq!(s.of("script.sleep"), vec![&json!({ "ms": 5 })]);
 }

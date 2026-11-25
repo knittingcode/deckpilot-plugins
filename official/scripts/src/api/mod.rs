@@ -8,6 +8,7 @@
 //! The prelude reaches them only through [`dispatch`], which knows exactly
 //! the ops below: a script cannot name another op.
 
+pub mod base64;
 pub mod confirm;
 pub mod fs;
 pub mod log;
@@ -18,11 +19,13 @@ pub mod projects;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-use crate::bridge::ScriptFault;
+use crate::bridge::{ScriptFault, Session};
 pub use path::Flavor;
 
-/// The ops a script can reach (besides `script.load`, `script.poll` and
-/// `script.log`, which the runtime sends itself).
+/// The ops a script can reach through the prelude (besides `script.load`,
+/// `script.poll` and `script.log`, which the runtime sends itself).
+/// `fs.readFile` and `fs.writeFile` are the script's; on the wire they are
+/// chunks ([`WIRE_OPS`], `fs`).
 pub const OPS: &[&str] = &[
     "fs.copy",
     "fs.exists",
@@ -43,7 +46,66 @@ pub const OPS: &[&str] = &[
     "shell.run",
 ];
 
-/// Validates `args` for `op` and returns the canonical request arguments.
+/// Every op the guest sends to the agent: the P6 bridge
+/// (`tests/fixtures/bridge-requests.json` has each of them).
+pub const WIRE_OPS: &[&str] = &[
+    "script.load",
+    "script.poll",
+    "script.log",
+    "script.sleep",
+    "script.confirm",
+    "project.list",
+    "project.repositories",
+    "fs.exists",
+    "fs.stat",
+    "fs.list",
+    "fs.mkdir",
+    "fs.readFile",
+    "fs.write.open",
+    "fs.write.chunk",
+    "fs.write.commit",
+    "fs.write.abort",
+    "fs.copy",
+    "fs.move",
+    "fs.remove",
+    "fs.removeContents",
+    "process.run",
+    "shell.run",
+    "shell.available",
+];
+
+/// Runs one op of the prelude's: validated by [`dispatch`], then sent, as
+/// one request or, for `fs.readFile` and `fs.writeFile`, as chunks.
+pub fn perform(
+    session: &mut Session,
+    op: &str,
+    args: Value,
+    flavor: Flavor,
+) -> Result<Value, ScriptFault> {
+    match op {
+        "fs.readFile" => fs::read(session, args, flavor),
+        "fs.writeFile" => fs::write(session, args, flavor),
+        "process.run" | "shell.run" => {
+            let mut args = dispatch(op, args, flavor)?;
+            if session.budget.cancelled {
+                return Err(session.stopped());
+            }
+            let remaining = session.budget.remaining_now();
+            if remaining == Some(0) {
+                return Err(session.out_of_time());
+            }
+            process::clamp_timeout(&mut args, remaining);
+            session.call(op, args)
+        }
+        _ => {
+            let args = dispatch(op, args, flavor)?;
+            session.call(op, args)
+        }
+    }
+}
+
+/// Validates `args` for `op` and returns the canonical request arguments
+/// (for `fs.readFile` and `fs.writeFile`, the script's, before chunking).
 pub fn dispatch(op: &str, args: Value, flavor: Flavor) -> Result<Value, ScriptFault> {
     match op {
         "fs.exists" | "fs.stat" => fs::one_path(args, flavor),

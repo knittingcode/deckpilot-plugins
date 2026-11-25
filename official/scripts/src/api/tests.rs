@@ -233,3 +233,93 @@ fn confirmation_tokens_and_sleep() {
     assert!(dispatch("project.repositories", json!({ "project": "../x" }), L).is_err());
     assert!(dispatch("project.repositories", json!({ "project": null }), L).is_ok());
 }
+
+/// The path argument of fs and process ops on each host OS: what passes
+/// to the agent (which resolves it against the grants) and what is
+/// refused before any host call.
+#[test]
+fn path_arguments_per_platform() {
+    let arg = |f: Flavor, p: &str| dispatch("fs.exists", json!({ "path": { "path": p } }), f);
+    for f in [Flavor::Linux, Flavor::MacOs] {
+        for ok in ["/", "/home/dev/repo", "/a/../b", "/a:b", "/x/CON", "/x\\y"] {
+            assert!(arg(f, ok).is_ok(), "{f:?} {ok}");
+        }
+        for bad in ["relative", "C:\\x", "./x", "", "~/x", "/a\0b"] {
+            assert_eq!(
+                arg(f, bad).unwrap_err().code,
+                "invalidArgument",
+                "{f:?} {bad}"
+            );
+        }
+    }
+    let w = Flavor::Windows;
+    for ok in [
+        "C:\\work\\repo",
+        "c:/work/repo",
+        "D:\\",
+        "\\\\srv\\share\\repo",
+        "//srv/share/repo",
+        "C:\\a\\..\\b",
+        "C:\\console\\nulx",
+    ] {
+        assert!(arg(w, ok).is_ok(), "{ok}");
+    }
+    for bad in [
+        "/etc/hosts",
+        "\\rooted",
+        "C:relative",
+        "relative",
+        "\\\\srv",
+        "\\\\?\\C:\\x",
+        "\\\\.\\pipe\\x",
+        "//?/C:/x",
+        "\\\\.\\C:",
+        "C:\\x\\file.txt:stream",
+        "C:\\x\\file.txt::$DATA",
+        "\\\\srv\\share\\a:b",
+        "C:\\dir\\CON",
+        "C:\\dir\\nul.txt",
+        "C:\\dir\\Com1",
+        "C:\\dir\\lpt9.log",
+        "C:\\dir\\AUX \\x",
+        "C:\\CONOUT$",
+    ] {
+        assert_eq!(arg(w, bad).unwrap_err().code, "invalidArgument", "{bad}");
+    }
+    // Repository-relative parts: the same on every host, plus the reserved
+    // device names on Windows.
+    let rel = |f: Flavor, r: &str| {
+        dispatch(
+            "fs.exists",
+            json!({ "path": { "repository": "cms", "relative": r } }),
+            f,
+        )
+    };
+    for f in [Flavor::Linux, Flavor::MacOs, w] {
+        assert_eq!(
+            rel(f, "src\\lib/./a.js").unwrap(),
+            json!({ "path": { "repository": "cms", "relative": "src/lib/a.js" } })
+        );
+        for bad in ["..", "a/../../b", "/x", "\\x", "C:\\x", "C:x", "a:b"] {
+            let e = rel(f, bad).unwrap_err();
+            assert_eq!(e.repository.as_deref(), Some("cms"), "{f:?} {bad}");
+        }
+    }
+    assert!(rel(Flavor::Linux, "dir/CON").is_ok());
+    assert!(rel(Flavor::MacOs, "nul.txt").is_ok());
+    let e = rel(w, "dir/CON").unwrap_err();
+    assert_eq!(
+        (e.code.as_str(), e.repository.as_deref()),
+        ("invalidArgument", Some("cms"))
+    );
+    assert!(rel(w, "lpt1.txt").is_err());
+    // A process's cwd is a path like any other.
+    assert!(
+        dispatch(
+            "process.run",
+            json!({ "command": "git", "cwd": { "path": "\\\\?\\C:\\x" } }),
+            w
+        )
+        .is_err()
+    );
+}

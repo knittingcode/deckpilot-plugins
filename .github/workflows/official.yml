@@ -60,6 +60,35 @@ jobs:
       - name: Marketplace entries from throwaway-signed fixture releases (refusals, discovery, dependencies, update offer)
         run: tools/tests/test-official-marketplace.sh
 
+  scripts-native:
+    # deckpilot.scripts' native tests on macOS and Windows: QuickJS compiled
+    # for the runner itself (rquickjs-sys's own C build, Apple clang or
+    # MSVC, no wasm toolchain) against the mock bridge. The Linux run is in
+    # `official` (official.sh test); these add the other two hosts the
+    # plugin runs on. Untrusted like the rest: read-only token, no secrets.
+    name: deckpilot.scripts native tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The pinned toolchain
+        shell: bash
+        run: |
+          channel=$(sed -n 's/^channel *= *"\([0-9.]*\)".*/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal --no-self-update
+      - name: cargo test -p deckpilot-scripts --locked
+        shell: bash
+        working-directory: official
+        run: cargo test -p deckpilot-scripts --locked
+
   deny:
     # official/deny.toml: RustSec advisories, licenses, bans and sources of
     # official/Cargo.lock (QuickJS-NG and its vendored libc in

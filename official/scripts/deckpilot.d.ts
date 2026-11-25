@@ -71,9 +71,18 @@ declare const deckpilot: {
     /** At most 10,000 entries. */
     list(path: PathLike, opts?: { recursive?: false }): { name: string; kind: "file" | "directory" | "symlink" | "other" }[];
     mkdir(path: PathLike, opts?: { recursive?: boolean }): void;
-    /** At most 4 MiB. */
+    /**
+     * At most 4 MiB (`maxBytes`, 1 to 4 MiB, lowers it: a larger file is
+     * `tooLarge`). Read in chunks of 512 KiB; a file whose size changes
+     * meanwhile fails with `fileChanged` (read it again), never mixing two
+     * versions. `utf8` (the default) refuses bytes that are not UTF-8.
+     */
     readFile(path: PathLike, opts?: { encoding?: "utf8" | "base64"; maxBytes?: number }): string;
-    /** At most 4 MiB. */
+    /**
+     * At most 4 MiB. Written to a temporary file next to the target and
+     * renamed onto it at the end, so a failure or a Stop leaves the target
+     * as it was. `createOnly` fails with `exists` if the target exists.
+     */
     writeFile(path: PathLike, content: string, opts?: { encoding?: "utf8" | "base64"; createOnly?: boolean }): void;
     copy(src: PathLike, dst: PathLike, opts?: { recursive?: boolean; overwrite?: boolean }): void;
     move(src: PathLike, dst: PathLike, opts?: { overwrite?: boolean }): void;
@@ -88,7 +97,9 @@ declare const deckpilot: {
   /**
    * Grant: `process` (each command, its working directories, environment).
    * Arguments are an array: there is never a shell. A non-zero exit does not
-   * throw; the result says `ok: false`.
+   * throw; the result says `ok: false`. `args` are at most 48 KiB in total
+   * and `stdin` at most 48 KiB (write a larger input to a file).
+   * `timeoutMs` (at most 600,000) never outlasts the run's remaining time.
    */
   process: {
     run(req: {
@@ -100,7 +111,7 @@ declare const deckpilot: {
       stdin?: string;
     }): ProcessResult;
   };
-  /** Present only with the `shell` grant (off by default). Not portable. */
+  /** Present only with the `shell` grant (off by default). Not portable. `script` is at most 48 KiB. */
   shell?: {
     run(req: {
       shell: "sh" | "bash" | "zsh" | "pwsh" | "powershell" | "cmd";
@@ -226,4 +237,4 @@ type ErrorCode =
   | "notGranted" | "outsideScope" | "protectedPath" | "symlinkEscape" | "notFound" | "exists" | "tooLarge"
   | "commandNotFound" | "gitUnavailable" | "dockerUnavailable" | "dockerDaemonDown" | "nonZeroExit" | "timedOut" | "cancelled"
   | "needsConfirmation" | "notUserInitiated" | "limit" | "invalidArgument" | "noProject" | "noDefaultRepository"
-  | "scriptError" | "syntaxError" | "unsupported" | "unavailable" | "hostError";
+  | "scriptError" | "syntaxError" | "unsupported" | "unavailable" | "hostError" | "fileChanged";

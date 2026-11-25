@@ -369,8 +369,11 @@ compare() {
   note "DeckPilot's plugins/first-party/build.sh at $DECKPILOT_COMMIT"
   "$DECKPILOT_DIR/plugins/first-party/build.sh" --test-fixtures \
     --out "$OUT/deckpilot" --target-dir "$OUT/deckpilot-target" >&2
-  local crates=()
-  mapfile -t crates < <(compare_crates)
+  # A read loop, not mapfile: macOS's /bin/bash is 3.2.
+  local crates=() crate_name
+  while IFS= read -r crate_name; do
+    crates+=("$crate_name")
+  done < <(compare_crates)
   [ -d "$OUT/target-guest" ] || build "$OUT/target-guest" "${crates[@]}"
   summary "" "| Member | Here | DeckPilot build.sh | |" "| --- | --- | --- | --- |"
   local path id version crate kind ours theirs

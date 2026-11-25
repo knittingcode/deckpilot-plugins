@@ -143,11 +143,18 @@ struct Loaded {
     run: Value,
     #[serde(default)]
     now_us: Option<f64>,
+    /// The run's remaining time at the load (the guest clamps process and
+    /// shell timeouts to it until the first poll); without it, the
+    /// script's `timeoutMs` setting.
+    #[serde(default)]
+    remaining_ms: Option<u64>,
 }
 
 #[derive(Debug, Default, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Settings {
+    #[serde(default)]
+    timeout_ms: Option<u64>,
     #[serde(default)]
     memory_mib: Option<u32>,
     #[serde(default)]
@@ -193,6 +200,9 @@ fn run_with(
         session.budget.clock_us = us;
     }
     clock::set(session.budget.clock_us);
+    if let Some(ms) = loaded.remaining_ms.or(loaded.settings.timeout_ms) {
+        session.budget.set_remaining(ms.min(limits::TIMEOUT_MS_MAX));
+    }
     let mut run = match loaded.run {
         Value::Object(m) => Value::Object(m),
         _ => json!({}),
@@ -284,3 +294,7 @@ fn finish(report: Report) -> ActionResult {
 mod mock;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_fixture;
+#[cfg(test)]
+mod tests_io;

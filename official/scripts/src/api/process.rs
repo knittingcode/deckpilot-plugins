@@ -19,12 +19,17 @@ use crate::bridge::ScriptFault;
 
 pub const MAX_ARGS: usize = 256;
 pub const MAX_ARG: usize = 32 * 1024;
-pub const MAX_ARGS_TOTAL: usize = 256 * 1024;
-pub const MAX_STDIN: usize = 1024 * 1024;
+/// The arguments, the stdin and a shell script are each at most 48 KiB, so
+/// one request stays under the host's 64 KiB (P6 decision D1); a larger
+/// input goes through a file the script writes. The whole request is
+/// checked against the 64 KiB as well (`bridge`), since JSON escaping and
+/// the environment add to it.
+pub const MAX_ARGS_TOTAL: usize = 48 * 1024;
+pub const MAX_STDIN: usize = 48 * 1024;
 pub const MAX_ENV: usize = 64;
 pub const MAX_ENV_VALUE: usize = 32 * 1024;
 pub const MAX_COMMAND: usize = 4096;
-pub const MAX_SHELL_SCRIPT: usize = 256 * 1024;
+pub const MAX_SHELL_SCRIPT: usize = 48 * 1024;
 pub const SHELLS: &[&str] = &["sh", "bash", "zsh", "pwsh", "powershell", "cmd"];
 
 /// Environment names a script may never set, whatever its grant (§5.3,
@@ -195,6 +200,18 @@ pub fn shell_run(args: Value, flavor: Flavor) -> Result<Value, ScriptFault> {
     timeout(a.timeout_ms)?;
     a.cwd = a.cwd.map(|c| c.checked("cwd", flavor)).transpose()?;
     to_value(&a)
+}
+
+/// A process or shell timeout never outlasts the run: `timeoutMs` becomes
+/// `min(timeoutMs, remaining)` with the remaining time the guest knows
+/// (the agent applies the same rule with its own clock). Without a
+/// `timeoutMs` the agent's default, the remaining time, applies.
+pub fn clamp_timeout(args: &mut Value, remaining_ms: Option<u64>) {
+    if let (Some(remaining), Some(t)) =
+        (remaining_ms, args.get("timeoutMs").and_then(Value::as_u64))
+    {
+        args["timeoutMs"] = Value::from(t.min(remaining.max(1)));
+    }
 }
 
 #[derive(Debug, Deserialize)]
