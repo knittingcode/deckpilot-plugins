@@ -622,20 +622,39 @@ fn at_the_deadline_wait_ends_with_the_state_it_read() {
     // Without a clock the sleeps and the reads count (a fixed time per
     // read): the total, reads included, stays within the budget, for any
     // poll interval, even when each request really took its time.
+    // Each request taking the host's whole 15 s, GitLab (one request per
+    // read) and GitHub (two): the real time, which the mock's unread clock
+    // counts, stays under the node's 600 s.
+    let (_, gh) = github(false);
     for poll in [10, 15, 30, 120] {
-        let mut t = gl_wait(&["running"]);
-        t.no_clock = true;
-        t.request_ms = 1_000;
-        let out = ops::wait_pipeline(&g, &mut t, &gl_repo(), "555", poll).unwrap();
-        assert!(boolean(&out, "timedOut"));
-        let reads = u32::try_from(t.requests.len()).unwrap();
-        let slept = t.slept.iter().sum::<u32>() / 1_000;
-        assert!(
-            slept + reads * ops::READ_SECONDS_WITHOUT_CLOCK <= ops::WAIT_BUDGET_SECONDS,
-            "{poll}: {slept} s asleep, {reads} reads"
-        );
-        // The mock's clock (unread here) saw every request: under 600 s.
-        assert!(t.clock < 600_000, "{poll}: {}", t.clock);
+        for github_too in [false, true] {
+            let (provider, repo, mut t): (&dyn Provider, RepoRef, MockTransport) = if github_too {
+                let url = format!("{GH}/repos/octo/site/actions/runs/555");
+                (
+                    &gh,
+                    gh_repo(),
+                    gh_named(MockTransport::new()).on(
+                        Method::Get,
+                        &url,
+                        200,
+                        r#"{"id":555,"status":"in_progress"}"#,
+                    ),
+                )
+            } else {
+                (&g, gl_repo(), gl_wait(&["running"]))
+            };
+            t.no_clock = true;
+            t.request_ms = 15_000;
+            let out = ops::wait_pipeline(provider, &mut t, &repo, "555", poll).unwrap();
+            assert!(boolean(&out, "timedOut"));
+            let reads = u32::try_from(t.requests.len()).unwrap();
+            let slept = t.slept.iter().sum::<u32>() / 1_000;
+            assert!(
+                slept + reads * ops::REQUEST_SECONDS <= ops::WAIT_BUDGET_SECONDS,
+                "{poll}: {slept} s asleep, {reads} requests"
+            );
+            assert!(t.clock <= 540_000, "{poll} {github_too}: {}", t.clock);
+        }
     }
     const { assert!(ops::WAIT_BUDGET_SECONDS + 2 * ops::REQUEST_SECONDS < 600) };
 }
@@ -959,4 +978,37 @@ fn the_trigger_question_names_the_workflow_and_the_variable_names_only() {
         dialog.contains("DEPLOY") && !dialog.contains("hidden-value"),
         "{dialog}"
     );
+}
+
+#[test]
+fn the_trigger_question_keeps_the_workflow_and_a_name_whatever_the_rest() {
+    use crate::changes::{MAX_QUESTION, trigger_question};
+    let long_path = "group/".repeat(60);
+    let long_host = format!("{}.example.com", "h".repeat(200));
+    let long_ref = "r".repeat(250);
+    let workflow = format!("{}.yml", "w".repeat(96));
+    let t = PipelineTrigger {
+        reference: long_ref.clone(),
+        workflow: Some(workflow.clone()),
+        ..ci()
+    };
+    let q = trigger_question(&t, &long_path, &long_host);
+    assert!(q.chars().count() <= MAX_QUESTION, "{}", q.chars().count());
+    assert!(
+        q.ends_with(&format!("with the workflow {workflow}?")),
+        "{q}"
+    );
+    let name = "V".repeat(64);
+    let many: Vec<(&str, String)> = std::iter::once((name.clone().leak() as &str, "x".to_owned()))
+        .chain((0..49).map(|i| (format!("N{i}").leak() as &str, "y".to_owned())))
+        .collect();
+    let t = PipelineTrigger {
+        reference: long_ref,
+        ..gl_trigger(many)
+    };
+    let q = trigger_question(&t, &long_path, &long_host);
+    assert!(q.chars().count() <= MAX_QUESTION, "{}", q.chars().count());
+    assert!(q.contains(&format!("with the variables {name}")), "{q}");
+    assert!(q.ends_with(" more?"), "{q}");
+    assert!(!q.contains("  "), "{q}");
 }

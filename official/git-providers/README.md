@@ -101,9 +101,13 @@ with the web address you know, on any port and under any path prefix:
   plugin opens are built on the server, never taken from an answer. A
   next-page link outside the API base (another host or port, a sibling
   path, a dot segment, `http`) fails with `invalid-response` and is never
-  followed. So does a link or page whose path has a backslash or an
-  encoded slash or backslash (`%2f`, `%5c`), which a URL parser or the
-  server may read as another path than the prefix check did.
+  followed. The same applies to a link whose path has a backslash or
+  `%5c`, a dot segment (also `..;x`), or an encoded slash (`%2f`) in a
+  segment the request itself did not have. A URL parser or the server
+  could read any of these as another path than the prefix check did. A
+  ref such as `feature/x`, which the plugin sends as `feature%2Fx`, still
+  pages. A page with a backslash or an encoded slash is never shown or
+  opened.
 - A redirect is never followed: the host refuses one off the connection
   with `redirect-refused`, and a redirect answer that reaches the plugin
   fails the same way. Nothing is retried somewhere else.

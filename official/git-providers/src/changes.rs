@@ -136,9 +136,13 @@ pub const MAX_QUESTION: usize = 400;
 /// the GitLab variables (never their values). At most [`MAX_QUESTION`]
 /// characters: names that do not fit are counted.
 pub fn trigger_question(trigger: &PipelineTrigger, path: &str, host: &str) -> String {
+    // Bounded parts, so the workflow (at most 100) or the first variable
+    // name (at most 64) always fits before the 400-character cut.
     let mut question = format!(
-        "Start a pipeline on {} in {path} ({host})",
-        crate::errors::clean(&trigger.reference, 80)
+        "Start a pipeline on {} in {} ({})",
+        crate::errors::clean(&trigger.reference, 45),
+        crate::errors::clean(path, 120),
+        crate::errors::clean(host, 80)
     );
     if let Some(workflow) = &trigger.workflow {
         question.push_str(&format!(
@@ -148,8 +152,11 @@ pub fn trigger_question(trigger: &PipelineTrigger, path: &str, host: &str) -> St
     }
     if !trigger.variables.is_empty() {
         question.push_str(" with the variables ");
-        // Room for the names, the ", and N more" and the question mark.
-        let room = MAX_QUESTION.saturating_sub(question.chars().count() + 20);
+        // Room for the names, the " and N more" and the question mark;
+        // the first name always fits.
+        let room = MAX_QUESTION
+            .saturating_sub(question.chars().count() + 20)
+            .max(64);
         let mut names = String::new();
         let mut shown = 0;
         for (name, _) in &trigger.variables {
@@ -158,7 +165,7 @@ pub fn trigger_question(trigger: &PipelineTrigger, path: &str, host: &str) -> St
             } else {
                 format!(", {name}")
             };
-            if names.chars().count() + next.chars().count() > room {
+            if shown > 0 && names.chars().count() + next.chars().count() > room {
                 break;
             }
             names.push_str(&next);
@@ -169,6 +176,7 @@ pub fn trigger_question(trigger: &PipelineTrigger, path: &str, host: &str) -> St
         if more > 0 {
             question.push_str(&format!(" and {more} more"));
         }
+        debug_assert!(!question.contains("  "));
     }
     question.push('?');
     question.chars().take(MAX_QUESTION).collect()

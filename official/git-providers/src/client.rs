@@ -150,7 +150,7 @@ impl Api {
             Some(link)
                 if self.api.contains(&link)
                     && !has_dot_segment(&link)
-                    && !has_ambiguous_separator(&link) =>
+                    && next_separators_ok(&link, &request.url) =>
             {
                 Some(link)
             }
@@ -379,9 +379,36 @@ fn has_dot_segment(link: &str) -> bool {
     let path = link.split(['?', '#']).next().unwrap_or_default();
     // A WHATWG parser takes `\` for `/`: both separate segments here.
     path.split(['/', '\\']).any(|segment| {
+        // A server may cut a segment at `;` (path parameters): `..;x` is
+        // `..` there.
+        let segment = segment.split(';').next().unwrap_or_default();
         let s = segment.to_ascii_lowercase().replace("%2e", ".");
         s == "." || s == ".."
     })
+}
+
+/// The separators of a next-page link: never a backslash or `%5c`, and an
+/// encoded slash (`%2f`) only inside a segment the plugin itself put in
+/// the request (a ref such as `feature%2Fx`, which GitHub's next link of
+/// `commits/{ref}/check-runs` repeats). A server's own `%2f` anywhere
+/// else is refused (threat T1).
+pub fn next_separators_ok(link: &str, request: &str) -> bool {
+    let path = |url: &str| -> String {
+        url.split(['?', '#'])
+            .next()
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+    };
+    let link_path = path(link);
+    if link_path.contains('\\') || link_path.contains("%5c") {
+        return false;
+    }
+    let ours = path(request);
+    let ours: Vec<&str> = ours.split('/').collect();
+    link_path
+        .split('/')
+        .filter(|segment| segment.contains("%2f"))
+        .all(|segment| ours.contains(&segment))
 }
 
 /// Whether a link's path has a separator that a URL parser may read

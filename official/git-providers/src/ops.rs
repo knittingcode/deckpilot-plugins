@@ -28,10 +28,20 @@ pub const POLL_SECONDS: (u32, u32) = (10, 120);
 pub const WAIT_BUDGET_SECONDS: u32 = 540;
 /// The host's time limit of one request, in seconds.
 pub const REQUEST_SECONDS: u32 = 15;
-/// What one read of the pipeline counts toward the budget when there is
-/// no clock: a second per request, two requests (GitHub reads the
-/// repository and the run).
-pub const READ_SECONDS_WITHOUT_CLOCK: u32 = 2;
+/// The requests of one pipeline read: GitHub reads the repository (by
+/// id) and the run; GitLab the pipeline only.
+pub fn requests_per_read(kind: crate::provider::ProviderKind) -> u32 {
+    match kind {
+        crate::provider::ProviderKind::Github => 2,
+        crate::provider::ProviderKind::Gitlab => 1,
+    }
+}
+
+/// What one read counts toward the budget when there is no clock: the
+/// worst case, every request at the host's time limit.
+pub fn read_seconds_without_clock(kind: crate::provider::ProviderKind) -> u32 {
+    requests_per_read(kind) * REQUEST_SECONDS
+}
 
 fn n(value: usize) -> i64 {
     i64::try_from(value).unwrap_or(i64::MAX)
@@ -430,8 +440,9 @@ pub fn wait_pipeline(
                 0
             }
             _ => {
-                waited = waited.saturating_add(READ_SECONDS_WITHOUT_CLOCK);
-                READ_SECONDS_WITHOUT_CLOCK
+                let read = read_seconds_without_clock(p.kind());
+                waited = waited.saturating_add(read);
+                read
             }
         };
         if waited.saturating_add(poll).saturating_add(next_read) > WAIT_BUDGET_SECONDS {

@@ -107,8 +107,9 @@ impl HttpReply {
     pub fn link(&self, rel: &str) -> Option<String> {
         let value = self.header("link")?;
         value.split(',').find_map(|entry| {
-            let (target, params) = entry.trim().split_once(';')?;
-            let target = target.trim().strip_prefix('<')?.strip_suffix('>')?;
+            // `<target>; params`: the target may itself hold `;`.
+            let (target, params) = entry.trim().strip_prefix('<')?.split_once('>')?;
+            let params = params.trim_start().strip_prefix(';')?;
             params
                 .split(';')
                 .filter_map(|p| p.trim().split_once('='))

@@ -365,6 +365,8 @@ fn next_pages_off_the_origin_or_the_prefix_are_refused() {
         "https://code.example.com:8443/gitlab/api/v4/..%2F..%2Fadmin",
         "https://code.example.com:8443/gitlab/api/v4/..%5c..%5Cadmin",
         "https://code.example.com:8443/gitlab/api/v4/projects%2F4711?page=2",
+        // A segment cut at `;` by the server: `..` there.
+        "https://code.example.com:8443/gitlab/api/v4/..;x/..;y/admin?page=2",
         "https://user@code.example.com:8443/gitlab/api/v4/projects?page=2",
     ] {
         let url = format!(
@@ -386,7 +388,8 @@ fn next_pages_off_the_origin_or_the_prefix_are_refused() {
                     limit: 20,
                 },
             )
-            .unwrap_err();
+            .err()
+            .unwrap_or_else(|| panic!("{next} was accepted"));
         assert_eq!(e.code, codes::INVALID_RESPONSE, "{next}");
         assert_eq!(t.requests.len(), 1, "{next}: never followed");
     }
@@ -547,4 +550,88 @@ fn the_plugin_never_builds_a_credential() {
         ));
     });
     assert!(refused.is_err());
+}
+
+/// An encoded slash the plugin put in the request itself (a ref with `/`)
+/// is fine in GitHub's next link, which repeats it; anywhere else it is
+/// refused.
+#[test]
+fn a_next_link_may_repeat_the_requests_own_encoded_slash() {
+    use serde_json::Value;
+    let c = connection(
+        "github",
+        Deployment::SelfHosted,
+        "https://ghe.example.com:8443/api/v3",
+        "https://ghe.example.com:8443",
+    );
+    let p = for_connection(&c).unwrap();
+    let api = "https://ghe.example.com:8443/api/v3";
+    let first = format!("{api}/repos/team/app/commits/feature%2Fx/check-runs?per_page=100");
+    let named = |t: MockTransport| {
+        t.on(
+            Method::Get,
+            &format!("{api}/repositories/4711"),
+            200,
+            r#"{"id":4711,"full_name":"team/app","default_branch":"main"}"#,
+        )
+        .on(
+            Method::Get,
+            &format!("{api}/repos/team/app/commits/feature%2Fx/status"),
+            200,
+            r#"{"statuses":[]}"#,
+        )
+    };
+    for (second, followed) in [
+        (
+            format!("{api}/repos/team/app/commits/feature%2Fx/check-runs?per_page=100&page=2"),
+            true,
+        ),
+        // GitHub's id form of the same path.
+        (
+            format!("{api}/repositories/4711/commits/feature%2Fx/check-runs?page=2"),
+            true,
+        ),
+        // An encoded slash the request did not have.
+        (
+            format!("{api}/repos/team/app/commits/other%2Fy/check-runs?page=2"),
+            false,
+        ),
+        (
+            format!("{api}/repos/team%2Fapp/commits/feature%2Fx/check-runs?page=2"),
+            false,
+        ),
+        (
+            format!("{api}/repos/team/app/commits/feature%5Cx/check-runs?page=2"),
+            false,
+        ),
+    ] {
+        let mut t = named(MockTransport::new())
+            .on_with(
+                Method::Get,
+                &first,
+                200,
+                &[("link", &format!("<{second}>; rel=\"next\""))],
+                r#"{"check_runs":[{"name":"a","status":"completed","conclusion":"success"}]}"#,
+            )
+            .on(
+                Method::Get,
+                &second,
+                200,
+                r#"{"check_runs":[{"name":"b","status":"completed","conclusion":"success"}]}"#,
+            );
+        let out = p.extension(
+            &mut t,
+            "github.checks",
+            &RepoRef::parse("gh:4711", ProviderKind::Github, ID).unwrap(),
+            &json!({"ref": "feature/x"}),
+        );
+        if followed {
+            let out: Value = out.unwrap();
+            assert_eq!(out["passed"], 2, "{second}");
+            assert!(t.urls().contains(&second), "{second}");
+        } else {
+            assert_eq!(out.unwrap_err().code, codes::INVALID_RESPONSE, "{second}");
+            assert!(!t.urls().contains(&second), "{second}");
+        }
+    }
 }
