@@ -2065,6 +2065,7 @@
       "capability-unsupported": "t:errors.capability-unsupported",
       "needs-confirmation": "t:errors.needs-confirmation",
       "url-not-allowed": "t:errors.url-not-allowed",
+      "timed-out": "t:errors.timed-out",
       "cancelled": "t:errors.cancelled"
     }
   }

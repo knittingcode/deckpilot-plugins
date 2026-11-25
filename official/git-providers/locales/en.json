@@ -149,6 +149,7 @@
     "capability-unsupported": "This server or provider cannot do that.",
     "needs-confirmation": "This action asks first, so it does not run unattended.",
     "url-not-allowed": "Only pages of the connection's server can be opened.",
+    "timed-out": "The pipeline did not end in time.",
     "cancelled": "Cancelled."
   },
   "plugin": {

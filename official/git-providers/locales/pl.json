@@ -149,6 +149,7 @@
     "capability-unsupported": "Ten serwer lub dostawca tego nie potrafi.",
     "needs-confirmation": "Ta akcja najpierw pyta, więc nie działa bez nadzoru.",
     "url-not-allowed": "Można otwierać tylko strony serwera połączenia.",
+    "timed-out": "Potok nie zakończył się na czas.",
     "cancelled": "Anulowano."
   },
   "plugin": {

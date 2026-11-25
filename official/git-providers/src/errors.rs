@@ -27,6 +27,10 @@ pub mod codes {
     pub const CAPABILITY_UNSUPPORTED: &str = "capability-unsupported";
     pub const NEEDS_CONFIRMATION: &str = "needs-confirmation";
     pub const URL_NOT_ALLOWED: &str = "url-not-allowed";
+    /// A time limit passed. `wait-pipeline` does not return it (it ends
+    /// with `timedOut: true`); kept declared for the legacy GitHub and
+    /// GitLab actions of the migration, whose contracts have it.
+    pub const TIMED_OUT: &str = "timed-out";
     /// Shared codes of the SDK (`deckpilot_plugin_sdk::codes`), declared
     /// nowhere: every plugin may return them.
     pub const INVALID_PARAMETERS: &str = "invalid-parameters";
@@ -55,6 +59,7 @@ pub mod codes {
         CAPABILITY_UNSUPPORTED,
         NEEDS_CONFIRMATION,
         URL_NOT_ALLOWED,
+        TIMED_OUT,
         CANCELLED,
     ];
 }
