@@ -76,9 +76,21 @@ case("a held plugin's manifest is still refused by the entry rules",
 # open; each still has no Marketplace entry: its committed manifest is
 # refused by the entry rules whatever the gate.
 OFFICIAL = E.official_policy(ROOT / "official")
+# deckpilot.projects 0.2.0 is held ahead of the pin (plugin API 1.12): its
+# entry is refused already for being held.
 for pid in ("deckpilot.docker", "deckpilot.git", "deckpilot.projects", "deckpilot.workflows", "deckpilot.workspace"):
     entry = OFFICIAL[pid]
     committed = json.loads((ROOT / "official" / entry["path"] / "manifest.json").read_text())
+    if entry.get("hostApi") is not None:
+        case(f"the committed {pid} {committed['version']}, held ahead of the pin, has no entry",
+             lambda pid=pid: E.check_id(pid, OFFICIAL, False), "is held")
+        case(f"the committed {pid} {committed['version']}, held ahead of the pin, is bundled-only",
+             lambda pid=pid: None if pid in E.BUNDLED_ONLY_IDS else (_ for _ in ()).throw(E.Refused("not bundled-only")))
+        released = {k: v for k, v in entry.items() if k not in ("held", "hostApi")}
+        case(f"the committed {pid} {committed['version']} is refused by the entry rules, held or not",
+             lambda pid=pid, m=committed, e=released: E.check_manifest(m, pid, m["version"], e, {**HOST, "version": "0.16.0", "pluginApi": "1.12"}),
+             "never as a Marketplace entry")
+        continue
     case(f"the committed {pid} is a released plugin (not held)", lambda e=entry: None if e.get("held") is None
          else (_ for _ in ()).throw(E.Refused("held")))
     case(f"the committed {pid} {committed['version']} is refused a Marketplace entry",

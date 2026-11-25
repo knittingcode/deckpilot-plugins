@@ -25,6 +25,9 @@ POLICY = json.loads((ROOT / "official/plugins.json").read_text())
 # (no longer held) exactly as official/privileged-policy.json reviews them.
 PRIVILEGED = ["docker", "git", "projects", "workflows", "workspace"]
 REVIEWED = [e for e in POLICY["plugins"] if e["path"] in PRIVILEGED]
+# Of those, the ones released today; deckpilot.projects 0.2.0 is held ahead
+# of the pin (plugin API 1.12), while the policy still reviews 0.1.1.
+RELEASED_PRIVILEGED = [e for e in REVIEWED if "hostApi" not in e]
 # The held plugins of the committed plugins.json (source on main, never
 # packaged, signed, released or listed): none since all five are released.
 # The held cases hold one in their copy of official/ (hold below).
@@ -44,12 +47,51 @@ def run(root, *extra):
     return p.returncode, p.stdout + p.stderr
 
 
+# deckpilot.projects, held ahead of the pin at plugin API 1.12, is released
+# (DeckPilot bundles 0.1.1): its contract at the pin is its source without
+# the additions of 1.12, at the reviewed version and the release's engines.
+PROJECTS = "projects"
+PROJECTS_API = "1.12"
+PROJECTS_RELEASED_ENGINES = {"deckpilot": ">=0.10.0 <1.0.0", "pluginApi": "^1.9", "sdk": "0.1.0"}
+PROJECTS_RELEASED_VERSION = next(p["version"] for p in json.loads((ROOT / "official/privileged-policy.json").read_text())["plugins"]
+                                 if p["id"] == "deckpilot.projects")
+SOURCES_1_12 = ("host:project.repositories", "host:project.repository")
+
+
+def projects_release(official):
+    """The files of the deckpilot.projects release DeckPilot bundles (0.1.1),
+    derived from the source here: (manifest, {locale name: data})."""
+    m = json.loads((Path(official) / PROJECTS / "manifest.json").read_text())
+    added = [v for v in m["contributes"]["variables"] if v.get("source") in SOURCES_1_12]
+    m["contributes"]["variables"] = [v for v in m["contributes"]["variables"] if v not in added]
+    m["version"], m["engines"] = PROJECTS_RELEASED_VERSION, dict(PROJECTS_RELEASED_ENGINES)
+    keys = [v[f][2:] for v in added for f in ("name", "description") if str(v.get(f, "")).startswith("t:")]
+    locales = {}
+    for path in sorted((Path(official) / PROJECTS / "locales").iterdir()):
+        data = json.loads(path.read_text())
+        for key in keys:
+            *parents, leaf = key.split(".")
+            node = data
+            for k in parents:
+                node = node[k]
+            node.pop(leaf)
+            # An object left empty goes too.
+            for depth in range(len(parents), 0, -1):
+                node = data
+                for k in parents[:depth - 1]:
+                    node = node[k]
+                if node[parents[depth - 1]] == {}:
+                    node.pop(parents[depth - 1])
+        locales[path.name] = data
+    return m, locales
+
+
 def contracts_of(official, dp):
     """DeckPilot's contracts (plugins/first-party/contracts/<id>/): each
     plugin's release files but the module, as the pinned DeckPilot keeps
     them for the release it bundles."""
     for e in POLICY["plugins"]:
-        if "hostApi" in e:
+        if "hostApi" in e and e["path"] != PROJECTS:
             continue
         src, dst = Path(official) / e["path"], dp / "plugins/first-party/contracts" / e["id"]
         dst.mkdir(parents=True)
@@ -58,6 +100,11 @@ def contracts_of(official, dp):
         for sub in ("assets", "locales"):
             if (src / sub).is_dir():
                 shutil.copytree(src / sub, dst / sub)
+        if e["path"] == PROJECTS and "hostApi" in e:
+            m, locales = projects_release(official)
+            (dst / "manifest.json").write_text(json.dumps(m, indent=2) + "\n")
+            for name, data in locales.items():
+                (dst / "locales" / name).write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
 
 
 def deckpilot_of(tmp):
@@ -165,12 +212,13 @@ else:
 hm = json.loads((ROOT / "official" / H / "manifest.json").read_text())
 case("--list marks a held plugin", hold(H), True,
      rf"(?m)^{re.escape(H)} deckpilot\.{re.escape(H)} {re.escape(hm['version'])} \S+ held$", extra=["--list"])
-case("--list marks the five reviewed plugins released", lambda r: None, True,
-     "(?s)" + "".join(rf"(?=.*(?m:^{re.escape(x['path'])} {re.escape(x['id'])} \S+ \S+ plugin$))" for x in REVIEWED),
+case("--list marks the reviewed plugins released, projects held ahead", lambda r: None, True,
+     "(?s)" + "".join(rf"(?=.*(?m:^{re.escape(x['path'])} {re.escape(x['id'])} \S+ \S+ plugin$))" for x in RELEASED_PRIVILEGED)
+     + r"(?=.*(?m:^projects deckpilot\.projects \S+ \S+ held$))",
      extra=["--list"])
 case("check prints every held plugin with its reason", hold(*PRIVILEGED), True,
      "(?s)" + "".join(rf"(?=.*held: {re.escape(x['id'])} \S+: {re.escape(HELD_REASON)})" for x in REVIEWED))
-for x in REVIEWED:
+for x in RELEASED_PRIVILEGED:
     case(f"--release accepts {x['id']}: exactly the approved record", lambda r: None, True, r"member\(s\) checked",
          extra=["--release", x["id"]])
     case(f"--release refuses {x['id']} held again", hold(x["path"]), False, "not a released official plugin",
@@ -303,6 +351,185 @@ case("ahead of the pin: a contract at the pin is compared", ahead_member(), Fals
                            edit_json(dp / "plugins/first-party/contracts/deckpilot.scripts/manifest.json",
                                      lambda m: m.update(id="deckpilot.scripts"))))
 
+# deckpilot.projects 0.2.0: released and privileged, held ahead of the pin at
+# plugin API 1.12. Its contract at the pin (the 0.1.1 release) exists and is
+# compared: only the additions of 1.12 may differ (two appended variables of
+# its host sources, their locale texts), and `engines` and a newer version.
+PV = "contributes.variables"
+
+
+def projects(fn):
+    return manifest(fn, PROJECTS)
+
+
+def projects_locale(name, fn):
+    return lambda root: edit_json(root / PROJECTS / "locales" / name, fn)
+
+
+def projects_contract(fn):
+    return lambda dp: edit_json(dp / "plugins/first-party/contracts/deckpilot.projects/manifest.json", fn)
+
+
+def appended(**fields):
+    def fn(m):
+        v = dict(m["contributes"]["variables"][-1], id="current.other")
+        v.update(fields)
+        for k in [k for k, x in fields.items() if x is None]:
+            v.pop(k)
+        m["contributes"]["variables"].append(v)
+    return projects(fn)
+
+
+ok_tree = r"(?s)^(?!.*official/projects: held ahead of the pin).*member\(s\) checked"
+case("projects held ahead: its contract is compared, the 1.12 additions accepted", lambda r: None, True, ok_tree,
+     deckpilot=lambda dp: None)
+case("projects held ahead: --ahead lists it", lambda r: None, True, r"(?m)^deckpilot\.projects 1\.12$", extra=["--ahead"])
+case("projects held ahead: --release refuses it", lambda r: None, False, "not a released official plugin",
+     extra=["--release", "deckpilot.projects"])
+case("projects held ahead: without its contract at the pin it fails, never skipped", lambda r: None, False,
+     "has no contract plugins/first-party/contracts/deckpilot.projects",
+     deckpilot=lambda dp: shutil.rmtree(dp / "plugins/first-party/contracts/deckpilot.projects"))
+case("projects held ahead: a pin that reaches 1.12", lambda r: None, False, "remove `hostApi`",
+     extra=["--plugin-api", "1.12"])
+case("projects held ahead: hostApi without held", policy(lambda d: [e.pop("held") for e in d["plugins"] if e["path"] == PROJECTS]),
+     False, "`hostApi` is only")
+case("projects held ahead: hostApi at another level",
+     policy(lambda d: [e.update(hostApi="1.13") for e in d["plugins"] if e["path"] == PROJECTS]), False, "`hostApi` is only")
+case("projects held ahead: engines.pluginApi is exactly ^1.12", projects(lambda m: m["engines"].update(pluginApi="^1.13")),
+     False, r"must be \^1\.12")
+case("projects held ahead: a changed action", projects(lambda m: m["contributes"]["actions"][0]["node"].update(timeoutMs=6000)),
+     False, r"`contributes\.actions` differs from DeckPilot's contract", deckpilot=lambda dp: None)
+case("projects held ahead: a changed setting",
+     projects(lambda m: m["contributes"]["settings"]["fields"][0]["default"].update(value=False)),
+     False, r"`contributes\.settings` differs", deckpilot=lambda dp: None)
+case("projects held ahead: a removed variable", projects(lambda m: m["contributes"]["variables"].pop(1)), False,
+     r"`contributes\.variables` does not begin with DeckPilot's contract", deckpilot=lambda dp: None)
+case("projects held ahead: reordered variables",
+     projects(lambda m: m["contributes"]["variables"].insert(0, m["contributes"]["variables"].pop(2))), False,
+     r"`contributes\.variables` does not begin with DeckPilot's contract", deckpilot=lambda dp: None)
+case("projects held ahead: a changed existing variable",
+     projects(lambda m: m["contributes"]["variables"][0].update(sensitive=True)), False,
+     r"`contributes\.variables` does not begin with DeckPilot's contract", deckpilot=lambda dp: None)
+case("projects held ahead: an appended variable of a 1.9 source", appended(source="host:project.id", valueType={"type": "string"}),
+     False, r"variables\[5\]: appended without a host source of plugin API 1\.12", deckpilot=lambda dp: None)
+case("projects held ahead: an appended variable without a source", appended(source=None), False,
+     r"variables\[5\]: appended without a host source of plugin API 1\.12", deckpilot=lambda dp: None)
+case("projects held ahead: an appended variable of an unknown source", appended(source="host:project.secret"), False,
+     r"appended without a host source of plugin API 1\.12", deckpilot=lambda dp: None)
+case("projects held ahead: a 1.12 source with another value type",
+     projects(lambda m: m["contributes"]["variables"][4].update(valueType={"type": "map", "of": "repository"})), False,
+     r"variables\[4\]: `host:project\.repository` takes exactly the value type", deckpilot=lambda dp: None)
+case("projects held ahead: a 1.12 source in another scope",
+     projects(lambda m: m["contributes"]["variables"][3].update(scope="profile")), False,
+     r"variables\[3\]: `host:project\.repositories` is a project value", deckpilot=lambda dp: None)
+case("projects held ahead: a new permission",
+     then(projects(lambda m: m["permissions"].append({"kind": "notifications", "justification": "t:permissions.profile"})),
+          policy(lambda d: [e["permissions"].append("notifications") for e in d["plugins"] if e["path"] == PROJECTS])),
+     False, r"official/projects/manifest\.json: `permissions` differs from DeckPilot's", deckpilot=lambda dp: None)
+case("projects held ahead: a broader existing permission",
+     projects(lambda m: m["permissions"][1].update(open=True)), False,
+     r"official/projects/manifest\.json: `permissions` differs from DeckPilot's", deckpilot=lambda dp: None)
+case("projects held ahead: another top-level field", projects(lambda m: m.update(keywords=["x"])), False,
+     r"`keywords` differs from DeckPilot's", deckpilot=lambda dp: None)
+case("projects held ahead: the version of the contract",
+     then(projects(lambda m: m.update(version=PROJECTS_RELEASED_VERSION)),
+          replace(f"{PROJECTS}/Cargo.toml", 'version = "0.2.0"', f'version = "{PROJECTS_RELEASED_VERSION}"')),
+     False, "is DeckPilot's contract's; held ahead of the pin", deckpilot=lambda dp: None)
+case("projects held ahead: older than the contract", lambda r: None, False, "is older than DeckPilot's contract",
+     deckpilot=projects_contract(lambda m: m.update(version="9.0.0")))
+case("projects held ahead: a changed existing locale text",
+     projects_locale("pl.json", lambda d: d["variables"]["id"].update(name="Identyfikator")), False,
+     r"locales/pl\.json: `variables\.id\.name` differs from DeckPilot's", deckpilot=lambda dp: None)
+case("projects held ahead: a removed locale text",
+     projects_locale("en.json", lambda d: d["errors"].pop("no-projects")), False,
+     r"locales/en\.json: `errors\.no-projects` differs from DeckPilot's", deckpilot=lambda dp: None)
+case("projects held ahead: a locale text no appended variable names",
+     projects_locale("en.json", lambda d: d["variables"].update(other={"name": "x"})), False,
+     r"locales/en\.json: `variables\.other\.name` is added, but no appended variable names it", deckpilot=lambda dp: None)
+case("projects held ahead: a missing text of an appended variable",
+     projects_locale("pl.json", lambda d: d["variables"]["repository"].pop("description")), False,
+     r"locales/pl\.json: `variables\.repository\.description`, a text of an appended variable, is missing",
+     deckpilot=lambda dp: None)
+case("projects held ahead: another locale file",
+     lambda r: shutil.copy(r / PROJECTS / "locales/en.json", r / PROJECTS / "locales/de.json"), False,
+     r"official/projects/locales: files differ", deckpilot=lambda dp: None)
+case("projects held ahead: other asset bytes",
+     lambda r: (r / PROJECTS / "assets/icon-128.png").write_bytes((r / PROJECTS / "assets/icon-128.png").read_bytes() + b"x"),
+     False, r"assets/icon-128\.png differs from DeckPilot's", deckpilot=lambda dp: None)
+case("projects held ahead: another LICENSE",
+     lambda r: (r / PROJECTS / "LICENSE").write_text((r / PROJECTS / "LICENSE").read_text() + " "), False,
+     "LICENSE differs", deckpilot=lambda dp: None)
+# Review fixes of #98: JSON-strict top-level fields, bounded appended
+# variables, locale keys reached twice, locale subdirectories, engines.
+case("projects held ahead: a permission value of another JSON type (1 for true)",
+     projects(lambda m: m["permissions"][0].update(select=1)), False,
+     r"official/projects/manifest\.json: `permissions` differs from DeckPilot's", deckpilot=lambda dp: None)
+case("projects held ahead: an appended variable marked sensitive",
+     projects(lambda m: m["contributes"]["variables"][3].update(sensitive=False)), False,
+     r"variables\[3\]: fields .*exactly", deckpilot=lambda dp: None)
+case("projects held ahead: an appended variable marked deprecated",
+     projects(lambda m: m["contributes"]["variables"][4].update(deprecated=True)), False,
+     r"variables\[4\]: fields .*exactly", deckpilot=lambda dp: None)
+case("projects held ahead: an appended variable with another field",
+     projects(lambda m: m["contributes"]["variables"][4].update(extra="x")), False,
+     r"variables\[4\]: fields .*exactly", deckpilot=lambda dp: None)
+case("projects held ahead: an appended variable without its description",
+     projects(lambda m: m["contributes"]["variables"][4].pop("description")), False,
+     r"variables\[4\]: fields .*exactly", deckpilot=lambda dp: None)
+case("projects held ahead: an appended variable that requires nothing",
+     projects(lambda m: m["contributes"]["variables"][3].update(requires=[])), False,
+     r"variables\[3\]: `host:project\.repositories` requires exactly", deckpilot=lambda dp: None)
+case("projects held ahead: a 1.12 source appended twice",
+     projects(lambda m: m["contributes"]["variables"].append(dict(m["contributes"]["variables"][4], id="current.again"))),
+     False, r"variables\[5\]: `host:project\.repository` is declared twice", deckpilot=lambda dp: None)
+case("projects held ahead: a locale key reached twice (dotted and nested)",
+     projects_locale("en.json", lambda d: (d["variables"]["id"].update(name="X"), d.update({"variables.id.name": "Project id"}))),
+     False, r"locales/en\.json: the keys \['variables\.id\.name'\] are reached twice", deckpilot=lambda dp: None)
+case("projects held ahead: a subdirectory under locales/",
+     lambda r: ((r / PROJECTS / "locales/sub").mkdir(), shutil.copy(r / PROJECTS / "locales/en.json", r / PROJECTS / "locales/sub/en.json")),
+     False, r"official/projects/locales: locales/ holds \['sub', 'sub/en\.json'\]", deckpilot=lambda dp: None)
+case("projects held ahead: another engines.sdk", projects(lambda m: m["engines"].update(sdk="0.2.0")), False,
+     r"`engines` differs from DeckPilot's deckpilot\.projects at the pinned commit beyond", deckpilot=lambda dp: None)
+case("projects held ahead: another engines key", projects(lambda m: m["engines"].update(abi="2")), False,
+     r"`engines` differs from DeckPilot's deckpilot\.projects at the pinned commit beyond", deckpilot=lambda dp: None)
+case("projects held ahead: its reviewed sources still apply", lambda r: (r / PROJECTS / "src/lib.rs").write_text(
+     (r / PROJECTS / "src/lib.rs").read_text() + "\n"), False, r"official/projects/src/lib\.rs differs from its reviewed bytes")
+case("projects held ahead: its kinds stay the policy's",
+     policy(lambda d: [e["permissions"].remove("resources") for e in d["plugins"] if e["path"] == PROJECTS]), False,
+     "a change of permissions is a reviewed policy change")
+# The additions are of exactly hostApi's level: the same 1.12 variables on a
+# plugin held ahead at 1.13 are refused (the synthetic member under
+# deckpilot.scripts, with a contract at the pin).
+case("held ahead at 1.13: the 1.12 variables are not its additions",
+     ahead_member(edit=lambda m: m.setdefault("contributes", {}).setdefault("variables", []).append(
+         {"id": "current.repository", "name": "x", "valueType": {"type": "object", "shape": "repository"},
+          "scope": "project", "requires": ["project"], "source": "host:project.repository"})),
+     False, r"appended without a host source of plugin API 1\.13",
+     deckpilot=lambda dp: (shutil.copytree(ROOT / "official" / FIXTURE, dp / "plugins/first-party/contracts/deckpilot.scripts"),
+                           edit_json(dp / "plugins/first-party/contracts/deckpilot.scripts/manifest.json",
+                                     lambda m: m.update(id="deckpilot.scripts"))))
+# The privileged policy is the pin's, unchanged: it still reviews 0.1.1.
+if PROJECTS_RELEASED_VERSION == "0.1.1":
+    passed += 1
+    print("ok   the privileged policy still reviews deckpilot.projects 0.1.1 (P8 changes both copies)")
+else:
+    failed += 1
+    print(f"FAIL the privileged policy reviews deckpilot.projects {PROJECTS_RELEASED_VERSION}")
+# What 0.2.0 adds that is privileged: exactly the two host sources of 1.12.
+_pm = json.loads((ROOT / "official" / PROJECTS / "manifest.json").read_text())
+_spec = __import__("importlib.util").util.spec_from_file_location("check_official_p4", CHECK)
+_rules = __import__("importlib.util").util.module_from_spec(_spec)
+_spec.loader.exec_module(_rules)
+_new = sorted(set(_rules.privileged_usages(_pm)) - set(_rules.privileged_usages(projects_release(ROOT / "official")[0])))
+if _new == [(f"{PV}[3].source", "the host source `host:project.repositories`"),
+            (f"{PV}[4].source", "the host source `host:project.repository`")]:
+    passed += 1
+    print("ok   projects 0.2.0 adds exactly the two 1.12 host sources as privileged usages")
+else:
+    failed += 1
+    print(f"FAIL projects 0.2.0 adds the privileged usages {_new}")
+
+
 # The reviewed code of the privileged plugins (official/reviewed-sources.json).
 def write(rel, text):
     return lambda r: (r / rel).write_text(text)
@@ -397,9 +624,11 @@ def case_open(name, change, want_ok, message="", extra=(), release=PRIVILEGED, d
         root = Path(tmp) / "official"
         shutil.copytree(ROOT / "official", root, ignore=shutil.ignore_patterns("target"))
         edit_json(root / "privileged-policy.json", lambda d: d.update(review=dict(REVIEW)))
+        # A plugin held ahead of the pin (deckpilot.projects) stays held:
+        # projects_released makes it the released 0.1.1 again.
         edit_json(root / "plugins.json",
                   lambda d: [e.pop("held", None) if e["path"] in release else e.update(held=HELD_REASON)
-                             for e in d["plugins"] if e["path"] in PRIVILEGED])
+                             for e in d["plugins"] if e["path"] in PRIVILEGED and "hostApi" not in e])
         if deckpilot is not None:
             dp = Path(tmp) / "deckpilot"
             deckpilot(root, dp)
@@ -421,6 +650,21 @@ def privileged_policy(fn):
 
 def reviewed_plugin(pid, fn):
     return privileged_policy(lambda d: fn(next(p for p in d["plugins"] if p["id"] == pid)))
+
+
+def projects_released(root):
+    """The copy's deckpilot.projects is the released 0.1.1 again (its
+    manifest without the additions of plugin API 1.12, not held, its
+    reviewed sources recorded for those bytes), so the open gate's rules
+    apply to it exactly as to the other reviewed plugins."""
+    m, _ = projects_release(root)
+    (root / PROJECTS / "manifest.json").write_text(json.dumps(m, indent=2) + "\n")
+    cargo = root / PROJECTS / "Cargo.toml"
+    cargo.write_text(re.sub(r'(?m)^version = "[^"]+"', f'version = "{PROJECTS_RELEASED_VERSION}"', cargo.read_text(), count=1))
+    policy(lambda d: [(e.pop("held"), e.pop("hostApi")) for e in d["plugins"] if e["path"] == PROJECTS])(root)
+    printed = subprocess.run([sys.executable, "-I", str(CHECK), "--root", str(root), "--print-reviewed-sources"],
+                             capture_output=True, text=True, check=True).stdout
+    (root / "reviewed-sources.json").write_text(printed)
 
 
 case("the gate is open, the five reviewed plugins released", lambda r: None, True, r"member")
@@ -488,7 +732,8 @@ case_open("open: a broader process permission",
 case_open("open: an extra executable",
           manifest(lambda m: m["permissions"][0]["tools"].append({"executable": "docker", "subcommands": [{"name": "ps"}]}), "git"),
           False, r"process execution|permissions differ")
-case_open("open: a broader resources permission", manifest(lambda m: m["permissions"][1].update(open=True), "projects"),
+case_open("open: a broader resources permission",
+          lambda r: (projects_released(r), manifest(lambda m: m["permissions"][1].update(open=True), "projects")(r)),
           False, "permissions differ")
 case_open("open: a broader resource parameter",
           manifest(lambda m: m["contributes"]["actions"][0]["parameters"][0]["kind"].update(kinds=["directory", "file"]), "git"),
@@ -505,13 +750,20 @@ case_open("open: a reviewed construct no longer declared",
               {"path": "contributes.statusItems", "what": "`statusItems`", "value": []})),
           False, "reviewed but not declared")
 
+case_open("open: projects as the released 0.1.1 passes, exactly as reviewed", projects_released, True,
+          r"member\(s\) checked", extra=["--release", "deckpilot.projects"])
+case_open("open: projects 0.2.0 is not what the policy reviews (were it not held)",
+          lambda r: policy(lambda d: [(e.pop("held"), e.pop("hostApi")) for e in d["plugins"] if e["path"] == PROJECTS])(r),
+          False, r"covers deckpilot.projects 0\.1\.1 only, not 0\.2\.0")
+
+
 # N1: the record is compared type-strictly (JSON true is not 1), and a JSON
 # object naming a key twice is refused.
 def projects_changes_context_value(value):
     def fn(p):
         c = next(c for c in p["constructs"] if c["path"].endswith("node.changesContext"))
         c["value"] = value
-    return reviewed_plugin("deckpilot.projects", fn)
+    return lambda root: (projects_released(root), reviewed_plugin("deckpilot.projects", fn)(root))
 
 
 case_open("open: a reviewed value of another JSON type (1 for true)", projects_changes_context_value(1), False,
@@ -616,7 +868,29 @@ if deckpilot.is_dir() and cli.is_file():
     targets = [(f"DeckPilot's contract of deckpilot.{name}", deckpilot / f"deckpilot.{name}",
                 name in {"docker", "git", "projects", "workflows", "workspace"})
                for name in BUNDLED]
-    targets += [(f"official/{e['path']}", ROOT / "official" / e["path"], True) for e in REVIEWED]
+    # A plugin held ahead of the pin is not readable by the pinned validator
+    # (deckpilot.projects 0.2.0's 1.12 variables); its 0.1.1 is DeckPilot's
+    # contract above, and its additions are counted above.
+    targets += [(f"official/{e['path']}", ROOT / "official" / e["path"], True) for e in RELEASED_PRIVILEGED]
+    # The derived release of deckpilot.projects (the contract stand-in of
+    # these tests) is the pinned DeckPilot's contract.
+    m, locales = projects_release(ROOT / "official")
+    real = deckpilot / "deckpilot.projects"
+    same = m == json.loads((real / "manifest.json").read_text()) and all(
+        data == json.loads((real / "locales" / name).read_text()) for name, data in locales.items())
+    if same and sorted(locales) == sorted(p.name for p in (real / "locales").iterdir()):
+        passed += 1
+        print("ok   the derived deckpilot.projects 0.1.1 is the pinned DeckPilot's contract")
+    else:
+        failed += 1
+        print("FAIL the derived deckpilot.projects 0.1.1 differs from the pinned DeckPilot's contract")
+    real_policy = ROOT / ".work/deckpilot/crates/deckpilot-plugin-registry/publisher/privileged-policy.json"
+    if real_policy.read_bytes() == (ROOT / "official/privileged-policy.json").read_bytes():
+        passed += 1
+        print("ok   official/privileged-policy.json is byte-identical to the pinned DeckPilot's")
+    else:
+        failed += 1
+        print("FAIL official/privileged-policy.json differs from the pinned DeckPilot's")
     for label, directory, expected_some in targets:
         with tempfile.TemporaryDirectory() as tmp:
             # The manifest is checked before the module is read: any file
