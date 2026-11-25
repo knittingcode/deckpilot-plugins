@@ -67,6 +67,11 @@
     {
       "kind": "dialogs",
       "justification": "t:permissions.dialogs"
+    },
+    {
+      "kind": "device",
+      "state": true,
+      "justification": "t:permissions.device"
     }
   ],
   "contributes": {
@@ -340,6 +345,35 @@
           {
             "key": "durationSeconds",
             "kind": "integer"
+          }
+        ]
+      },
+      {
+        "id": "workflow",
+        "fields": [
+          {
+            "key": "id",
+            "kind": "text"
+          },
+          {
+            "key": "name",
+            "kind": "text"
+          },
+          {
+            "key": "file",
+            "kind": "text"
+          },
+          {
+            "key": "path",
+            "kind": "text"
+          },
+          {
+            "key": "state",
+            "kind": "state"
+          },
+          {
+            "key": "webUrl",
+            "kind": "url"
           }
         ]
       },
@@ -894,6 +928,72 @@
               "kind": "records",
               "always": true,
               "schema": "pipeline"
+            },
+            {
+              "key": "count",
+              "label": "t:outputs.count",
+              "kind": "integer",
+              "always": true
+            },
+            {
+              "key": "truncated",
+              "label": "t:outputs.truncated",
+              "kind": "boolean",
+              "always": true
+            }
+          ],
+          "timeoutMs": 30000,
+          "effect": "readOnly",
+          "retrySafe": true
+        },
+        "internal": true
+      },
+      {
+        "id": "list-workflows",
+        "name": "t:actions.list-workflows.name",
+        "description": "t:actions.list-workflows.description",
+        "category": "t:category",
+        "parameters": [
+          {
+            "key": "connection",
+            "label": "t:params.connection",
+            "kind": {
+              "type": "connection",
+              "types": [
+                "github",
+                "gitlab"
+              ]
+            },
+            "required": true
+          },
+          {
+            "key": "repository",
+            "label": "t:params.repository",
+            "kind": {
+              "type": "text",
+              "maxLength": 128
+            },
+            "required": true
+          },
+          {
+            "key": "search",
+            "label": "t:params.search",
+            "kind": {
+              "type": "text",
+              "maxLength": 100
+            },
+            "required": false
+          }
+        ],
+        "node": {
+          "version": 1,
+          "outputs": [
+            {
+              "key": "items",
+              "label": "t:outputs.items",
+              "kind": "records",
+              "always": true,
+              "schema": "workflow"
             },
             {
               "key": "count",
@@ -1513,6 +1613,10 @@
           "timeoutMs": 30000,
           "effect": "readOnly",
           "retrySafe": true
+        },
+        "state": {
+          "refresh": "every",
+          "intervalSeconds": 5
         }
       },
       {
@@ -1754,7 +1858,17 @@
               "type": "text",
               "maxLength": 255
             },
-            "required": false
+            "required": false,
+            "options": {
+              "from": "list-workflows",
+              "dependsOn": [
+                "connection",
+                "repository"
+              ],
+              "value": "file",
+              "label": "name",
+              "search": true
+            }
           },
           {
             "key": "inputs",
@@ -1916,6 +2030,12 @@
               "label": "t:outputs.durationSeconds",
               "kind": "integer",
               "always": false
+            },
+            {
+              "key": "timedOut",
+              "label": "t:outputs.timedOut",
+              "kind": "boolean",
+              "always": true
             }
           ],
           "timeoutMs": 600000,
@@ -1945,7 +2065,6 @@
       "capability-unsupported": "t:errors.capability-unsupported",
       "needs-confirmation": "t:errors.needs-confirmation",
       "url-not-allowed": "t:errors.url-not-allowed",
-      "timed-out": "t:errors.timed-out",
       "cancelled": "t:errors.cancelled"
     }
   }

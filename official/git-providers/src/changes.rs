@@ -118,6 +118,10 @@ pub fn trigger_pipeline(
     trigger: &PipelineTrigger,
 ) -> ActionResult {
     connection.require_write()?;
+    // Everything that would refuse the trigger (variables on GitHub, a bad
+    // name or value, a ref with control characters) is refused before the
+    // user is asked, and before any request.
+    p.check_trigger(trigger)?;
     let host = Api::new(connection)?.host;
     let path = p.get_repository(t, r)?.path;
     confirmed(

@@ -760,20 +760,38 @@ impl Provider for Gitlab {
         }
     }
 
-    fn trigger_pipeline(
-        &self,
-        t: &mut dyn Transport,
-        r: &RepoRef,
-        p: &PipelineTrigger,
-    ) -> Result<PipelineRecord, Failure> {
+    fn check_trigger(&self, p: &PipelineTrigger) -> Result<(), Failure> {
         if p.workflow.is_some() || !p.inputs.is_empty() {
             return Err(fail(
                 codes::CAPABILITY_UNSUPPORTED,
                 "GitLab has no workflow files or inputs: leave them empty and use variables",
             ));
         }
+        check_ref(&p.reference)?;
+        check_variables(&p.variables)
+    }
+
+    fn list_workflows(
+        &self,
+        _t: &mut dyn Transport,
+        _r: &RepoRef,
+        _search: Option<&str>,
+    ) -> Result<Vec<crate::records::WorkflowRecord>, Failure> {
+        Err(fail(
+            codes::CAPABILITY_UNSUPPORTED,
+            "GitLab has no workflow files to choose from: a GitLab pipeline runs the project's \
+             .gitlab-ci.yml, so leave `workflow` empty",
+        ))
+    }
+
+    fn trigger_pipeline(
+        &self,
+        t: &mut dyn Transport,
+        r: &RepoRef,
+        p: &PipelineTrigger,
+    ) -> Result<PipelineRecord, Failure> {
+        self.check_trigger(p)?;
         let reference = check_ref(&p.reference)?;
-        check_variables(&p.variables)?;
         let mut body = json!({ "ref": reference });
         if !p.variables.is_empty() {
             body["variables"] = Value::Array(

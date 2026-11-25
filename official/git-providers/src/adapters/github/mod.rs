@@ -26,7 +26,7 @@ use crate::provider::{
 };
 use crate::records::{
     BranchRecord, ChangeRequestRecord, CommitRecord, IssueRecord, Page, PipelineRecord,
-    PipelineState, Probe, RepositoryRecord, timestamp,
+    PipelineState, Probe, RepositoryRecord, WorkflowRecord, timestamp,
 };
 use crate::transport::{HttpRequest, Method, Transport};
 
@@ -288,6 +288,26 @@ impl Github {
         })
     }
 
+    /// A workflow of `/actions/workflows`, when it is a file of
+    /// `.github/workflows` that a dispatch can name (GitHub's own dynamic
+    /// workflows, such as code scanning, are not).
+    fn workflow(&self, json: &Value) -> Option<WorkflowRecord> {
+        let id = number(json, "id")?;
+        let path = string(json, "path")?;
+        let file = path.strip_prefix(".github/workflows/")?;
+        let file = check_workflow(file).ok().filter(|f| !f.contains('/'))?;
+        Some(WorkflowRecord {
+            id: id.to_string(),
+            name: text(json, "name", 255).unwrap_or_else(|| file.to_owned()),
+            file: file.to_owned(),
+            path: clean(&path, 255),
+            state: text(json, "state", 40).unwrap_or_else(|| "unknown".into()),
+            web_url: self
+                .api
+                .web_link(json.get("html_url").and_then(Value::as_str)),
+        })
+    }
+
     /// The newest workflow run of a ref (a branch, or a commit by sha).
     fn latest_run(
         &self,
@@ -418,14 +438,17 @@ impl Github {
         }))
     }
 
-    /// The run a dispatch started: dispatched on `reference` by `actor`,
-    /// created at or after `since` (the agent's clock, a few seconds of
-    /// skew allowed). Without a clock or such a run: `None`, and the caller
+    /// The run a dispatch started: a run of `workflow` (its own runs
+    /// only, so a run of another workflow dispatched at the same moment is
+    /// never taken for it), dispatched on `reference` by `actor`, created
+    /// at or after `since` (the agent's clock, a few seconds of skew
+    /// allowed). Without a clock or such a run: `None`, and the caller
     /// answers "queued" without an id rather than a previous run.
     fn dispatched_run(
         &self,
         t: &mut dyn Transport,
         n: &Named,
+        workflow: &str,
         reference: &str,
         actor: Option<&str>,
         since: Option<u64>,
@@ -435,12 +458,15 @@ impl Github {
         };
         let from = since.saturating_sub(DISPATCH_SKEW_MS);
         let created = format!(">={}", crate::records::iso(from));
-        let what = format!("the runs of {}/{}@{reference}", n.owner, n.name);
+        let what = format!(
+            "the runs of {workflow} in {}/{}@{reference}",
+            n.owner, n.name
+        );
         let reply = self.get(
             t,
             self.repo_url(
                 n,
-                &["actions", "runs"],
+                &["actions", "workflows", workflow, "runs"],
                 &[
                     ("event", "workflow_dispatch"),
                     ("branch", reference),
@@ -467,7 +493,10 @@ impl Github {
                 .get("actor")
                 .and_then(|a| a.get("login"))
                 .and_then(Value::as_str);
+            // A run without an id is no run to wait for: skipped, never
+            // the one that makes the whole lookup unreadable.
             if let Some(created) = created
+                && number(run, "id").is_some()
                 && created >= from
                 && by == Some(actor)
                 && best.is_none_or(|(b, _)| created < b)
@@ -513,18 +542,29 @@ impl Github {
             if attempt > 0 && t.sleep(LOOKUP_PAUSE_MS).is_err() {
                 break;
             }
-            if let Ok(Some(run)) = self.dispatched_run(t, n, reference, actor.as_deref(), since) {
+            if let Ok(Some(run)) =
+                self.dispatched_run(t, n, workflow, reference, actor.as_deref(), since)
+                && !run.id.is_empty()
+            {
                 found = Some(run);
                 break;
             }
         }
+        // Not found yet: no id (never a previous run's), and the workflow's
+        // page of runs, where it shows up.
+        let runs_page = self.api.page(&format!(
+            "{}{}/{}/actions/workflows/{workflow}",
+            self.api.web.root(),
+            n.owner,
+            n.name
+        ));
         Ok(found.unwrap_or(PipelineRecord {
             id: String::new(),
             state: PipelineState::Pending,
             provider_status: "queued".into(),
             reference: Some(reference.to_owned()),
             sha: None,
-            web_url: None,
+            web_url: runs_page,
             created_at: None,
             finished_at: None,
             duration_seconds: None,
@@ -1051,12 +1091,7 @@ impl Provider for Github {
         }
     }
 
-    fn trigger_pipeline(
-        &self,
-        t: &mut dyn Transport,
-        r: &RepoRef,
-        p: &PipelineTrigger,
-    ) -> Result<PipelineRecord, Failure> {
+    fn check_trigger(&self, p: &PipelineTrigger) -> Result<(), Failure> {
         if !p.variables.is_empty() {
             return Err(fail(
                 codes::CAPABILITY_UNSUPPORTED,
@@ -1070,8 +1105,44 @@ impl Provider for Github {
                 "choose the workflow file to run (such as ci.yml)",
             )
         })?;
+        check_workflow(workflow)?;
+        check_ref(&p.reference)?;
+        check_inputs(&p.inputs)
+    }
+
+    fn trigger_pipeline(
+        &self,
+        t: &mut dyn Transport,
+        r: &RepoRef,
+        p: &PipelineTrigger,
+    ) -> Result<PipelineRecord, Failure> {
+        self.check_trigger(p)?;
+        let workflow = p.workflow.as_deref().unwrap_or_default();
         let n = self.named(t, r)?;
         self.dispatch(t, &n, workflow, &p.reference, &p.inputs)
+    }
+
+    fn list_workflows(
+        &self,
+        t: &mut dyn Transport,
+        r: &RepoRef,
+        search: Option<&str>,
+    ) -> Result<Vec<WorkflowRecord>, Failure> {
+        let n = self.named(t, r)?;
+        let what = format!("the workflows of {}/{}", n.owner, n.name);
+        let list = self.api.list(
+            t,
+            self.repo_url(&n, &["actions", "workflows"], &[("per_page", "100")]),
+            Some("workflows"),
+            &what,
+            crate::records::MAX_RECORDS,
+        )?;
+        Ok(list
+            .items
+            .iter()
+            .filter_map(|w| self.workflow(w))
+            .filter(|w| matches_search(&w.name, search) || matches_search(&w.file, search))
+            .collect())
     }
 
     fn list_issues(

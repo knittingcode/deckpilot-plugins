@@ -26,14 +26,15 @@ pub mod ops;
 pub mod provider;
 pub mod records;
 pub mod remote;
+pub mod state;
 pub mod transport;
 
 use deckpilot_plugin_sdk::prelude::*;
 
 use errors::{Failure, clean, codes, fail};
 use provider::{
-    ConnectionInfo, CrFilter, IssueQuery, IssueState, PipelineSelector, PipelineTrigger, Provider,
-    RepoPage, RepoRef, WebTarget,
+    ConnectionInfo, CrFilter, IssueQuery, IssueState, PipelineTrigger, Provider, RepoPage, RepoRef,
+    WebTarget,
 };
 
 /// The plugin's id and version, as in `manifest.json`.
@@ -41,7 +42,7 @@ pub const ID: &str = "deckpilot.git-providers";
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// The internal actions (not in the Action Library, never on a key).
-pub const INTERNAL: [&str; 11] = [
+pub const INTERNAL: [&str; 12] = [
     "probe",
     "list-repositories",
     "get-repository",
@@ -49,6 +50,7 @@ pub const INTERNAL: [&str; 11] = [
     "list-commits",
     "list-change-requests",
     "list-pipelines",
+    "list-workflows",
     "list-issues",
     "get-issue",
     "resolve-remote",
@@ -123,6 +125,12 @@ pub fn plugin() -> Plugin {
                 .param(limit()),
         )
         .action(
+            Action::new("list-workflows", list_workflows)
+                .param(connection())
+                .param(repository().required())
+                .param(Param::text("search").max_length(100)),
+        )
+        .action(
             Action::new("list-issues", list_issues)
                 .param(connection())
                 .param(repository().required())
@@ -166,6 +174,7 @@ pub fn plugin() -> Plugin {
         )
         .action(
             Action::new("pipeline-status", pipeline_status)
+                .state(state::pipeline_status)
                 .param(connection())
                 .param(repository().required())
                 .param(reference())
@@ -354,6 +363,17 @@ fn list_pipelines(_ctx: &mut Context<'_>, args: &Args<'_>) -> ActionResult {
     )?)
 }
 
+fn list_workflows(_ctx: &mut Context<'_>, args: &Args<'_>) -> ActionResult {
+    let mut b = bind(args)?;
+    let r = b.repo(args)?;
+    Ok(ops::list_workflows(
+        b.provider.as_ref(),
+        &mut b.transport,
+        &r,
+        text(args, "search")?.as_deref(),
+    )?)
+}
+
 fn list_issues(_ctx: &mut Context<'_>, args: &Args<'_>) -> ActionResult {
     let mut b = bind(args)?;
     let r = b.repo(args)?;
@@ -455,23 +475,23 @@ fn open_issue(ctx: &mut Context<'_>, args: &Args<'_>) -> ActionResult {
     open(ctx, url)
 }
 
-fn pipeline_status(_ctx: &mut Context<'_>, args: &Args<'_>) -> ActionResult {
+/// `pipeline-status`, and what its keys show next (`state.rs`).
+fn pipeline_status(ctx: &mut Context<'_>, args: &Args<'_>) -> ActionResult {
+    let result = read_pipeline_status(args);
+    state::remember(ctx, &state::KeyParams::read(args), &result);
+    result
+}
+
+fn read_pipeline_status(args: &Args<'_>) -> ActionResult {
     let mut b = bind(args)?;
     let r = b.repo(args)?;
-    let selector = match (positive(args, "changeRequest")?, text(args, "ref")?) {
-        (Some(number), _) => PipelineSelector::ChangeRequest(number),
-        (None, Some(reference)) => PipelineSelector::Ref(ops::reference(&reference)?),
-        (None, None) => {
-            let repo = b.provider.get_repository(&mut b.transport, &r)?;
-            let branch = repo.default_branch.ok_or_else(|| {
-                PluginError::new(
-                    codes::INVALID_REF,
-                    "choose a branch: the repository has none",
-                )
-            })?;
-            PipelineSelector::Ref(branch)
-        }
-    };
+    let selector = ops::pipeline_selector(
+        b.provider.as_ref(),
+        &mut b.transport,
+        &r,
+        positive(args, "changeRequest")?,
+        text(args, "ref")?.as_deref(),
+    )?;
     Ok(ops::pipeline_status(
         b.provider.as_ref(),
         &mut b.transport,
@@ -557,3 +577,7 @@ fn wait_pipeline(_ctx: &mut Context<'_>, args: &Args<'_>) -> ActionResult {
 
 #[cfg(test)]
 mod contract;
+#[cfg(test)]
+mod tests_base_urls;
+#[cfg(test)]
+mod tests_pipelines;

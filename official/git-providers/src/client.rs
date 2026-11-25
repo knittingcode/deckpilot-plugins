@@ -7,11 +7,26 @@ use deckpilot_first_party_support::{Server, retry_after};
 use serde_json::Value;
 
 use crate::errors::{Failure, clean, codes, fail};
-use crate::provider::{ConnectionInfo, ConnectionStatus, ProviderKind};
+use crate::provider::{ConnectionInfo, ConnectionStatus, Deployment, ProviderKind};
 use crate::transport::{HttpReply, HttpRequest, Method, Transport};
 
 /// Most pages one list reads.
 pub const MAX_PAGES: usize = 10;
+
+/// The fixed API and web bases of the two clouds (the manifest's
+/// `connectionTypes[].cloud`): a cloud connection has no other.
+pub const CLOUD: [(ProviderKind, &str, &str); 2] = [
+    (
+        ProviderKind::Github,
+        "https://api.github.com",
+        "https://github.com",
+    ),
+    (
+        ProviderKind::Gitlab,
+        "https://gitlab.com/api/v4",
+        "https://gitlab.com",
+    ),
+];
 
 /// One answer read as JSON.
 #[derive(Debug, Clone)]
@@ -43,7 +58,12 @@ pub struct Api {
 
 impl Api {
     /// The addresses `connections.get` gave: `https`, without a user name,
-    /// query or fragment (the host normalized them).
+    /// query or fragment (the host normalized them). Every URL the plugin
+    /// builds or accepts derives from these two. Checked once more here,
+    /// as the host checks them when the connection is made (design §4.1
+    /// rules 5 and 6): a cloud connection has exactly the cloud's fixed
+    /// bases, and any other one has its web pages on the API's own host
+    /// and port, so a page is never opened on another server.
     pub fn new(connection: &ConnectionInfo) -> Result<Self, Failure> {
         let kind = connection.kind()?;
         let invalid = || {
@@ -54,6 +74,15 @@ impl Api {
         };
         let api = Server::parse(&connection.api_base).ok_or_else(invalid)?;
         let web = Server::parse(&connection.web_base).ok_or_else(invalid)?;
+        let consistent = match connection.deployment {
+            Deployment::Cloud => CLOUD
+                .iter()
+                .any(|(k, a, w)| *k == kind && api.base() == *a && web.base() == *w),
+            Deployment::SelfHosted | Deployment::Other => api.origin() == web.origin(),
+        };
+        if !consistent {
+            return Err(invalid());
+        }
         Ok(Self {
             kind,
             host: web.host().to_owned(),
@@ -248,6 +277,19 @@ impl Api {
             );
         }
         match status {
+            // The host never follows a redirect of a connection request and
+            // refuses one off the connection (`redirect-refused`); should
+            // one reach the plugin, it is refused the same way and never
+            // followed or retried anywhere else.
+            300..=399 => (
+                fail(
+                    codes::REDIRECT_REFUSED,
+                    format!(
+                        "{name} redirected the request for {what} ({status}), which is refused"
+                    ),
+                ),
+                None,
+            ),
             401 => (
                 fail(
                     codes::UNAUTHORIZED,

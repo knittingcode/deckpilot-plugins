@@ -410,7 +410,7 @@ fn starting_a_pipeline_dispatches_a_workflow() {
     let (c, g) = ghes();
     let now = 1_795_554_300_000; // 2026-11-24T21:05:00Z
     let runs = format!(
-        "{GHES}/repos/team/app/actions/runs?event=workflow_dispatch&branch=main&actor=octocat&created=%3E%3D2026-11-24T21%3A04%3A55Z&per_page=10"
+        "{GHES}/repos/team/app/actions/workflows/ci.yml/runs?event=workflow_dispatch&branch=main&actor=octocat&created=%3E%3D2026-11-24T21%3A04%3A55Z&per_page=10"
     );
     let base = || {
         named(MockTransport::new(), GHES, "team/app", GHES_WEB)
@@ -474,8 +474,14 @@ fn starting_a_pipeline_dispatches_a_workflow() {
     );
     t.clock = now;
     let out = ops::trigger_pipeline(&g, &mut t, &c, &repo(), &trigger).unwrap();
-    assert_eq!(text(&out, "pipelineId"), "");
+    // No id at all (never an empty one to map into wait-pipeline), and the
+    // workflow's page of runs, where the run shows up.
+    assert_eq!(out.data().get("pipelineId"), None);
     assert_eq!(text(&out, "providerStatus"), "queued");
+    assert_eq!(
+        text(&out, "url"),
+        format!("{GHES_WEB}/team/app/actions/workflows/ci.yml")
+    );
 
     // A read-only connection: no request at all.
     let read_only = connection(GHES, GHES_WEB, false);
@@ -760,7 +766,7 @@ fn no_read_only_path_writes_and_review_fixes() {
 fn after_the_dispatch_nothing_fails_and_the_run_is_looked_for_again() {
     let (c, g) = ghes();
     let runs = format!(
-        "{GHES}/repos/team/app/actions/runs?event=workflow_dispatch&branch=main&actor=octocat&created=%3E%3D2026-11-24T21%3A04%3A55Z&per_page=10"
+        "{GHES}/repos/team/app/actions/workflows/ci.yml/runs?event=workflow_dispatch&branch=main&actor=octocat&created=%3E%3D2026-11-24T21%3A04%3A55Z&per_page=10"
     );
     let base = || {
         named(MockTransport::new(), GHES, "team/app", GHES_WEB)
@@ -787,7 +793,7 @@ fn after_the_dispatch_nothing_fails_and_the_run_is_looked_for_again() {
     let mut t = base().on(Method::Get, &runs, 500, "");
     t.clock = 1_795_554_300_000;
     let out = ops::trigger_pipeline(&g, &mut t, &c, &repo(), &trigger).unwrap();
-    assert_eq!(text(&out, "pipelineId"), "");
+    assert_eq!(out.data().get("pipelineId"), None);
     assert_eq!(
         t.requests
             .iter()

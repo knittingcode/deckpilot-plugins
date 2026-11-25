@@ -20,7 +20,8 @@
     "result": "Wynik (JSON)",
     "number": "Numer",
     "existing": "Był już otwarty",
-    "opened": "Otwarto w przeglądarce"
+    "opened": "Otwarto w przeglądarce",
+    "timedOut": "Przekroczono czas"
   },
   "params": {
     "connection": "Połączenie",
@@ -77,6 +78,10 @@
     "list-pipelines": {
       "name": "Lista potoków",
       "description": "Ostatnie potoki repozytorium."
+    },
+    "list-workflows": {
+      "name": "Lista przepływów pracy",
+      "description": "Pliki przepływów pracy GitHub Actions repozytorium, od których można uruchomić potok."
     },
     "list-issues": {
       "name": "Lista zgłoszeń",
@@ -144,7 +149,6 @@
     "capability-unsupported": "Ten serwer lub dostawca tego nie potrafi.",
     "needs-confirmation": "Ta akcja najpierw pyta, więc nie działa bez nadzoru.",
     "url-not-allowed": "Można otwierać tylko strony serwera połączenia.",
-    "timed-out": "Potok nie zakończył się na czas.",
     "cancelled": "Anulowano."
   },
   "plugin": {
@@ -154,7 +158,8 @@
   "permissions": {
     "connections": "Łączy się z serwerami GitHub i GitLab, które połączysz, każdym z własnym tokenem, i z niczym więcej.",
     "openUrl": "Otwiera w przeglądarce repozytoria, pull lub merge requesty, potoki i zgłoszenia Twoich połączeń.",
-    "dialogs": "Prosi o potwierdzenie, zanim z klawisza utworzy merge request albo uruchomi potok."
+    "dialogs": "Prosi o potwierdzenie, zanim z klawisza utworzy merge request albo uruchomi potok.",
+    "device": "Pokazuje ostatni stan potoku na klawiszu stanu potoku."
   },
   "types": {
     "github": "GitHub",

@@ -219,6 +219,7 @@ fn run_read_only(
             Ok(())
         }
         "list-pipelines" => ops::list_pipelines(p, t, r, None, 5).map(drop),
+        "list-workflows" => ops::list_workflows(p, t, r, Some("ci")).map(drop),
         "list-issues" => ops::list_issues(p, t, r, &IssueQuery::default()).map(drop),
         "get-issue" => ops::get_issue(p, t, r, 1).map(drop),
         "resolve-remote" => {
@@ -330,4 +331,138 @@ fn no_read_only_or_opening_action_sends_anything_but_get() {
         }
     }
     assert!(ran >= 15 * 2 * 3, "{ran}");
+}
+
+/// The rules of DeckPilot's 1.14 validator for `parameters[].options`
+/// (`connections_check.rs` `parameter_options`, knittingcode/deckpilot#451),
+/// so a picker that the host would refuse fails here first: a
+/// single-line text parameter, fed by another action of the plugin that
+/// is internal and readOnly with a `records` output whose schema has the
+/// `value` and `label` fields; every `dependsOn` parameter on both actions
+/// with the same kind; `search` only when the source has a text `search`.
+#[test]
+fn every_picker_is_fed_by_an_internal_read_only_list() {
+    let m = manifest();
+    let actions = m["contributes"]["actions"].as_array().unwrap();
+    let schemas = m["contributes"]["recordSchemas"].as_array().unwrap();
+    let mut pickers = 0;
+    for action in actions {
+        let id = action["id"].as_str().unwrap();
+        for parameter in action["parameters"].as_array().unwrap() {
+            let Some(options) = parameter.get("options") else {
+                continue;
+            };
+            pickers += 1;
+            let key = parameter["key"].as_str().unwrap();
+            assert_eq!(parameter["kind"]["type"], "text", "{id}.{key}");
+            let from = options["from"].as_str().unwrap();
+            assert_ne!(from, id, "{id}.{key}");
+            let source = actions
+                .iter()
+                .find(|a| a["id"] == from)
+                .unwrap_or_else(|| panic!("{id}.{key}: no action {from}"));
+            assert_eq!(source["internal"], true, "{from}");
+            assert_eq!(source["node"]["effect"], "readOnly", "{from}");
+            let schema_id = source["node"]["outputs"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|o| o["kind"] == "records")
+                .and_then(|o| o["schema"].as_str())
+                .unwrap_or_else(|| panic!("{from}: no records output"));
+            let fields: BTreeSet<&str> =
+                schemas.iter().find(|s| s["id"] == schema_id).unwrap()["fields"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|f| f["key"].as_str().unwrap())
+                    .collect();
+            for field in ["value", "label"] {
+                if let Some(name) = options[field].as_str() {
+                    assert!(fields.contains(name), "{id}.{key}: {from} has no {name}");
+                }
+            }
+            for dep in options["dependsOn"].as_array().into_iter().flatten() {
+                let find = |a: &Value| {
+                    a["parameters"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .find(|p| p["key"] == *dep)
+                        .cloned()
+                        .unwrap_or_else(|| panic!("{id}.{key}: {dep} missing in {}", a["id"]))
+                };
+                assert_eq!(
+                    find(action)["kind"],
+                    find(source)["kind"],
+                    "{id}.{key}: {dep}"
+                );
+            }
+            if options["search"] == true {
+                assert!(
+                    source["parameters"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|p| p["key"] == "search" && p["kind"]["type"] == "text"),
+                    "{from} has no search"
+                );
+            }
+        }
+    }
+    // trigger-pipeline's workflow is one of them (list-workflows).
+    let workflow = &actions
+        .iter()
+        .find(|a| a["id"] == "trigger-pipeline")
+        .unwrap()["parameters"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["key"] == "workflow")
+        .unwrap()["options"];
+    assert_eq!(workflow["from"], "list-workflows");
+    assert_eq!(workflow["value"], "file");
+    assert!(pickers >= 10, "{pickers}");
+}
+
+/// Internal actions are never on a key (the 1.14 validator): no key state,
+/// no title; `pipeline-status` (not internal) has its key state, refreshed
+/// at the plugin minimum of 5 s, with `device` `state: true` declared.
+#[test]
+fn key_state_only_where_a_key_can_be() {
+    let m = manifest();
+    for action in m["contributes"]["actions"].as_array().unwrap() {
+        let id = action["id"].as_str().unwrap();
+        if action["internal"] == true {
+            for member in [
+                "state",
+                "title",
+                "editorNavigation",
+                "replacedBy",
+                "contexts",
+            ] {
+                assert!(action.get(member).is_none(), "{id}.{member}");
+            }
+        }
+        assert_eq!(
+            action.get("state").is_some(),
+            id == "pipeline-status",
+            "{id}"
+        );
+    }
+    let status = m["contributes"]["actions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["id"] == "pipeline-status")
+        .unwrap();
+    assert_eq!(status["state"]["refresh"], "every");
+    assert!(status["state"]["intervalSeconds"].as_u64().unwrap() >= 5);
+    assert!(
+        m["permissions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p["kind"] == "device" && p["state"] == true)
+    );
 }
