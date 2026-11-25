@@ -7,11 +7,26 @@ use deckpilot_first_party_support::{Server, retry_after};
 use serde_json::Value;
 
 use crate::errors::{Failure, clean, codes, fail};
-use crate::provider::{ConnectionInfo, ConnectionStatus, ProviderKind};
+use crate::provider::{ConnectionInfo, ConnectionStatus, Deployment, ProviderKind};
 use crate::transport::{HttpReply, HttpRequest, Method, Transport};
 
 /// Most pages one list reads.
 pub const MAX_PAGES: usize = 10;
+
+/// The fixed API and web bases of the two clouds (the manifest's
+/// `connectionTypes[].cloud`): a cloud connection has no other.
+pub const CLOUD: [(ProviderKind, &str, &str); 2] = [
+    (
+        ProviderKind::Github,
+        "https://api.github.com",
+        "https://github.com",
+    ),
+    (
+        ProviderKind::Gitlab,
+        "https://gitlab.com/api/v4",
+        "https://gitlab.com",
+    ),
+];
 
 /// One answer read as JSON.
 #[derive(Debug, Clone)]
@@ -43,7 +58,12 @@ pub struct Api {
 
 impl Api {
     /// The addresses `connections.get` gave: `https`, without a user name,
-    /// query or fragment (the host normalized them).
+    /// query or fragment (the host normalized them). Every URL the plugin
+    /// builds or accepts derives from these two. Checked once more here,
+    /// as the host checks them when the connection is made (design §4.1
+    /// rules 5 and 6): a cloud connection has exactly the cloud's fixed
+    /// bases, and any other one has its web pages on the API's own host
+    /// and port, so a page is never opened on another server.
     pub fn new(connection: &ConnectionInfo) -> Result<Self, Failure> {
         let kind = connection.kind()?;
         let invalid = || {
@@ -54,6 +74,15 @@ impl Api {
         };
         let api = Server::parse(&connection.api_base).ok_or_else(invalid)?;
         let web = Server::parse(&connection.web_base).ok_or_else(invalid)?;
+        let consistent = match connection.deployment {
+            Deployment::Cloud => CLOUD
+                .iter()
+                .any(|(k, a, w)| *k == kind && api.base() == *a && web.base() == *w),
+            Deployment::SelfHosted | Deployment::Other => api.origin() == web.origin(),
+        };
+        if !consistent {
+            return Err(invalid());
+        }
         Ok(Self {
             kind,
             host: web.host().to_owned(),
@@ -74,6 +103,9 @@ impl Api {
     /// A page on the web origin: `https`, the same host and port, under
     /// the web base; `None` for anything else.
     pub fn page(&self, text: &str) -> Option<String> {
+        if has_ambiguous_separator(text) {
+            return None;
+        }
         self.web.page(text).map(|page| page.url)
     }
 
@@ -115,7 +147,13 @@ impl Api {
             })?
         };
         let next = match raw.link("next") {
-            Some(link) if self.api.contains(&link) && !has_dot_segment(&link) => Some(link),
+            Some(link)
+                if self.api.contains(&link)
+                    && !has_dot_segment(&link)
+                    && next_separators_ok(&link, &request.url) =>
+            {
+                Some(link)
+            }
             Some(_) => {
                 return Err(fail(
                     codes::INVALID_RESPONSE,
@@ -248,6 +286,19 @@ impl Api {
             );
         }
         match status {
+            // The host never follows a redirect of a connection request and
+            // refuses one off the connection (`redirect-refused`); should
+            // one reach the plugin, it is refused the same way and never
+            // followed or retried anywhere else.
+            300..=399 => (
+                fail(
+                    codes::REDIRECT_REFUSED,
+                    format!(
+                        "{name} redirected the request for {what} ({status}), which is refused"
+                    ),
+                ),
+                None,
+            ),
             401 => (
                 fail(
                     codes::UNAUTHORIZED,
@@ -326,10 +377,50 @@ fn token_scope_refusal(body: &str) -> bool {
 /// depth: the API base check comes first).
 fn has_dot_segment(link: &str) -> bool {
     let path = link.split(['?', '#']).next().unwrap_or_default();
-    path.split('/').any(|segment| {
+    // A WHATWG parser takes `\` for `/`: both separate segments here.
+    path.split(['/', '\\']).any(|segment| {
+        // A server may cut a segment at `;` (path parameters): `..;x` is
+        // `..` there.
+        let segment = segment.split(';').next().unwrap_or_default();
         let s = segment.to_ascii_lowercase().replace("%2e", ".");
         s == "." || s == ".."
     })
+}
+
+/// The separators of a next-page link: never a backslash or `%5c`, and an
+/// encoded slash (`%2f`) only inside a segment the plugin itself put in
+/// the request (a ref such as `feature%2Fx`, which GitHub's next link of
+/// `commits/{ref}/check-runs` repeats). A server's own `%2f` anywhere
+/// else is refused (threat T1).
+pub fn next_separators_ok(link: &str, request: &str) -> bool {
+    let path = |url: &str| -> String {
+        url.split(['?', '#'])
+            .next()
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+    };
+    let link_path = path(link);
+    if link_path.contains('\\') || link_path.contains("%5c") {
+        return false;
+    }
+    let ours = path(request);
+    let ours: Vec<&str> = ours.split('/').collect();
+    link_path
+        .split('/')
+        .filter(|segment| segment.contains("%2f"))
+        .all(|segment| ours.contains(&segment))
+}
+
+/// Whether a link's path has a separator that a URL parser may read
+/// otherwise than the prefix check did (threat T1): a backslash, which a
+/// WHATWG parser takes for `/`, or an encoded slash or backslash (`%2f`,
+/// `%5c`, any case), which a server may decode into one. Such a link could
+/// leave the connection's path prefix, so it is refused, never followed
+/// or opened.
+pub fn has_ambiguous_separator(link: &str) -> bool {
+    let path = link.split(['?', '#']).next().unwrap_or_default();
+    let lower = path.to_ascii_lowercase();
+    path.contains('\\') || lower.contains("%2f") || lower.contains("%5c")
 }
 
 /// A branch, tag or commit name (git's rules, as the old plugins check).

@@ -107,8 +107,9 @@ impl HttpReply {
     pub fn link(&self, rel: &str) -> Option<String> {
         let value = self.header("link")?;
         value.split(',').find_map(|entry| {
-            let (target, params) = entry.trim().split_once(';')?;
-            let target = target.trim().strip_prefix('<')?.strip_suffix('>')?;
+            // `<target>; params`: the target may itself hold `;`.
+            let (target, params) = entry.trim().strip_prefix('<')?.split_once('>')?;
+            let params = params.trim_start().strip_prefix(';')?;
             params
                 .split(';')
                 .filter_map(|p| p.trim().split_once('='))
@@ -290,6 +291,45 @@ pub mod mock {
 
     type Route = (Method, String, VecDeque<Result<HttpReply, TransportError>>);
 
+    /// Headers and query members that carry a credential. The host adds
+    /// the connection's secret; the guest never builds one, and every test
+    /// that sends a request through the mock checks it.
+    pub const CREDENTIAL_HEADERS: [&str; 8] = [
+        "authorization",
+        "proxy-authorization",
+        "private-token",
+        "job-token",
+        "deploy-token",
+        "cookie",
+        "x-api-key",
+        "x-gitlab-token",
+    ];
+    pub const CREDENTIAL_QUERY: [&str; 4] =
+        ["private_token=", "access_token=", "job_token=", "token="];
+
+    /// Panics when `request` carries a credential the guest built.
+    pub fn assert_no_credential(request: &HttpRequest) {
+        for (name, _) in &request.headers {
+            assert!(
+                !CREDENTIAL_HEADERS.contains(&name.to_ascii_lowercase().as_str()),
+                "the plugin built a credential header `{name}` for {}",
+                request.url
+            );
+        }
+        let query = request
+            .url
+            .split_once('?')
+            .map(|(_, q)| q.to_ascii_lowercase())
+            .unwrap_or_default();
+        for member in query.split('&') {
+            assert!(
+                !CREDENTIAL_QUERY.iter().any(|c| member.starts_with(c)),
+                "the plugin put a credential in the URL {}",
+                request.url
+            );
+        }
+    }
+
     #[derive(Debug, Default)]
     pub struct MockTransport {
         routes: Vec<Route>,
@@ -302,6 +342,8 @@ pub mod mock {
         /// request by [`MockTransport::request_ms`].
         pub clock: u64,
         pub request_ms: u64,
+        /// `now_ms` answers `None` (an agent whose clock cannot be read).
+        pub no_clock: bool,
         /// Answers every request no route names, any method (contract
         /// tests that only watch what is sent).
         pub fallback: Option<HttpReply>,
@@ -380,6 +422,7 @@ pub mod mock {
 
     impl Transport for MockTransport {
         fn send(&mut self, request: &HttpRequest) -> Result<HttpReply, TransportError> {
+            assert_no_credential(request);
             self.requests.push(request.clone());
             self.clock += self.request_ms;
             let route = self
@@ -417,7 +460,7 @@ pub mod mock {
         }
 
         fn now_ms(&mut self) -> Option<u64> {
-            Some(self.clock)
+            (!self.no_clock).then_some(self.clock)
         }
     }
 }

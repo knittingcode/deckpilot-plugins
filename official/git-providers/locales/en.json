@@ -20,7 +20,8 @@
     "result": "Result (JSON)",
     "number": "Number",
     "existing": "Was already open",
-    "opened": "Opened in the browser"
+    "opened": "Opened in the browser",
+    "timedOut": "Timed out"
   },
   "params": {
     "connection": "Connection",
@@ -77,6 +78,10 @@
     "list-pipelines": {
       "name": "List pipelines",
       "description": "The latest pipelines of a repository."
+    },
+    "list-workflows": {
+      "name": "List workflows",
+      "description": "The GitHub Actions workflow files of a repository that a pipeline can be started from."
     },
     "list-issues": {
       "name": "List issues",
@@ -158,7 +163,8 @@
   "permissions": {
     "connections": "Talks to the GitHub and GitLab servers you connect, each with its own token, and nowhere else.",
     "openUrl": "Opens repositories, pull or merge requests, pipelines and issues of your connections in the browser.",
-    "dialogs": "Asks you to confirm before it opens a merge request or starts a pipeline from a key."
+    "dialogs": "Asks you to confirm before it opens a merge request or starts a pipeline from a key.",
+    "device": "Shows the last pipeline state on a pipeline status key."
   },
   "types": {
     "github": "GitHub",

@@ -15,7 +15,7 @@ use serde_json::Value;
 use crate::errors::{Failure, codes, fail};
 use crate::records::{
     BranchRecord, ChangeRequestRecord, CommitRecord, IssueRecord, Page, PipelineRecord, Probe,
-    RepositoryRecord,
+    RepositoryRecord, WorkflowRecord,
 };
 use crate::transport::{Method, Transport};
 
@@ -443,12 +443,32 @@ pub trait Provider {
         r: &RepoRef,
         s: &PipelineSelector,
     ) -> Result<Option<PipelineRecord>, Failure>;
+    /// Checks a trigger without a request: everything that would refuse
+    /// it is refused here, before the user is asked to confirm it.
+    fn check_trigger(&self, p: &PipelineTrigger) -> Result<(), Failure>;
     fn trigger_pipeline(
         &self,
         t: &mut dyn Transport,
         r: &RepoRef,
         p: &PipelineTrigger,
     ) -> Result<PipelineRecord, Failure>;
+    /// The workflows a pipeline can be started from (GitHub Actions
+    /// workflow files). A provider without them refuses with
+    /// `capability-unsupported`.
+    fn list_workflows(
+        &self,
+        _t: &mut dyn Transport,
+        _r: &RepoRef,
+        _search: Option<&str>,
+    ) -> Result<Vec<WorkflowRecord>, Failure> {
+        Err(fail(
+            codes::CAPABILITY_UNSUPPORTED,
+            format!(
+                "{} has no workflow files to choose from: leave `workflow` empty",
+                self.kind().name()
+            ),
+        ))
+    }
     fn list_issues(
         &self,
         t: &mut dyn Transport,

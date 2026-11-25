@@ -670,8 +670,11 @@ fn waiting_for_a_pipeline_sleeps_and_stops_when_cancelled() {
 
     // Still running at the end of the budget: timed out, never a busy loop.
     let mut t = MockTransport::new().on(Method::Get, url, 200, r#"{"id":555,"status":"pending"}"#);
-    let e = ops::wait_pipeline(&g, &mut t, &repo(), "555", 120).unwrap_err();
-    assert_eq!(e.code, codes::TIMED_OUT);
+    let out = ops::wait_pipeline(&g, &mut t, &repo(), "555", 120).unwrap();
+    assert_eq!(
+        data(&out, "timedOut"),
+        &deckpilot_plugin_sdk::ParamValue::Bool(true)
+    );
     assert!(t.slept.iter().sum::<u32>() <= ops::WAIT_BUDGET_SECONDS * 1_000);
     // Bounds: the poll interval is clamped.
     let mut t = MockTransport::new().on(Method::Get, url, 200, r#"{"id":555,"status":"failed"}"#);
@@ -906,8 +909,11 @@ fn review_fixes_scopes_forbidden_urls_variables_prefix_and_budget() {
     let url = "https://gitlab.com/api/v4/projects/4711/pipelines/555";
     let mut t = MockTransport::new().on(Method::Get, url, 200, r#"{"id":555,"status":"running"}"#);
     t.request_ms = 60_000;
-    let e = ops::wait_pipeline(&g, &mut t, &repo(), "555", 30).unwrap_err();
-    assert_eq!(e.code, codes::TIMED_OUT);
+    let out = ops::wait_pipeline(&g, &mut t, &repo(), "555", 30).unwrap();
+    assert_eq!(
+        out.data().get("timedOut"),
+        Some(&deckpilot_plugin_sdk::ParamValue::Bool(true))
+    );
     assert!(
         t.clock <= u64::from(ops::WAIT_BUDGET_SECONDS + 90) * 1_000,
         "{}",

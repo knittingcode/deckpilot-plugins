@@ -27,6 +27,9 @@ pub mod codes {
     pub const CAPABILITY_UNSUPPORTED: &str = "capability-unsupported";
     pub const NEEDS_CONFIRMATION: &str = "needs-confirmation";
     pub const URL_NOT_ALLOWED: &str = "url-not-allowed";
+    /// A time limit passed. `wait-pipeline` does not return it (it ends
+    /// with `timedOut: true`); kept declared for the legacy GitHub and
+    /// GitLab actions of the migration, whose contracts have it.
     pub const TIMED_OUT: &str = "timed-out";
     /// The old GitHub and GitLab plugins' own codes, which only the
     /// legacy actions return (`legacy`).

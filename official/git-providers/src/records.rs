@@ -151,6 +151,26 @@ pub struct PipelineRecord {
     pub duration_seconds: Option<u64>,
 }
 
+/// A GitHub Actions workflow (`list-workflows`): what `trigger-pipeline`'s
+/// `workflow` picker offers. `file` is the value it stores (`ci.yml`), the
+/// name GitHub's dispatch takes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowRecord {
+    /// GitHub's numeric id.
+    pub id: String,
+    /// The workflow's `name:`, or its file when it has none.
+    pub name: String,
+    /// The file under `.github/workflows/` (`ci.yml`).
+    pub file: String,
+    /// `.github/workflows/ci.yml`.
+    pub path: String,
+    /// `active`, `disabled_manually`, … (GitHub's word, cleaned).
+    pub state: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub web_url: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IssueRecord {

@@ -118,17 +118,68 @@ pub fn trigger_pipeline(
     trigger: &PipelineTrigger,
 ) -> ActionResult {
     connection.require_write()?;
+    // Everything that would refuse the trigger (variables on GitHub, a bad
+    // name or value, a ref with control characters) is refused before the
+    // user is asked, and before any request.
+    p.check_trigger(trigger)?;
     let host = Api::new(connection)?.host;
     let path = p.get_repository(t, r)?.path;
-    confirmed(
-        ctx,
-        confirm,
-        &format!(
-            "Start a pipeline on {} in {path} ({host})?",
-            trigger.reference
-        ),
-    )?;
+    confirmed(ctx, confirm, &trigger_question(trigger, &path, &host))?;
     Ok(ops::trigger_pipeline(p, t, connection, r, trigger)?)
+}
+
+/// Longest confirmation question (the dialog's message bound).
+pub const MAX_QUESTION: usize = 400;
+
+/// What starting the pipeline does, as the confirmation asks it: the ref,
+/// the repository and server, the GitHub workflow file, and the names of
+/// the GitLab variables (never their values). At most [`MAX_QUESTION`]
+/// characters: names that do not fit are counted.
+pub fn trigger_question(trigger: &PipelineTrigger, path: &str, host: &str) -> String {
+    // Bounded parts, so the workflow (at most 100) or the first variable
+    // name (at most 64) always fits before the 400-character cut.
+    let mut question = format!(
+        "Start a pipeline on {} in {} ({})",
+        crate::errors::clean(&trigger.reference, 45),
+        crate::errors::clean(path, 120),
+        crate::errors::clean(host, 80)
+    );
+    if let Some(workflow) = &trigger.workflow {
+        question.push_str(&format!(
+            " with the workflow {}",
+            crate::errors::clean(workflow, 100)
+        ));
+    }
+    if !trigger.variables.is_empty() {
+        question.push_str(" with the variables ");
+        // Room for the names, the " and N more" and the question mark;
+        // the first name always fits.
+        let room = MAX_QUESTION
+            .saturating_sub(question.chars().count() + 20)
+            .max(64);
+        let mut names = String::new();
+        let mut shown = 0;
+        for (name, _) in &trigger.variables {
+            let next = if shown == 0 {
+                name.clone()
+            } else {
+                format!(", {name}")
+            };
+            if shown > 0 && names.chars().count() + next.chars().count() > room {
+                break;
+            }
+            names.push_str(&next);
+            shown += 1;
+        }
+        question.push_str(&names);
+        let more = trigger.variables.len() - shown;
+        if more > 0 {
+            question.push_str(&format!(" and {more} more"));
+        }
+        debug_assert!(!question.contains("  "));
+    }
+    question.push('?');
+    question.chars().take(MAX_QUESTION).collect()
 }
 
 #[cfg(test)]

@@ -15,7 +15,7 @@
     {
       "path": "git-providers",
       "id": "deckpilot.git-providers",
-      "permissions": ["connections", "dialogs", "openUrl"],
+      "permissions": ["connections", "device", "dialogs", "openUrl"],
       "held": "needs plugin API 1.14 (connections: the `connections` permission, `connection` parameters, `openUrl.connections`), which no DeckPilot has yet: its contracts (knittingcode/deckpilot#451), host side and bundling come first, then its security review and release",
       "hostApi": "1.14"
     },

@@ -23,8 +23,25 @@ pub const MAX_LIMIT: u32 = 100;
 /// `wait-pipeline`'s poll interval bounds, in seconds.
 pub const POLL_SECONDS: (u32, u32) = (10, 120);
 /// The time `wait-pipeline` may take, in seconds: the node limit (600 s)
-/// less a margin for the last read.
-pub const WAIT_BUDGET_SECONDS: u32 = 570;
+/// less a margin for the last read after the last sleep (GitHub reads two
+/// URLs per poll, each at most the host's 15 s per request).
+pub const WAIT_BUDGET_SECONDS: u32 = 540;
+/// The host's time limit of one request, in seconds.
+pub const REQUEST_SECONDS: u32 = 15;
+/// The requests of one pipeline read: GitHub reads the repository (by
+/// id) and the run; GitLab the pipeline only.
+pub fn requests_per_read(kind: crate::provider::ProviderKind) -> u32 {
+    match kind {
+        crate::provider::ProviderKind::Github => 2,
+        crate::provider::ProviderKind::Gitlab => 1,
+    }
+}
+
+/// What one read counts toward the budget when there is no clock: the
+/// worst case, every request at the host's time limit.
+pub fn read_seconds_without_clock(kind: crate::provider::ProviderKind) -> u32 {
+    requests_per_read(kind) * REQUEST_SECONDS
+}
 
 fn n(value: usize) -> i64 {
     i64::try_from(value).unwrap_or(i64::MAX)
@@ -197,7 +214,7 @@ pub fn create_change_request(
     c: &CrCreate,
 ) -> Result<Output, Failure> {
     connection.require_write()?;
-    let record = p.create_change_request(t, r, c)?;
+    let record = p.create_change_request(t, r, c).map_err(never_retried)?;
     let message = if record.existing {
         format!(
             "#{} was already open for {} → {}",
@@ -216,11 +233,49 @@ pub fn create_change_request(
         .with("existing", record.existing))
 }
 
+/// The pipeline outputs. `pipelineId` only when there is one: a GitHub
+/// dispatch whose run has not shown up yet has none, and an empty id
+/// mapped into `wait-pipeline` would only fail there.
+/// A change is never retried (design §10 "Retries"): its node is not
+/// `retrySafe`, and its failures are not marked retryable either, so a
+/// 5xx or a lost connection after the request was sent can never start a
+/// second pipeline or open a second change request.
+fn never_retried(mut failure: Failure) -> Failure {
+    failure.retryable = false;
+    failure
+}
+
+/// Which pipeline `pipeline-status` reads: a change request's when one is
+/// given (it wins over `ref`), else the ref's latest, else the latest of
+/// the repository's default branch.
+pub fn pipeline_selector(
+    p: &dyn Provider,
+    t: &mut dyn Transport,
+    r: &RepoRef,
+    change_request: Option<u64>,
+    reference: Option<&str>,
+) -> Result<PipelineSelector, Failure> {
+    Ok(match (change_request, reference) {
+        (Some(number), _) => PipelineSelector::ChangeRequest(number),
+        (None, Some(reference)) => PipelineSelector::Ref(self::reference(reference)?),
+        (None, None) => {
+            PipelineSelector::Ref(p.get_repository(t, r)?.default_branch.ok_or_else(|| {
+                fail(
+                    codes::INVALID_REF,
+                    "choose a branch: the repository has none",
+                )
+            })?)
+        }
+    })
+}
+
 fn pipeline_output(output: Output, record: &PipelineRecord) -> Output {
     let mut output = output
         .with("state", record.state.as_str())
-        .with("providerStatus", record.provider_status.clone())
-        .with("pipelineId", record.id.clone());
+        .with("providerStatus", record.provider_status.clone());
+    if !record.id.is_empty() {
+        output = output.with("pipelineId", record.id.clone());
+    }
     if let Some(url) = &record.web_url {
         output = output.with("url", url.clone());
     }
@@ -305,20 +360,49 @@ pub fn trigger_pipeline(
     trigger: &PipelineTrigger,
 ) -> Result<Output, Failure> {
     connection.require_write()?;
-    let record = p.trigger_pipeline(t, r, trigger)?;
-    Ok(pipeline_output(
-        Output::message(format!(
+    let record = p.trigger_pipeline(t, r, trigger).map_err(never_retried)?;
+    let message = if record.id.is_empty() {
+        format!(
+            "started a pipeline on {}; {} has not listed it yet",
+            clean(&trigger.reference, 60),
+            p.kind().name()
+        )
+    } else {
+        format!(
             "started pipeline {} on {}",
             record.id,
             clean(&trigger.reference, 60)
-        )),
-        &record,
+        )
+    };
+    Ok(pipeline_output(Output::message(message), &record))
+}
+
+/// `list-workflows`: the workflow files a GitHub pipeline can be started
+/// from (`trigger-pipeline`'s `workflow` picker). Refused on GitLab.
+pub fn list_workflows(
+    p: &dyn Provider,
+    t: &mut dyn Transport,
+    r: &RepoRef,
+    search: Option<&str>,
+) -> Result<Output, Failure> {
+    let items = p.list_workflows(t, r, search)?;
+    Ok(records(
+        Output::message(format!("{} workflows", items.len())),
+        &items,
     ))
 }
 
-/// `wait-pipeline`: reads the pipeline every `poll_seconds` until it
-/// ends, the run is cancelled (`cancelled`, at once), or the time budget
-/// is spent (`timed-out`, with `state` the last one read).
+/// `wait-pipeline`: reads the pipeline every `poll_seconds` (sleeps of
+/// at most 30 s through `time.sleep`) until it ends (at once, with no
+/// sleep when it already has), the run is cancelled (`cancelled`, at
+/// once), or the time budget is spent.
+///
+/// At the budget the node **succeeds** with `timedOut: true` and `state`
+/// the last one read (`running` or `pending`), so a Condition on
+/// `state == "success"` or a Loop around the node goes on: a failure of
+/// ABI 1 carries no outputs, and a Loop would stop at the first one. The
+/// budget ([`WAIT_BUDGET_SECONDS`]) ends before the node's 600 s, so the
+/// plugin answers before the host's `timeout`.
 pub fn wait_pipeline(
     p: &dyn Provider,
     t: &mut dyn Transport,
@@ -326,8 +410,16 @@ pub fn wait_pipeline(
     pipeline_id: &str,
     poll_seconds: u32,
 ) -> Result<Output, Failure> {
+    let pipeline_id = pipeline_id.trim();
+    if pipeline_id.is_empty() {
+        return Err(fail(
+            codes::INVALID_PARAMETERS,
+            "no pipeline id: the pipeline has not been listed yet; read it with pipeline-status \
+             on its branch instead",
+        ));
+    }
     let poll = poll_seconds.clamp(POLL_SECONDS.0, POLL_SECONDS.1);
-    let selector = PipelineSelector::Id(pipeline_id.trim().to_owned());
+    let selector = PipelineSelector::Id(pipeline_id.to_owned());
     let started = t.now_ms();
     let mut waited = 0;
     loop {
@@ -336,22 +428,30 @@ pub fn wait_pipeline(
             .ok_or_else(|| fail(codes::NOT_FOUND, "the pipeline was not found"))?;
         if record.state.is_terminal() || record.state == PipelineState::Manual {
             let message = format!("pipeline {}: {}", record.id, record.state.as_str());
-            return Ok(pipeline_output(Output::message(message), &record));
+            return Ok(pipeline_output(Output::message(message), &record).with("timedOut", false));
         }
         // The requests count too: the clock when there is one, else the
-        // sleeps alone.
-        if let (Some(start), Some(now)) = (started, t.now_ms()) {
-            waited = u32::try_from(now.saturating_sub(start) / 1_000).unwrap_or(u32::MAX);
-        }
-        if waited.saturating_add(poll) > WAIT_BUDGET_SECONDS {
-            return Err(fail(
-                codes::TIMED_OUT,
-                format!(
-                    "pipeline {} is still {} after {waited} s; wait again in a Loop",
-                    record.id,
-                    record.state.as_str()
-                ),
-            ));
+        // sleeps and a fixed time per read.
+        // Without a clock the next read is counted ahead too, so the total
+        // with every read stays within the budget.
+        let next_read = match (started, t.now_ms()) {
+            (Some(start), Some(now)) => {
+                waited = u32::try_from(now.saturating_sub(start) / 1_000).unwrap_or(u32::MAX);
+                0
+            }
+            _ => {
+                let read = read_seconds_without_clock(p.kind());
+                waited = waited.saturating_add(read);
+                read
+            }
+        };
+        if waited.saturating_add(poll).saturating_add(next_read) > WAIT_BUDGET_SECONDS {
+            let message = format!(
+                "timed out: pipeline {} is still {} after {waited} s; wait again in a Loop",
+                record.id,
+                record.state.as_str()
+            );
+            return Ok(pipeline_output(Output::message(message), &record).with("timedOut", true));
         }
         let mut left = poll * 1_000;
         while left > 0 {
