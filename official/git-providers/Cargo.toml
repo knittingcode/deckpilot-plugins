@@ -26,5 +26,10 @@ deckpilot-first-party-support.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
+[dev-dependencies]
+# `guest::features`, for the old plugins' own test that the module reads
+# the network kind (the legacy actions' parity tests).
+deckpilot-plugin-abi.workspace = true
+
 [lints]
 workspace = true

@@ -34,6 +34,45 @@ key or a gesture they ask first (the `confirm` parameter, on by default);
 a workflow you started runs them without asking; a schedule or an event
 runs them only when you turned `confirm` off for that action.
 
+## Legacy GitHub and GitLab actions (migration)
+
+Phase 2 of the move from the old `deckpilot.github` 0.2.1 and
+`deckpilot.gitlab` 0.1.2 plugins (DeckPilot `design-git-providers.md`
+§11.3) needs a successor for every one of their actions. These are
+`legacy-github-{current-user,repository,pull-requests,review-requests,checks,open}`
+and
+`legacy-gitlab-{current-user,project,merge-requests,review-requests,pipeline,open}`.
+
+- **Hidden.** They are `"deprecated": true`, so the Action Library never
+  offers them. They exist only as targets of the old action ids once you
+  switch the old plugin's keys to Git Providers: `PLUGIN_SUCCESSION`, with
+  the `connection` added by the host (`ParamRule::InjectConnection`).
+- **The old contracts, exactly.** Each has the old action's parameters,
+  outputs, error codes and node spec, with the `connection` the host
+  injects in front. The old error codes (`invalid-api-url`,
+  `invalid-project`, `github-error`, `gitlab-error`, `timed-out`) are
+  declared here too.
+- **The old code.** The code is the old plugins' (`src/legacy/`), with two
+  changes:
+  - the server is the connection's API and web bases, not the old `apiUrl`
+    setting;
+  - the time limit is the old default of 20 s, since Git Providers has no
+    `timeoutSeconds`.
+- **Read-only.** `GET` only, even on a connection that allows changes.
+- **No credentials in the plugin.** The old plugins kept a token in their
+  own credential slot. The host copies it into the connection
+  (DeckPilot's migration, PR-10), after you approve it, and keeps the old
+  one; the plugin never reads either. The old plugins themselves
+  (`official/github`, `official/gitlab`) are unchanged.
+- **Tests:**
+  - `src/legacy/tests.rs` compares every legacy action with its source
+    action in `official/{github,gitlab}/manifest.json` (the contracts
+    DeckPilot bundles), and fails on any difference;
+  - `src/legacy/parity_{github,gitlab}.rs` run the old plugins' own unit
+    tests unchanged through the legacy actions on the scripted transport.
+    A coverage test fails when an old test is missing, differs by a byte,
+    or is replaced without a stated reason.
+
 ## How it is built
 
 The SDK pinned here predates plugin API 1.14, so the connection operations

@@ -28,6 +28,12 @@ pub mod codes {
     pub const NEEDS_CONFIRMATION: &str = "needs-confirmation";
     pub const URL_NOT_ALLOWED: &str = "url-not-allowed";
     pub const TIMED_OUT: &str = "timed-out";
+    /// The old GitHub and GitLab plugins' own codes, which only the
+    /// legacy actions return (`legacy`).
+    pub const INVALID_API_URL: &str = "invalid-api-url";
+    pub const INVALID_PROJECT: &str = "invalid-project";
+    pub const GITHUB_ERROR: &str = "github-error";
+    pub const GITLAB_ERROR: &str = "gitlab-error";
     /// Shared codes of the SDK (`deckpilot_plugin_sdk::codes`), declared
     /// nowhere: every plugin may return them.
     pub const INVALID_PARAMETERS: &str = "invalid-parameters";
@@ -58,6 +64,10 @@ pub mod codes {
         URL_NOT_ALLOWED,
         TIMED_OUT,
         CANCELLED,
+        INVALID_API_URL,
+        INVALID_PROJECT,
+        GITHUB_ERROR,
+        GITLAB_ERROR,
     ];
 }
 

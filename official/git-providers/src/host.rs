@@ -71,7 +71,9 @@ fn map_error(error: CallError) -> TransportError {
         _ if has("cancelled") => TransportError::Cancelled,
         "failed" => match error.kind {
             Some(kind) => TransportError::Network(kind),
-            None if has("too large") || has("exceeds") => TransportError::TooLarge,
+            None if has("too large") || has("exceeds") || has("larger than") => {
+                TransportError::TooLarge
+            }
             None => TransportError::Other(error.message),
         },
         "not-permitted" => TransportError::Denied(error.message),
@@ -95,6 +97,32 @@ pub fn connection(id: &str) -> Result<ConnectionInfo, Failure> {
             "DeckPilot's answer about the connection is not readable",
         )
     })
+}
+
+/// Unit tests only: the connection and transport the next action binds
+/// to, instead of the host (which a native test has not). Every action
+/// then runs as on the agent, with the plugin's own parameter checks.
+#[cfg(test)]
+pub mod test_binding {
+    use std::cell::RefCell;
+
+    use crate::provider::ConnectionInfo;
+    use crate::transport::Transport;
+
+    type Binding = (ConnectionInfo, Box<dyn Transport>);
+
+    thread_local! {
+        static NEXT: RefCell<Option<Binding>> = const { RefCell::new(None) };
+    }
+
+    /// Binds the next action of this thread.
+    pub fn set(connection: ConnectionInfo, transport: Box<dyn Transport>) {
+        NEXT.with(|next| *next.borrow_mut() = Some((connection, transport)));
+    }
+
+    pub fn take() -> Option<Binding> {
+        NEXT.with(|next| next.borrow_mut().take())
+    }
 }
 
 /// The transport of the wasm module: every request through the host, on
