@@ -84,7 +84,7 @@ is not trusted.
 
 | Op | Args | Ok value |
 | --- | --- | --- |
-| `script.load` | `{script}`: the invocation's own parameter only | `{source, platform: "macos"\|"windows"\|"linux", settings: {timeoutMs, stopOnError, memoryMib}, grants: {shell?: string[]\|null, …}, run: {id, origin, userInitiated}, nowUs}` (an optional `remainingMs` is read when present; without it the guest takes `settings.timeoutMs`); refuse untrusted with `script.code` `scriptNeedsReview`, and missing with `scriptMissing` |
+| `script.load` | `{script}`: the invocation's own parameter only | `{source, platform: "macos"\|"windows"\|"linux", settings: {timeoutMs, stopOnError, memoryMib}, grants: {shell?: string[]\|null, …}, run: {id, origin, userInitiated}, remainingMs, nowUs}`: `remainingMs` (the run's time left, always sent since deckpilot #481) is the run's deadline; only an agent without it gets the fallback, `settings.timeoutMs`, else 60,000; refuse untrusted with `script.code` `scriptNeedsReview`, and missing with `scriptMissing` |
 | `script.poll` | `{}` | `{cancelled, remainingMs, nowUs?}`; not counted in the 4,096 calls (the guest caps it at 8,192 per run); **must not reset the epoch deadline** (see below) |
 | `script.log` | `{level: debug\|info\|warn\|error, message}` | `null`; **must not reset the epoch deadline** |
 | `script.sleep` | `{ms}` (≤ 600,000) | `{nowUs}`; `timedOut` / `cancelled` on the deadline or Stop |
@@ -94,7 +94,7 @@ is not trusted.
 | `fs.exists`, `fs.stat` | `{path}` | `{exists}`, `{stat\|null}` |
 | `fs.list` | `{path}` | `{entries: [{name, kind}]}` |
 | `fs.mkdir` | `{path, recursive}` | `{}` |
-| `fs.readFile` | `{path, encoding: "base64", maxBytes, offset, length}` (`length` ≤ 524,288; the guest never sends the whole-file form without `offset` and `length`) | `{content, bytes, size, eof}`: `bytes` bytes from `offset` (at most `length`, maybe fewer), the file's current `size`, and `eof` when they reach it |
+| `fs.readFile` | `{path, encoding: "base64", maxBytes, offset, length, ifVersion?}` (`length` ≤ 524,288; `ifVersion` on every chunk after the first, never on the first; the guest never sends the whole-file form without `offset` and `length`) | `{content, bytes, size, eof, version?}`: `bytes` bytes from `offset` (at most `length`, maybe fewer), the file's `size`, `eof` when they reach it, and the read's `version` (absent only when the first chunk already reaches the end); a later chunk of a file that changed: `script.code` `fileChanged` |
 | `fs.writeFile` | `{path, content, encoding, createOnly}` (content ≤ 32,768 bytes) | `{}`: a small file in one request |
 | `fs.write.open` | `{path, createOnly}` | `{handle}`: a temporary file in the target's directory |
 | `fs.write.chunk` | `{handle, content, encoding: "base64"}` (≤ 32,768 bytes) | `{}`; appended in order |
@@ -103,7 +103,7 @@ is not trusted.
 | `fs.copy`, `fs.move` | `{src, dst, recursive?, overwrite, confirmation?}` | `{}` |
 | `fs.remove` | `{path, recursive, dryRun, confirmation?}` | a `RemovalPlan` |
 | `fs.removeContents` | `{path, dryRun, keep, confirmation?}` | a `RemovalPlan` |
-| `process.run` | `{command, args, cwd?, env, timeoutMs?, stdin?}` (`args` ≤ 48 KiB in total, `stdin` ≤ 48 KiB) | `{ok, exitCode, signal, stdout, stderr, truncated, durationMs, timedOut, cancelled, nowUs?}`; not found: `commandNotFound`; Stop: `cancelled` |
+| `process.run` | `{command, args, cwd?, env, timeoutMs?, stdin?}` (`args` ≤ 48 KiB in total, `stdin` ≤ 48 KiB) | `{ok, exitCode, signal, stdout, stderr, truncated, durationMs, timedOut, cancelled, nowUs?}`: `stdout` and `stderr` together at most 960 KiB (`truncated` when cut); not found: `commandNotFound`; Stop: `cancelled` |
 | `shell.run` | `{shell, script, cwd?, env, timeoutMs?}` (`script` ≤ 48 KiB) | as `process.run` |
 | `shell.available` | `{}` | `{shells}` |
 
@@ -113,13 +113,28 @@ at most 64 KiB (`MAX_HOST_CALL_REQUEST`) and a reply at most 1 MiB
 `REPLY`). The script's API keeps its limits (4 MiB files), and the guest
 chunks:
 
-- `readFile` is a loop of `fs.readFile`, 512 KiB at a time. The first
-  reply's `size` is the file's; a later reply with another size, a chunk
-  longer than asked or past that size, or `eof` anywhere but exactly at
-  the end, fails the read with `fileChanged`. A shorter chunk is read on
-  from where it ended. Only a change of **size** between chunks is
-  detected: a file rewritten at the same length while it is read is not
-  (see the blockers below).
+- `readFile` is a loop of `fs.readFile`, 512 KiB at a time, under the
+  **version contract** (deckpilot #481, under review; fixture version 2):
+  - a reply names the read's `version` (1 to 64 printable ASCII bytes;
+    the agent's are 32 hex digits), except when the first chunk already
+    reaches the end (a file read in one chunk). The first reply's
+    `version` and `size` are the read's;
+  - every later chunk sends that version back as `ifVersion`, exactly as
+    the fixture's later chunk shows. The agent serves the later chunks
+    from the state of the file the first chunk saw, and refuses with
+    `fileChanged` when the file was replaced, or its size or
+    modification time changed, in between;
+  - the guest checks too: a later reply with another `version` or
+    `size`, a chunk longer than asked or past that size, or `eof`
+    anywhere but exactly at the end, fails the read with `fileChanged`.
+    A reply before the end without a version, or with a version the host
+    would not accept back, fails it with `invalidResponse`, and nothing
+    more is sent;
+  - a shorter chunk is read on from where it ended.
+
+  So a script gets the bytes of **one version** of the file, or a
+  `fileChanged` `ScriptError` naming the path ("… changed while it was
+  being read; read it again"); never a splice of two versions.
 - `writeFile` of at most 32 KiB is one `fs.writeFile` in the script's
   encoding (unless JSON escaping would take it past 64 KiB). A larger one
   is `fs.write.open`, then `fs.write.chunk` per 32 KiB, then
@@ -135,14 +150,20 @@ chunks:
 - `process.run` args and stdin, and `shell.run` scripts, are at most
   48 KiB each (a larger input goes through a file the script writes), and
   the whole request is checked against the 64 KiB before it is sent.
+- A process's output: the agent keeps `stdout` and `stderr` **together**
+  at most 960 KiB, then shortens them until the result's JSON fits the
+  1 MiB reply, with `truncated: true` whenever it cut. The guest takes
+  the result as it comes (any reply under 1 MiB); there is no separate
+  per-stream size.
 
 Every over-limit value is refused in the guest (`invalidArgument`,
 `tooLarge` for a file over 4 MiB, `limit` for a request over 64 KiB)
 before any host call.
 
-**Timeouts.** A `process.run` or `shell.run` `timeoutMs` is sent as
-`min(timeoutMs, remaining)`, with the remaining time of the last
-`script.load` (`remainingMs`, else `settings.timeoutMs`) or `script.poll`,
+**Timeouts.** A `process.run` or `shell.run` `timeoutMs`, and a
+`script.sleep`'s `ms`, are sent as `min(value, remaining)`, with the
+remaining time of the last `script.load` (`remainingMs`; only when an
+agent omits it, `settings.timeoutMs`, else 60,000) or `script.poll`,
 less the agent time (`nowUs`) since. With none left, nothing is sent and
 the run ends `timedOut`. The agent applies the same rule with its own
 clock.
@@ -150,16 +171,24 @@ clock.
 **The shared fixture.** `tests/fixtures/script-requests.json` is a
 byte-for-byte copy of DeckPilot's
 `plugins/runtime/crates/abi/tests/fixtures/script-requests.json`
-(knittingcode/deckpilot #465 at 2fc870da), the one contract of both
-repositories: never edit it here. Its `valid` requests are what the host
+(knittingcode/deckpilot #465 at
+`2fc870dad2e6438413a200c751f142134cae7517`, sha256
+`e2e12b2ec6db4e207114f9134f0fe3f3c885429d7025d30db45f5c8842becfe4`, which
+a test holds), the one contract of both repositories: never edit it
+here. Version 2 (deckpilot #481) replaces it once approved; until then a
+later chunk is compared with the version 1 entries without its
+`ifVersion`. Its `valid` requests are what the host
 parses and serializes back unchanged, its `invalid` ones what it refuses.
 `src/tests_fixture.rs` drives the prelude and the marshallers against the
 mock bridge (answered from `tests/fixtures/bridge-replies.json`) and holds
 every emitted request byte-equal (canonical JSON: compact, keys sorted)
 to a `valid` one, or of exactly its shape where the fixture's example
 has other values; every `valid` request but the whole-file read is
-emitted byte for byte; and the guest never emits an `invalid` one: it
-refuses or normalizes each it could be given.
+emitted byte for byte (the first chunk, and the later one with its
+`ifVersion`); every chunk after the first carries a valid `ifVersion`;
+and the guest never emits an `invalid` one: it refuses or normalizes
+each it could be given, and it never sends a later chunk without a
+version or with a malformed one.
 
 A **path** is `{"path": "<absolute>"}` (fully qualified on Windows) or
 `{"repository": "<key>", "relative": "a/b"}`, in the host's canonical
@@ -227,14 +256,6 @@ this manifest follows it before P9.
 
 ## Before the release (P9): blockers
 
-- **Same-length changes during a chunked read are not detected.** The
-  guest compares only `size` between `fs.readFile` chunks, and the host's
-  reply (`FsRead`) carries no version, so a file rewritten at the same
-  length between two chunks is read as a splice of both. The fix is a
-  cross-repo ABI change: a `version` in the first chunk's reply, sent back
-  as `ifVersion` on the later chunks, and `fileChanged` on a mismatch. It
-  must land in DeckPilot's ABI crate, the shared fixture and this guest
-  together.
 - **The vendored C code is reviewed code.** `rquickjs-sys` 0.14.0 vendors
   QuickJS-NG's sources and a prebuilt `vendor/wasi-libc/lib/libc.a` (from
   wasi-sdk 24) that is linked into this module. Neither is built from
@@ -252,7 +273,10 @@ this manifest follows it before P9.
   Removing `held` without that record is not allowed (the `held` reason in
   `official/plugins.json` says so).
 - The privileged policy entry, the contract at the pin, `PLUGIN_API` 1.13
-  (P8), and the security review sign-off.
+  (P8), and the security review sign-off. The version contract of chunked
+  reads must ship with the agent at the pin: this guest refuses a read
+  whose replies name no version (deckpilot #481 is a draft today), so the
+  shared fixture copied here must be the one of the DeckPilot it pins.
 
 ## S1, the spike
 

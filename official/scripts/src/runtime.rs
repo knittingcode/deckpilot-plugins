@@ -59,6 +59,7 @@ pub const SCRIPT_CODES: &[&str] = &[
     "unavailable",
     "hostError",
     "fileChanged",
+    "invalidResponse",
 ];
 /// The longest message, repository, command or path of a script's error.
 pub const MAX_ERROR_TEXT: usize = 2048;

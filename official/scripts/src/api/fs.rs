@@ -12,10 +12,15 @@
 //!
 //! * `readFile` is a loop of `fs.readFile {path, encoding: "base64",
 //!   maxBytes, offset, length}` (at most [`READ_CHUNK`] bytes each),
-//!   answered with `{content, bytes, size, eof}`. A file whose **size**
-//!   changes between chunks fails with `fileChanged`. A file rewritten at
-//!   the same length between chunks is not detected: the host's reply has
-//!   no version yet (a cross-repo ABI change, a blocker before release).
+//!   answered with `{content, bytes, size, eof, version?}`. `version` is
+//!   absent only when the first chunk already reaches the end. Every chunk
+//!   after the first sends the first reply's `version` back as
+//!   `ifVersion`, and the agent serves it from the state of the file the
+//!   first chunk saw, refusing with `fileChanged` when the file was
+//!   replaced, or its size or modification time changed, in between. The guest checks too: every reply names the same version
+//!   and the same size, or the read fails with `fileChanged`. So a script
+//!   gets the bytes of one version of the file, or `fileChanged`; never a
+//!   splice of two.
 //! * `writeFile` of at most [`WRITE_CHUNK`] bytes is one `fs.writeFile
 //!   {path, content, encoding, createOnly}`. A larger file is
 //!   `fs.write.open {path, createOnly}` → `{handle}`, then
@@ -343,7 +348,8 @@ fn read_args(args: Value, flavor: Flavor) -> Result<ReadFile, ScriptFault> {
     Ok(a)
 }
 
-/// One `fs.readFile` chunk request.
+/// One `fs.readFile` chunk request. `ifVersion` is on every chunk after
+/// the first (the host refuses a chunk past offset 0 without it).
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ReadChunk<'a> {
@@ -352,11 +358,13 @@ struct ReadChunk<'a> {
     max_bytes: u64,
     offset: u64,
     length: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    if_version: Option<&'a str>,
 }
 
 /// One `fs.readFile` reply: `content` holds `bytes` bytes from the
 /// request's offset, `size` is the whole file's, `eof` whether they reach
-/// its end.
+/// its end, and `version` the read's (the host's `FsRead`).
 #[derive(Debug, Deserialize)]
 struct ReadReply {
     content: String,
@@ -364,34 +372,93 @@ struct ReadReply {
     bytes: Option<u64>,
     size: u64,
     eof: bool,
+    /// Absent when the first chunk already reaches the end; otherwise a
+    /// string (anything else is `invalidResponse`).
+    #[serde(default)]
+    version: Option<Value>,
 }
 
+/// The longest read version the host accepts back (`MAX_READ_VERSION`;
+/// the agent's are 32 hex digits).
+pub const MAX_READ_VERSION: usize = 64;
+
+/// A version the host would accept as `ifVersion` (its `is_opaque`):
+/// 1 to [`MAX_READ_VERSION`] printable ASCII bytes, no space.
+pub fn valid_read_version(v: &str) -> bool {
+    !v.is_empty() && v.len() <= MAX_READ_VERSION && v.bytes().all(|b| b.is_ascii_graphic())
+}
+
+/// The path as a script wrote it, for a message.
+fn shown(path: &PathArg) -> String {
+    match (&path.path, &path.repository) {
+        (Some(p), _) => format!("`{p}`"),
+        (None, Some(key)) => match path.relative.as_deref() {
+            None | Some("") => format!("the root of repository \"{key}\""),
+            Some(r) => format!("`{r}` in repository \"{key}\""),
+        },
+        (None, None) => "the file".to_owned(),
+    }
+}
+
+/// `fileChanged`: the file changed while it was being read (the agent
+/// found it replaced or rewritten, or the guest saw another version or
+/// size), so nothing of it is returned.
 fn changed(path: &PathArg) -> ScriptFault {
     ScriptFault {
         repository: path.repository.clone(),
         path: path.path.clone(),
         ..ScriptFault::new(
             "fileChanged",
-            "fs.readFile: the file changed while it was read; read it again",
+            format!(
+                "fs.readFile: {} changed while it was being read; read it again",
+                shown(path)
+            ),
         )
     }
+}
+
+/// The agent's own `fileChanged` refusal of a later chunk, with the
+/// guest's message (naming the path as the script gave it) and the
+/// agent's `path` when it sent one.
+fn host_changed(fault: ScriptFault, path: &PathArg) -> ScriptFault {
+    let mut out = changed(path);
+    if fault.path.is_some() && out.path.is_none() && out.repository.is_none() {
+        out.path = fault.path;
+    }
+    out
+}
+
+/// `invalidResponse`: the agent's `fs.readFile` reply breaks the version
+/// contract (no version on a part before the end, or a malformed one).
+fn invalid_response(why: &str) -> ScriptFault {
+    ScriptFault::new(
+        "invalidResponse",
+        format!("malformed reply to fs.readFile: {why}"),
+    )
 }
 
 fn malformed(op: &str) -> ScriptFault {
     ScriptFault::new("hostError", format!("malformed reply to {op}"))
 }
 
-/// `readFile`: the chunks, in order, of one size of the file. The first
-/// reply's `size` is the file's; a reply with another size, a chunk that
-/// runs past it or longer than asked, or `eof` anywhere but exactly at the
-/// end, means the file changed in between, and the read fails. A chunk
-/// may be shorter than asked (the agent may shorten one); the next starts
-/// where it ended.
+/// `readFile`: the chunks, in order, of one version of the file. The
+/// first reply's `version` and `size` are the read's; every later chunk
+/// names that version (`ifVersion`), and the agent refuses it with
+/// `fileChanged` when the file was replaced or rewritten meanwhile. Only
+/// a reply that reaches the end may omit the version (a file read in one
+/// chunk); one before the end without it, or a malformed version, is
+/// `invalidResponse` and nothing more is sent. A reply with another
+/// version or size, a chunk that runs past the size or is
+/// longer than asked, or `eof` anywhere but exactly at the end, means the
+/// file changed in between: the read fails with `fileChanged` and returns
+/// nothing. A chunk may be shorter than asked (the agent may shorten
+/// one); the next starts where it ended.
 pub fn read(session: &mut Session, args: Value, flavor: Flavor) -> Result<Value, ScriptFault> {
     let a = read_args(args, flavor)?;
     let max = a.max_bytes.unwrap_or(MAX_FILE);
     let mut bytes: Vec<u8> = Vec::new();
     let mut size: Option<u64> = None;
+    let mut version: Option<String> = None;
     loop {
         let offset = bytes.len() as u64;
         let length = match size {
@@ -404,10 +471,38 @@ pub fn read(session: &mut Session, args: Value, flavor: Flavor) -> Result<Value,
             max_bytes: max,
             offset,
             length,
+            if_version: version.as_deref(),
         };
-        let reply = session.call("fs.readFile", to_value(&request)?)?;
+        let reply =
+            session
+                .call("fs.readFile", to_value(&request)?)
+                .map_err(|fault| match fault.code.as_str() {
+                    "fileChanged" => host_changed(fault, &a.path),
+                    _ => fault,
+                })?;
         let reply: ReadReply =
             serde_json::from_value(reply).map_err(|_| malformed("fs.readFile"))?;
+        let named = match reply.version {
+            None | Some(Value::Null) => None,
+            Some(Value::String(v)) if valid_read_version(&v) => Some(v),
+            Some(_) => {
+                return Err(invalid_response("its version is not one the agent issues"));
+            }
+        };
+        match (&version, named) {
+            // Without a version the agent can serve no later chunk: only a
+            // reply that reaches the end may omit it (a file read in one
+            // chunk).
+            (_, None) if !reply.eof => {
+                return Err(invalid_response(
+                    "a part before the end of the file names no version",
+                ));
+            }
+            (_, None) => {}
+            (None, Some(v)) => version = Some(v),
+            (Some(first), Some(v)) if *first != v => return Err(changed(&a.path)),
+            (Some(_), Some(_)) => {}
+        }
         let chunk = base64::decode(&reply.content).ok_or_else(|| malformed("fs.readFile"))?;
         if reply.bytes.is_some_and(|n| n != chunk.len() as u64) {
             return Err(malformed("fs.readFile"));

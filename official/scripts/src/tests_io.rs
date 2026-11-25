@@ -14,34 +14,69 @@ use crate::mock::{Mock, exit, ok, refuse};
 use crate::tests::{failed, result, run_mock};
 
 /// A file the mock serves by offset and length, as the agent would; `edit`
-/// may change it between chunks (it gets the chunk's index).
+/// may change it between chunks (it gets the chunk's index). Like the
+/// agent, it gives each state of the file its own version, answers it
+/// with every chunk (but a first chunk that is the whole file), and
+/// refuses a later chunk whose `ifVersion` is not
+/// the file's current one with `fileChanged` (the host's
+/// `read_handle`).
 fn serving(source: &str, file: Vec<u8>, edit: impl FnMut(usize, &mut Vec<u8>) + 'static) -> Mock {
     let file = Rc::new(RefCell::new(file));
     let mut edit = edit;
     let mut chunk = 0;
+    let mut generation = 0u32;
     Mock::with(
         source,
         json!({}),
         Box::new(move |op, args| match op {
             "fs.readFile" => {
+                let before = file.borrow().clone();
                 edit(chunk, &mut file.borrow_mut());
+                if *file.borrow() != before {
+                    generation += 1;
+                }
                 chunk += 1;
+                let version = version_of(generation);
+                if let Some(asked) = args.get("ifVersion") {
+                    if asked != &json!(version) {
+                        return refuse(
+                            "failed",
+                            "fileChanged",
+                            "\u{201c}/w\u{201d} changed between two parts of the read; read it again",
+                        );
+                    }
+                } else {
+                    assert_eq!(
+                        args["offset"], 0,
+                        "a later chunk without its version: {args}"
+                    );
+                }
                 let f = file.borrow();
                 let offset = args["offset"].as_u64().unwrap() as usize;
                 let length = args["length"].as_u64().unwrap() as usize;
                 let start = offset.min(f.len());
                 let end = (offset + length).min(f.len());
-                ok(json!({
+                let mut reply = json!({
                     "content": base64::encode(&f[start..end]),
                     "bytes": end - start,
                     "size": f.len(),
                     "eof": end == f.len(),
-                }))
+                });
+                // No version when the first chunk is the whole file.
+                if !(offset == 0 && end == f.len()) {
+                    reply["version"] = json!(version);
+                }
+                ok(reply)
             }
             "script.log" => ok(json!(null)),
             other => panic!("{other} {args}"),
         }),
     )
+}
+
+/// The agent's version of the `n`th state of a served file: 32 hex digits.
+fn version_of(n: u32) -> String {
+    format!("{:032x}", 0x5eed_0000_u64 + u64::from(n))
 }
 
 fn pattern(n: usize) -> Vec<u8> {
@@ -132,7 +167,7 @@ fn a_file_of_exactly_the_limit_reads_and_one_byte_more_is_too_large() {
 }
 
 #[test]
-fn a_file_that_changes_size_between_chunks_is_never_spliced() {
+fn a_file_that_changes_between_chunks_is_never_spliced() {
     for (what, edit) in [
         (
             "grew",
@@ -158,6 +193,14 @@ fn a_file_that_changes_size_between_chunks_is_never_spliced() {
                 }
             }),
         ),
+        (
+            "rewritten at the same length",
+            Box::new(|i: usize, f: &mut Vec<u8>| {
+                if i == 1 {
+                    f[0] ^= 0xff
+                }
+            }),
+        ),
     ] {
         let mut edit = edit;
         let mock = serving(
@@ -178,9 +221,9 @@ fn a_chunk_that_does_not_match_its_request_fails() {
     // The agent says eof before the size it reported, or sends a chunk of
     // another length: either way the bytes are not one version.
     for reply in [
-        json!({ "content": base64::encode(&[1; 10]), "size": 20, "eof": true }),
-        json!({ "content": base64::encode(&[1; 10]), "size": 10, "eof": false }),
-        json!({ "content": base64::encode(&[1; 12]), "size": 10, "eof": true }),
+        json!({ "content": base64::encode(&[1; 10]), "size": 20, "eof": true, "version": "v1" }),
+        json!({ "content": base64::encode(&[1; 10]), "size": 10, "eof": false, "version": "v1" }),
+        json!({ "content": base64::encode(&[1; 12]), "size": 10, "eof": true, "version": "v1" }),
     ] {
         let mock = Mock::with(
             "try { deckpilot.fs.readFile('/w/a') } catch (e) { e.code }",
@@ -192,9 +235,259 @@ fn a_chunk_that_does_not_match_its_request_fails() {
     let mock = Mock::with(
         "try { deckpilot.fs.readFile('/w/a') } catch (e) { e.code }",
         json!({}),
-        Box::new(|_, _| ok(json!({ "content": "not base64!", "size": 3, "eof": true }))),
+        Box::new(|_, _| {
+            ok(json!({ "content": "not base64!", "size": 3, "eof": true, "version": "v1" }))
+        }),
     );
     assert_eq!(result(run_mock(&mock)), json!("hostError"));
+}
+
+#[test]
+fn every_later_chunk_sends_the_first_replys_version_back() {
+    let file = pattern(1_200_000);
+    let mock = serving(
+        "deckpilot.fs.readFile({ repository: 'cms', relative: 'logo.png' }, { encoding: 'base64' }).length",
+        file.clone(),
+        |_, _| {},
+    );
+    assert_eq!(
+        result(run_mock(&mock)),
+        json!(base64::encoded_len(file.len()))
+    );
+    let s = mock.0.borrow();
+    let chunks = s.of("fs.readFile");
+    assert_eq!(chunks.len(), 3);
+    assert!(
+        chunks[0].get("ifVersion").is_none(),
+        "the first chunk opens the read"
+    );
+    for later in &chunks[1..] {
+        assert_eq!(later["ifVersion"], json!(version_of(0)), "{later}");
+    }
+    // Exactly the host's form of a later chunk (the shared fixture's).
+    assert_eq!(
+        chunks[1],
+        &json!({
+            "path": { "repository": "cms", "relative": "logo.png" },
+            "encoding": "base64", "maxBytes": 4194304, "offset": 524288, "length": 524288,
+            "ifVersion": version_of(0),
+        })
+    );
+}
+
+/// A bridge that answers `fs.readFile` chunks of a file of `size` bytes
+/// with the versions `versions` gives per chunk index (`None`: no version
+/// member), without checking `ifVersion`: an agent that does not keep
+/// its side of the contract.
+fn versioned(
+    source: &str,
+    size: usize,
+    versions: impl Fn(usize) -> Option<Value> + 'static,
+) -> Mock {
+    let mut chunk = 0;
+    Mock::with(
+        source,
+        json!({}),
+        Box::new(move |op, args| {
+            assert_eq!(op, "fs.readFile", "{op} {args}");
+            let index = chunk;
+            chunk += 1;
+            let offset = args["offset"].as_u64().unwrap() as usize;
+            let length = args["length"].as_u64().unwrap() as usize;
+            let end = (offset + length).min(size);
+            let fill = if index == 0 { 0xaa } else { 0xbb };
+            let mut reply = json!({
+                "content": base64::encode(&vec![fill; end - offset]),
+                "bytes": end - offset, "size": size, "eof": end == size,
+            });
+            if let Some(v) = versions(index) {
+                reply["version"] = v;
+            }
+            ok(reply)
+        }),
+    )
+}
+
+#[test]
+fn another_version_mid_read_is_file_changed_and_nothing_is_spliced() {
+    // Same size, another version at the second chunk: the guest's own
+    // check, whatever the agent did with `ifVersion`.
+    let mock = versioned(
+        "let got; try { got = deckpilot.fs.readFile('/w/data.bin', { encoding: 'base64' }) } catch (e) { globalThis.e = [e.code, e.path, e.message] } [typeof got, globalThis.e]",
+        1_100_000,
+        |i| Some(json!(version_of(i as u32 % 2))),
+    );
+    assert_eq!(
+        result(run_mock(&mock)),
+        json!([
+            "undefined",
+            [
+                "fileChanged",
+                "/w/data.bin",
+                "fs.readFile: `/w/data.bin` changed while it was being read; read it again"
+            ]
+        ])
+    );
+    let s = mock.0.borrow();
+    assert_eq!(s.of("fs.readFile").len(), 2, "no chunk after the mismatch");
+    assert_eq!(s.of("fs.readFile")[1]["ifVersion"], json!(version_of(0)));
+}
+
+#[test]
+fn the_agents_file_changed_reaches_the_script_naming_the_path() {
+    for (path, field, expected_message) in [
+        (
+            "'/w/notes.md'",
+            json!(["path", "/w/notes.md"]),
+            "fs.readFile: `/w/notes.md` changed while it was being read; read it again",
+        ),
+        (
+            "{ repository: 'cms', relative: 'docs/notes.md' }",
+            json!(["repository", "cms"]),
+            "fs.readFile: `docs/notes.md` in repository \"cms\" changed while it was being read; read it again",
+        ),
+    ] {
+        let src = format!(
+            "try {{ deckpilot.fs.readFile({path}) }} catch (e) {{ [e instanceof ScriptError, e.code, e.message, e.path ?? null, e.repository ?? null] }}"
+        );
+        let mut chunk = 0;
+        let mock = Mock::with(
+            &src,
+            json!({}),
+            Box::new(move |_, args| {
+                chunk += 1;
+                if chunk == 1 {
+                    ok(
+                        json!({ "content": base64::encode(&[b'a'; 524_288]), "bytes": 524_288, "size": 600_000, "eof": false, "version": version_of(0) }),
+                    )
+                } else {
+                    assert_eq!(args["ifVersion"], json!(version_of(0)));
+                    json!({ "error": { "code": "failed", "message": "changed", "script": {
+                        "code": "fileChanged",
+                        "message": "\u{201c}notes.md\u{201d} changed between two parts of the read; read it again",
+                        "path": "notes.md" } } })
+                }
+            }),
+        );
+        let got = result(run_mock(&mock));
+        assert_eq!(got[0], true);
+        assert_eq!(got[1], "fileChanged");
+        assert_eq!(got[2], expected_message);
+        let (key, value) = (field[0].as_str().unwrap(), &field[1]);
+        let at = if key == "path" { 3 } else { 4 };
+        assert_eq!(&got[at], value, "{path}");
+        assert_eq!(mock.0.borrow().of("fs.readFile").len(), 2);
+    }
+    // Uncaught, it fails the run with the code.
+    let mut chunk = 0;
+    let mock = Mock::with(
+        "deckpilot.fs.readFile('/w/notes.md')",
+        json!({}),
+        Box::new(move |_, _| {
+            chunk += 1;
+            if chunk == 1 {
+                ok(
+                    json!({ "content": base64::encode(&[b'a'; 524_288]), "bytes": 524_288, "size": 600_000, "eof": false, "version": version_of(0) }),
+                )
+            } else {
+                refuse("failed", "fileChanged", "changed")
+            }
+        }),
+    );
+    let (code, message) = failed(run_mock(&mock));
+    assert_eq!(code, "file-changed");
+    assert!(
+        message.contains("`/w/notes.md` changed while it was being read"),
+        "{message}"
+    );
+}
+
+#[test]
+fn a_missing_version_before_the_end_or_a_malformed_one_is_an_invalid_response() {
+    // 1,100,000 bytes: chunks 0 and 1 end before the end, chunk 2 at it.
+    let long = "v".repeat(crate::api::fs::MAX_READ_VERSION + 1);
+    let missing: Vec<Option<Value>> = vec![None, Some(Value::Null)];
+    let malformed: Vec<Option<Value>> = vec![
+        Some(json!("a b")),
+        Some(json!("")),
+        Some(json!(long)),
+        Some(json!("zażółć")),
+        Some(json!("tab\there")),
+        Some(json!(7)),
+        Some(json!(["v"])),
+    ];
+    let cases = missing
+        .iter()
+        .flat_map(|v| [(0usize, v.clone()), (1, v.clone())])
+        .chain(
+            malformed
+                .iter()
+                .flat_map(|v| [(0, v.clone()), (1, v.clone()), (2, v.clone())]),
+        );
+    for (at, v) in cases {
+        let what = format!("chunk {at}: {v:?}");
+        let mock = versioned(
+            "try { deckpilot.fs.readFile('/w/a', { encoding: 'base64' }); 'read' } catch (e) { [e.code, e.message] }",
+            1_100_000,
+            move |i| {
+                if i == at {
+                    v.clone()
+                } else {
+                    Some(json!(version_of(0)))
+                }
+            },
+        );
+        let got = result(run_mock(&mock));
+        assert_eq!(got[0], "invalidResponse", "{what}: {got}");
+        assert!(
+            got[1]
+                .as_str()
+                .unwrap()
+                .starts_with("malformed reply to fs.readFile"),
+            "{what}: {got}"
+        );
+        let s = mock.0.borrow();
+        let chunks = s.of("fs.readFile");
+        assert_eq!(chunks.len(), at + 1, "{what}: nothing after the bad reply");
+        for c in chunks {
+            match c.get("ifVersion").and_then(Value::as_str) {
+                Some(sent) => assert!(crate::api::fs::valid_read_version(sent), "{sent}"),
+                None => assert_eq!(c["offset"], 0, "{what}: a later chunk without a version"),
+            }
+        }
+    }
+    // A file read in one chunk has no version: that is a whole read.
+    for v in missing {
+        let mock = versioned(
+            "deckpilot.fs.readFile('/w/a', { encoding: 'base64' }).length",
+            1000,
+            move |_| v.clone(),
+        );
+        assert_eq!(result(run_mock(&mock)), json!(base64::encoded_len(1000)));
+    }
+    // The last chunk (it reaches the end) may omit it too; the earlier
+    // ones named it, and every later request carried it.
+    let mock = versioned(
+        "deckpilot.fs.readFile('/w/a', { encoding: 'base64' }).length",
+        1_100_000,
+        |i| (i < 2).then(|| json!(version_of(0))),
+    );
+    assert_eq!(
+        result(run_mock(&mock)),
+        json!(base64::encoded_len(1_100_000))
+    );
+    assert_eq!(
+        mock.0.borrow().of("fs.readFile")[2]["ifVersion"],
+        json!(version_of(0))
+    );
+    // A version the host accepts back: 64 printable bytes.
+    let edge = "~".repeat(crate::api::fs::MAX_READ_VERSION);
+    let mock = versioned(
+        "deckpilot.fs.readFile('/w/a', { encoding: 'base64' }).length",
+        600_000,
+        move |_| Some(json!(edge.clone())),
+    );
+    assert_eq!(result(run_mock(&mock)), json!(base64::encoded_len(600_000)));
 }
 
 #[test]
@@ -350,7 +643,7 @@ fn a_short_chunk_is_read_on_from_where_it_ended() {
             let offset = args["offset"].as_u64().unwrap() as usize;
             let end = (offset + 300).min(served.len());
             ok(
-                json!({ "content": base64::encode(&served[offset..end]), "bytes": end - offset, "size": served.len(), "eof": end == served.len() }),
+                json!({ "content": base64::encode(&served[offset..end]), "bytes": end - offset, "size": served.len(), "eof": end == served.len(), "version": version_of(0) }),
             )
         }),
     );
@@ -363,7 +656,9 @@ fn a_short_chunk_is_read_on_from_where_it_ended() {
     let mock = Mock::with(
         "try { deckpilot.fs.readFile('/w/a') } catch (e) { e.code }",
         json!({}),
-        Box::new(|_, _| ok(json!({ "content": "aGk=", "bytes": 3, "size": 2, "eof": true }))),
+        Box::new(|_, _| {
+            ok(json!({ "content": "aGk=", "bytes": 3, "size": 2, "eof": true, "version": "v1" }))
+        }),
     );
     assert_eq!(result(run_mock(&mock)), json!("hostError"));
 }
@@ -545,6 +840,80 @@ fn a_timeout_never_outlasts_the_run() {
             json!(3000)
         ]
     );
+}
+
+#[test]
+fn script_load_remaining_ms_is_the_runs_deadline_with_a_fallback_only_when_absent() {
+    let src = r#"
+        deckpilot.process.run({ command: "make", timeoutMs: 600000 });
+        deckpilot.shell.run({ shell: "sh", script: "true", timeoutMs: 600000 });
+        deckpilot.sleep(600000);
+    "#;
+    let handler = || -> crate::mock::Handler {
+        Box::new(|op, _| match op {
+            "script.sleep" => ok(json!({ "nowUs": 1_700_000_000_000_000.0_f64 })),
+            _ => exit(0, "", ""),
+        })
+    };
+    // (remainingMs, settings.timeoutMs) -> what every clamp uses.
+    for (remaining, timeout, expected) in [
+        // Present: it wins over the setting, both shorter and longer.
+        (Some(7000), Some(60000), 7000),
+        (Some(90000), Some(60000), 90000),
+        // Absent: the setting, else the default timeout.
+        (None, Some(4000), 4000),
+        (None, None, limits::TIMEOUT_MS_DEFAULT),
+    ] {
+        let mock = Mock::with(src, json!({ "shell": ["sh"] }), handler());
+        mock.set(|s| {
+            let load = s.load.as_object_mut().unwrap();
+            match remaining {
+                Some(ms) => load.insert("remainingMs".into(), json!(ms)),
+                None => load.remove("remainingMs"),
+            };
+            let settings = load["settings"].as_object_mut().unwrap();
+            match timeout {
+                Some(ms) => settings.insert("timeoutMs".into(), json!(ms)),
+                None => settings.remove("timeoutMs"),
+            };
+        });
+        run_mock(&mock).unwrap();
+        let s = mock.0.borrow();
+        assert_eq!(
+            (
+                &s.of("process.run")[0]["timeoutMs"],
+                &s.of("shell.run")[0]["timeoutMs"],
+                &s.of("script.sleep")[0]["ms"],
+            ),
+            (&json!(expected), &json!(expected), &json!(expected)),
+            "remainingMs {remaining:?}, timeoutMs {timeout:?}"
+        );
+    }
+}
+
+#[test]
+fn output_of_960_kib_in_both_streams_together_is_accepted() {
+    // The agent's cap: stdout and stderr together at most 960 KiB, cut
+    // with `truncated: true`, the reply under 1 MiB.
+    let total = crate::api::process::HOST_OUTPUT_TOTAL;
+    for (out, err) in [(total, 0), (0, total), (600 * 1024, total - 600 * 1024)] {
+        let reply = {
+            let mut r = exit(1, &"o".repeat(out), &"e".repeat(err));
+            r["ok"]["truncated"] = json!(true);
+            r
+        };
+        assert!(serde_json::to_vec(&reply).unwrap().len() < limits::REPLY);
+        let mock = Mock::with(
+            "const r = deckpilot.process.run({ command: 'make' }); [r.stdout.length, r.stderr.length, r.truncated, r.ok]",
+            json!({}),
+            Box::new(move |_, _| reply.clone()),
+        );
+        assert_eq!(
+            result(run_mock(&mock)),
+            json!([out, err, true, false]),
+            "{out} + {err}"
+        );
+    }
 }
 
 #[test]
@@ -799,7 +1168,9 @@ fn a_bigint_or_a_changing_value_never_reaches_the_agent() {
         Box::new(|op, _| match op {
             "process.run" | "shell.run" => exit(0, "", ""),
             "fs.exists" => ok(json!({ "exists": true })),
-            "fs.readFile" => ok(json!({ "content": "aGk=", "bytes": 2, "size": 2, "eof": true })),
+            "fs.readFile" => ok(
+                json!({ "content": "aGk=", "bytes": 2, "size": 2, "eof": true, "version": "v1" }),
+            ),
             other => panic!("{other} sent"),
         }),
     );
