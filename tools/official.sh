@@ -369,13 +369,17 @@ compare() {
   note "DeckPilot's plugins/first-party/build.sh at $DECKPILOT_COMMIT"
   "$DECKPILOT_DIR/plugins/first-party/build.sh" --test-fixtures \
     --out "$OUT/deckpilot" --target-dir "$OUT/deckpilot-target" >&2
-  local crates=()
-  mapfile -t crates < <(compare_crates)
-  [ -d "$OUT/target-guest" ] || build "$OUT/target-guest" "${crates[@]}"
+  # A read loop, not mapfile: macOS's /bin/bash is 3.2.
+  local crates=() crate_name
+  while IFS= read -r crate_name; do
+    crates+=("$crate_name")
+  done < <(compare_crates)
+  # ${a[@]+"${a[@]}"}: bash 3.2 with set -u refuses "${a[@]}" when a is empty.
+  [ -d "$OUT/target-guest" ] || build "$OUT/target-guest" ${crates[@]+"${crates[@]}"}
   summary "" "| Member | Here | DeckPilot build.sh | |" "| --- | --- | --- | --- |"
   local path id version crate kind ours theirs
   while read -r path id version crate kind; do
-    if [[ " ${crates[*]} " != *" $crate "* ]]; then
+    if [[ " ${crates[*]+"${crates[*]}"} " != *" $crate "* ]]; then
       note "$id: held ahead of the pin; DeckPilot has no build of it to compare with"
       continue
     fi

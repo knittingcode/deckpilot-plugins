@@ -31,17 +31,19 @@ with its fuel, epoch and memory limits.
   generator and async function constructors throw. The `deckpilot`,
   `ScriptError` and `console` globals are frozen and non-writable.
 - **Limits** (§5.4):
-  - memory: QuickJS's own limit, the script's `memoryMiB` (16–128,
+  - memory: QuickJS's own limit, the script's `memoryMib` (16–128,
     default 64) less 8 MiB of headroom;
   - a 256 KiB stack;
   - an interrupt handler that polls `script.poll` every 256 interrupts and
     stops on Stop or at the end of the run's time, plus a guest-side
     instruction budget;
-  - 4,096 bridge calls;
+  - 4,096 bridge calls and 8,192 polls;
   - logs: 1,000 lines or 256 KiB, then one "…truncated" line.
 
-  A stop is final: QuickJS interrupts cannot be caught, and every op after
-  a cancellation fails in the guest.
+  A stop is final: QuickJS interrupts cannot be caught (no `catch` or
+  `finally` runs), every op after a cancellation fails in the guest, and a
+  run whose script caught a `cancelled` or `timedOut` refusal still ends
+  cancelled or timed out.
 - **Async scripts.** When a script's completion value is a promise (an
   `async` main or a `.then` chain), the run waits for it, under the same
   limits, and ends with its value or its rejection. A promise that never
@@ -62,7 +64,8 @@ with its fuel, epoch and memory limits.
 | `src/prelude.js` | the `deckpilot` object (§4.4): paths and repositories, the confirmation round, processes, `forEachRepository`, errors naming the repository and command |
 | `src/bridge.rs` | the wire envelope, the per-run budget, the `host_call` transport |
 | `src/api/` | one marshaller per op group: `fs`, `process` (and `shell`), `projects`, `confirm` (and `sleep`), `log`, and `path` (pure, per host OS) |
-| `src/mock.rs`, `src/tests.rs`, `src/api/tests.rs`, `src/api/path/tests.rs` | native tests against a mock bridge |
+| `src/mock.rs`, `src/tests.rs`, `src/tests_io.rs`, `src/bridge/tests.rs`, `src/api/tests.rs`, `src/api/path/tests.rs` | native tests against a mock bridge |
+| `tests/fixtures/script-requests.json`, `tests/fixtures/bridge-replies.json`, `src/tests_fixture.rs` | the shared request fixture (DeckPilot's, copied byte for byte), the guest's replies fixture, and the test that the guest emits only the fixture's requests |
 | `deckpilot.d.ts` | the API's types, for the editor's completion (P7) |
 
 ## The bridge contract (for P6)
@@ -81,29 +84,93 @@ is not trusted.
 
 | Op | Args | Ok value |
 | --- | --- | --- |
-| `script.load` | `{script}`: the invocation's own parameter only | `{source, platform: "macos"\|"windows"\|"linux", settings: {timeoutMs, stopOnError, memoryMiB}, grants: {shell?: string[]\|null, …}, run: {id, origin, userInitiated}, nowUs?}`; refuse untrusted with `script.code` `scriptNeedsReview`, and missing with `scriptMissing` |
+| `script.load` | `{script}`: the invocation's own parameter only | `{source, platform: "macos"\|"windows"\|"linux", settings: {timeoutMs, stopOnError, memoryMib}, grants: {shell?: string[]\|null, …}, run: {id, origin, userInitiated}, nowUs}` (an optional `remainingMs` is read when present; without it the guest takes `settings.timeoutMs`); refuse untrusted with `script.code` `scriptNeedsReview`, and missing with `scriptMissing` |
 | `script.poll` | `{}` | `{cancelled, remainingMs, nowUs?}`; not counted in the 4,096 calls (the guest caps it at 8,192 per run); **must not reset the epoch deadline** (see below) |
 | `script.log` | `{level: debug\|info\|warn\|error, message}` | `null`; **must not reset the epoch deadline** |
-| `script.sleep` | `{ms}` (≤ 600,000) | `null`; `timedOut` / `cancelled` on the deadline or Stop |
+| `script.sleep` | `{ms}` (≤ 600,000) | `{nowUs}`; `timedOut` / `cancelled` on the deadline or Stop |
 | `script.confirm` | `{token}` | `{confirmed}`: the agent shows **its own stored plan** for the token (dialogs 1.5), only in user-started runs |
 | `project.list` | `{}` | `{projects: [{id, key, name}]}` (active profile) |
 | `project.repositories` | `{project: id\|null}` (`null`: the current one) | `{project: {id, key, name}\|null, repositories: [{id, key, name, description, isDefault, path\|null, exists, remote}]}` |
 | `fs.exists`, `fs.stat` | `{path}` | `{exists}`, `{stat\|null}` |
 | `fs.list` | `{path}` | `{entries: [{name, kind}]}` |
 | `fs.mkdir` | `{path, recursive}` | `{}` |
-| `fs.readFile` | `{path, encoding, maxBytes}` | `{content}` |
-| `fs.writeFile` | `{path, content, encoding, createOnly}` | `{}` |
+| `fs.readFile` | `{path, encoding: "base64", maxBytes, offset, length}` (`length` ≤ 524,288; the guest never sends the whole-file form without `offset` and `length`) | `{content, bytes, size, eof}`: `bytes` bytes from `offset` (at most `length`, maybe fewer), the file's current `size`, and `eof` when they reach it |
+| `fs.writeFile` | `{path, content, encoding, createOnly}` (content ≤ 32,768 bytes) | `{}`: a small file in one request |
+| `fs.write.open` | `{path, createOnly}` | `{handle}`: a temporary file in the target's directory |
+| `fs.write.chunk` | `{handle, content, encoding: "base64"}` (≤ 32,768 bytes) | `{}`; appended in order |
+| `fs.write.commit` | `{handle}` | `{}`: renamed atomically onto the target (`createOnly`: only if it does not exist) |
+| `fs.write.abort` | `{handle}` | `{}`: the temporary file removed |
 | `fs.copy`, `fs.move` | `{src, dst, recursive?, overwrite, confirmation?}` | `{}` |
 | `fs.remove` | `{path, recursive, dryRun, confirmation?}` | a `RemovalPlan` |
 | `fs.removeContents` | `{path, dryRun, keep, confirmation?}` | a `RemovalPlan` |
-| `process.run` | `{command, args, cwd?, env, timeoutMs?, stdin?}` | `{ok, exitCode, signal, stdout, stderr, truncated, durationMs, timedOut, cancelled}`; not found: `commandNotFound`; Stop: `cancelled` |
-| `shell.run` | `{shell, script, cwd?, env, timeoutMs?}` | as `process.run` |
+| `process.run` | `{command, args, cwd?, env, timeoutMs?, stdin?}` (`args` ≤ 48 KiB in total, `stdin` ≤ 48 KiB) | `{ok, exitCode, signal, stdout, stderr, truncated, durationMs, timedOut, cancelled, nowUs?}`; not found: `commandNotFound`; Stop: `cancelled` |
+| `shell.run` | `{shell, script, cwd?, env, timeoutMs?}` (`script` ≤ 48 KiB) | as `process.run` |
 | `shell.available` | `{}` | `{shells}` |
 
+**Sizes (P6 decision D1).** The host's caps stay as they are: a request is
+at most 64 KiB (`MAX_HOST_CALL_REQUEST`) and a reply at most 1 MiB
+(`MAX_HOST_CALL_REPLY`), for every op (`bridge::limits::REQUEST` and
+`REPLY`). The script's API keeps its limits (4 MiB files), and the guest
+chunks:
+
+- `readFile` is a loop of `fs.readFile`, 512 KiB at a time. The first
+  reply's `size` is the file's; a later reply with another size, a chunk
+  longer than asked or past that size, or `eof` anywhere but exactly at
+  the end, fails the read with `fileChanged`. A shorter chunk is read on
+  from where it ended. Only a change of **size** between chunks is
+  detected: a file rewritten at the same length while it is read is not
+  (see the blockers below).
+- `writeFile` of at most 32 KiB is one `fs.writeFile` in the script's
+  encoding (unless JSON escaping would take it past 64 KiB). A larger one
+  is `fs.write.open`, then `fs.write.chunk` per 32 KiB, then
+  `fs.write.commit`. The agent writes a temporary file in the same
+  directory and renames it onto the target on commit. Any failure after
+  the open (a refusal, an error, a Stop, the end of the run's time) sends
+  `fs.write.abort`, the one request the guest sends after a Stop; the
+  agent drops the temporary file at the run's end in any case. A write
+  starts only when all its calls (and the abort) fit the run's budget.
+- Chunks (read and write) travel as base64: a chunk of text may end
+  inside a character, and JSON escaping could grow 32 KiB of text past
+  the request cap.
+- `process.run` args and stdin, and `shell.run` scripts, are at most
+  48 KiB each (a larger input goes through a file the script writes), and
+  the whole request is checked against the 64 KiB before it is sent.
+
+Every over-limit value is refused in the guest (`invalidArgument`,
+`tooLarge` for a file over 4 MiB, `limit` for a request over 64 KiB)
+before any host call.
+
+**Timeouts.** A `process.run` or `shell.run` `timeoutMs` is sent as
+`min(timeoutMs, remaining)`, with the remaining time of the last
+`script.load` (`remainingMs`, else `settings.timeoutMs`) or `script.poll`,
+less the agent time (`nowUs`) since. With none left, nothing is sent and
+the run ends `timedOut`. The agent applies the same rule with its own
+clock.
+
+**The shared fixture.** `tests/fixtures/script-requests.json` is a
+byte-for-byte copy of DeckPilot's
+`plugins/runtime/crates/abi/tests/fixtures/script-requests.json`
+(knittingcode/deckpilot #465 at 2fc870da), the one contract of both
+repositories: never edit it here. Its `valid` requests are what the host
+parses and serializes back unchanged, its `invalid` ones what it refuses.
+`src/tests_fixture.rs` drives the prelude and the marshallers against the
+mock bridge (answered from `tests/fixtures/bridge-replies.json`) and holds
+every emitted request byte-equal (canonical JSON: compact, keys sorted)
+to a `valid` one, or of exactly its shape where the fixture's example
+has other values; every `valid` request but the whole-file read is
+emitted byte for byte; and the guest never emits an `invalid` one: it
+refuses or normalizes each it could be given.
+
 A **path** is `{"path": "<absolute>"}` (fully qualified on Windows) or
-`{"repository": "<key>", "relative": "a/b"}`. The guest normalizes the
-relative part to `/` separators, with no `.` segments, never empty segments
-and never escaping the root. The agent resolves both forms against the
+`{"repository": "<key>", "relative": "a/b"}`, in the host's canonical
+form. The guest normalizes the relative part to `/` separators, with no
+`.` segments, never empty segments and never escaping the root. It
+refuses an absolute path with `.`, `..` or empty names (a trailing
+separator is fine), a stream, a control or bidirectional character, a
+verbatim or device form, or (on Windows) a reserved device name. A
+command is a bare name (`^[A-Za-z0-9][A-Za-z0-9._+-]*$`) or a canonical
+absolute path, never UNC or a batch file, and the environment denylist
+is the host's `scripts::env_denied`. The agent resolves both forms against the
 grants (§5.3), with cap-std.
 
 **Destructive operations** with `destructive: "ask"`: the agent answers
@@ -147,15 +214,11 @@ checks every op. The guest reads only one member today:
 Other members (`projectsRead`, `repositoriesPaths`, `fs`, `process`,
 `destructive`) are P6's to define; the guest ignores them.
 
-**What P6 must also provide:**
-
-- the request and reply caps raised for this plugin: up to about 6 MiB for
-  `fs.writeFile` and `fs.readFile`, and about 1.3 MiB for `process.run`
-  with stdin (`bridge::max_request`);
-- the 4,096-call counter in place of the 256 per invocation
-  (`runtime.hostCalls`);
-- the 2 s continuous deadline (`runtime.limits`);
-- `nowUs` in the replies, for `Date.now()`.
+**The rest of P6's side** (p6-plan): the 4,096-call budget in place of
+the 256 per invocation (`runtime.hostCalls`), polls counted apart, the
+2 s continuous deadline (`runtime.limits`), and `nowUs` in the replies of
+`script.load`, `script.poll`, `script.sleep`, `process.run` and
+`shell.run`, for `Date.now()`.
 
 The manifest's `scripts` permission, `script` parameter kind, `code`
 parameter kind, `scripts` view, `runtime.limits`, `runtime.hostCalls` and
@@ -164,6 +227,14 @@ this manifest follows it before P9.
 
 ## Before the release (P9): blockers
 
+- **Same-length changes during a chunked read are not detected.** The
+  guest compares only `size` between `fs.readFile` chunks, and the host's
+  reply (`FsRead`) carries no version, so a file rewritten at the same
+  length between two chunks is read as a splice of both. The fix is a
+  cross-repo ABI change: a `version` in the first chunk's reply, sent back
+  as `ifVersion` on the later chunks, and `fileChanged` on a mismatch. It
+  must land in DeckPilot's ABI crate, the shared fixture and this guest
+  together.
 - **The vendored C code is reviewed code.** `rquickjs-sys` 0.14.0 vendors
   QuickJS-NG's sources and a prebuilt `vendor/wasi-libc/lib/libc.a` (from
   wasi-sdk 24) that is linked into this module. Neither is built from

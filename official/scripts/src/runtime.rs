@@ -21,7 +21,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use rquickjs::context::EvalOptions;
-use rquickjs::{CatchResultExt, CaughtError, Ctx, Function, Object, Value};
+use rquickjs::{CatchResultExt, CaughtError, Ctx, Function, Object, Persistent, Value};
 use serde::Serialize;
 use serde_json::json;
 
@@ -58,6 +58,7 @@ pub const SCRIPT_CODES: &[&str] = &[
     "unsupported",
     "unavailable",
     "hostError",
+    "fileChanged",
 ];
 /// The longest message, repository, command or path of a script's error.
 pub const MAX_ERROR_TEXT: usize = 2048;
@@ -114,6 +115,7 @@ enum Stop {
     Cancelled,
     TimedOut,
     Instructions,
+    Polls,
 }
 
 struct Shared {
@@ -245,28 +247,45 @@ pub fn run(session: Session, setup: RunSetup) -> Report {
         Ok((rt, ctx)) => {
             install_interrupt(&rt, &shared);
             let unhandled = install_rejection_tracker(&rt);
-            let ending = ctx.with(|ctx| {
+            ctx.with(|ctx| {
                 let ending = execute(&ctx, &shared, &setup);
                 // Settle what the script queued (promise reactions), under
                 // the same interrupt handler.
-                drain_jobs(&ctx, &shared);
-                ending
-            });
-            // A rejection no handler took fails a run that otherwise ended
-            // well: an async failure is never reported as success.
-            match (ending, unhandled.borrow().first.clone()) {
-                (Ending::Done(_), Some(reason)) if unhandled.borrow().count > 0 => {
-                    Ending::Failed(ScriptFault::new(
+                let drained = drain_jobs(&ctx, &shared);
+                // A rejection no handler took fails a run that otherwise
+                // ended well: an async failure is never reported as
+                // success. It names the first rejection still unhandled.
+                let still = unhandled.borrow_mut().take_first(&ctx);
+                match ending {
+                    Ending::Done(_) if !drained => Ending::Failed(jobs_spent()),
+                    Ending::Done(_) if still.is_some() => Ending::Failed(ScriptFault::new(
                         "scriptError",
-                        format!("an unhandled promise rejection: {reason}"),
-                    ))
+                        format!(
+                            "an unhandled promise rejection: {}",
+                            still.unwrap_or_default()
+                        ),
+                    )),
+                    e => e,
                 }
-                (e, _) => e,
-            }
+            })
         }
         Err(f) => Ending::Failed(f),
     };
-    let ending = match (ending, shared.borrow().stop) {
+    let stop = {
+        let s = shared.borrow();
+        let b = &s.session.budget;
+        // A Stop the agent answered to an op (a `cancelled` refusal, a
+        // sleep that ran out of time) ends the run even when the script
+        // caught it and finished before the next interrupt.
+        s.stop.or(b.cancelled.then_some(if b.polls_spent {
+            Stop::Polls
+        } else if b.timed_out {
+            Stop::TimedOut
+        } else {
+            Stop::Cancelled
+        }))
+    };
+    let ending = match (ending, stop) {
         // A stop overrides whatever the interrupted code reported.
         (Ending::Failed(_), Some(stop)) | (Ending::Done(_), Some(stop)) => {
             Ending::Failed(stop_fault(stop))
@@ -287,37 +306,91 @@ pub fn run(session: Session, setup: RunSetup) -> Report {
 /// interrupt handler too).
 const MAX_JOBS: u32 = 100_000;
 
-fn drain_jobs(ctx: &Ctx<'_>, shared: &Rc<RefCell<Shared>>) {
-    let mut jobs = 0;
-    while jobs < MAX_JOBS && shared.borrow().stop.is_none() && ctx.execute_pending_job() {
-        jobs += 1;
-    }
+fn jobs_spent() -> ScriptFault {
+    ScriptFault::new(
+        "limit",
+        format!(
+            "the script's promises ran {MAX_JOBS} jobs, the most one run may run, and the run \
+             stopped there (the job budget ran out)"
+        ),
+    )
 }
 
-/// Rejected promises without a handler, as QuickJS reports them: `count`
-/// goes up when one is rejected unhandled and down when a handler is
-/// attached later; `first` is the first one's reason.
-#[derive(Debug, Default)]
+/// Runs the queued promise jobs; false when the job budget ran out with
+/// jobs still queued (one more than the budget ran).
+fn drain_jobs(ctx: &Ctx<'_>, shared: &Rc<RefCell<Shared>>) -> bool {
+    let mut jobs = 0;
+    while shared.borrow().stop.is_none() && ctx.execute_pending_job() {
+        jobs += 1;
+        if jobs > MAX_JOBS {
+            return false;
+        }
+    }
+    true
+}
+
+/// The most rejections tracked by identity; more are only counted.
+const MAX_TRACKED_REJECTIONS: usize = 1024;
+
+/// Rejected promises without a handler, as QuickJS reports them, by
+/// identity: a promise is added when it is rejected without a handler and
+/// removed when one is attached later, so the one named at the end is the
+/// first rejection that is **still** unhandled. The promises are held only
+/// until [`Unhandled::take_first`], inside the context.
+#[derive(Default)]
 struct Unhandled {
-    count: i64,
-    first: Option<String>,
+    rejected: Vec<(Persistent<Value<'static>>, String)>,
+    /// Unhandled rejections beyond [`MAX_TRACKED_REJECTIONS`].
+    untracked: u64,
+}
+
+impl Unhandled {
+    fn rejected<'js>(&mut self, ctx: &Ctx<'js>, promise: Value<'js>, reason: &Value<'js>) {
+        if self.rejected.len() < MAX_TRACKED_REJECTIONS {
+            self.rejected
+                .push((Persistent::save(ctx, promise), reason_text(reason)));
+        } else {
+            self.untracked += 1;
+        }
+    }
+
+    fn handled<'js>(&mut self, ctx: &Ctx<'js>, promise: &Value<'js>) {
+        let at = self.rejected.iter().position(|(p, _)| {
+            p.clone()
+                .restore(ctx)
+                .is_ok_and(|p: Value<'js>| &p == promise)
+        });
+        match at {
+            Some(i) => {
+                self.rejected.remove(i);
+            }
+            None => self.untracked = self.untracked.saturating_sub(1),
+        }
+    }
+
+    /// The first rejection still unhandled, and the promises released.
+    fn take_first(&mut self, _ctx: &Ctx<'_>) -> Option<String> {
+        let first = self.rejected.first().map(|(_, r)| r.clone());
+        self.rejected.clear();
+        first.or_else(|| {
+            (self.untracked > 0)
+                .then(|| format!("one of more than {MAX_TRACKED_REJECTIONS} rejected promises"))
+        })
+    }
 }
 
 fn install_rejection_tracker(rt: &rquickjs::Runtime) -> Rc<RefCell<Unhandled>> {
     let state = Rc::new(RefCell::new(Unhandled::default()));
     let s = Rc::clone(&state);
     rt.set_host_promise_rejection_tracker(Some(Box::new(
-        move |_ctx, _promise, reason, is_handled| {
+        move |ctx, promise, reason, is_handled| {
             let Ok(mut u) = s.try_borrow_mut() else {
                 return;
             };
             if is_handled {
-                u.count -= 1;
-                return;
-            }
-            u.count += 1;
-            if u.first.is_none() {
-                u.first = Some(reason_text(&reason));
+                u.handled(&ctx, &promise);
+            } else {
+                u.rejected(&ctx, promise, &reason);
             }
         },
     )));
@@ -351,6 +424,7 @@ fn stop_fault(stop: Stop) -> ScriptFault {
             "limit",
             "the script used its whole instruction budget (an endless loop?)",
         ),
+        Stop::Polls => crate::bridge::polls_spent(),
     }
 }
 
@@ -372,7 +446,9 @@ fn install_interrupt(rt: &rquickjs::Runtime, shared: &Rc<RefCell<Shared>>) {
         if s.since_poll >= limits::INTERRUPTS_PER_POLL || s.session.budget.cancelled {
             s.since_poll = 0;
             if s.session.poll() {
-                s.stop = Some(if s.session.budget.timed_out {
+                s.stop = Some(if s.session.budget.polls_spent {
+                    Stop::Polls
+                } else if s.session.budget.timed_out {
                     Stop::TimedOut
                 } else {
                     Stop::Cancelled
@@ -415,6 +491,7 @@ fn execute(ctx: &Ctx<'_>, shared: &Rc<RefCell<Shared>>, setup: &RunSetup) -> End
         jobs += 1;
     }
     match promise.result::<Value>() {
+        None if jobs >= MAX_JOBS => Ending::Failed(jobs_spent()),
         None => Ending::Failed(ScriptFault::new(
             "scriptError",
             "the script's promise never settled (nothing was left to run)",
@@ -530,10 +607,10 @@ fn install_natives(
     let call = Function::new(ctx.clone(), move |op: String, args: String| -> String {
         let reply = match serde_json::from_str(&args) {
             Err(_) => Err(api::invalid("the arguments are not JSON")),
-            Ok(args) => api::dispatch(&op, args, flavor).and_then(|args| {
+            Ok(args) => {
                 let mut s = s.borrow_mut();
-                s.session.call(&op, args)
-            }),
+                api::perform(&mut s.session, &op, args, flavor)
+            }
         };
         envelope(reply)
     })

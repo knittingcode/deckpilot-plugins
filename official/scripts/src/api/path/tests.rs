@@ -199,3 +199,101 @@ fn the_call_table_names_every_function_and_nothing_else() {
         serde_json::json!(true)
     );
 }
+
+#[test]
+fn dot_dot_never_climbs_above_a_root() {
+    for f in [Linux, MacOs] {
+        assert_eq!(normalize(f, "/../../.."), "/");
+        assert_eq!(normalize(f, "/a/../../b/./"), "/b/");
+        // A relative path keeps the `..` it cannot resolve.
+        assert_eq!(normalize(f, "../../x"), "../../x");
+        assert_eq!(resolve(f, "/srv", &s(&["../../../etc"])).unwrap(), "/etc");
+        assert_eq!(relative(f, "/a/b", "/").unwrap(), "../..");
+    }
+    let f = Windows;
+    assert_eq!(normalize(f, "C:\\..\\..\\x"), "C:\\x");
+    assert_eq!(
+        normalize(f, "\\\\srv\\share\\..\\..\\x"),
+        "\\\\srv\\share\\x"
+    );
+    assert_eq!(
+        normalize(f, "C:..\\x"),
+        "C:..\\x",
+        "drive-relative keeps it"
+    );
+    assert_eq!(
+        resolve(f, "C:\\work", &s(&["..\\..\\..\\Windows"])).unwrap(),
+        "C:\\Windows"
+    );
+    assert_eq!(
+        resolve(f, "\\\\srv\\share", &s(&["..\\other"])).unwrap(),
+        "\\\\srv\\share\\other",
+        "a UNC path never leaves its share"
+    );
+}
+
+#[test]
+fn drive_letters_and_unc_roots() {
+    let f = Windows;
+    // A drive letter is one root whatever its case.
+    assert_eq!(normalize(f, "c:\\x"), "C:\\x");
+    assert_eq!(relative(f, "c:\\a", "C:\\a\\b").unwrap(), "b");
+    assert_eq!(dirname(f, "d:/x/y"), "D:\\x");
+    assert!(is_fully_qualified(f, "z:\\"));
+    assert!(!is_fully_qualified(f, "1:\\x"), "not a drive letter");
+    assert!(!is_fully_qualified(f, "C:"), "drive-relative");
+    // UNC needs a server and a share; `\\server` alone is only rooted.
+    assert!(is_fully_qualified(f, "\\\\srv\\share\\x"));
+    assert!(is_fully_qualified(f, "//srv/share"));
+    assert!(!is_fully_qualified(f, "\\\\srv"));
+    assert_eq!(normalize(f, "\\\\srv"), "\\srv");
+    // Another share is another root, like another drive.
+    assert_eq!(
+        relative(f, "\\\\srv\\a\\x", "\\\\srv\\b\\y").unwrap(),
+        "\\\\srv\\b\\y"
+    );
+    assert_eq!(
+        relative(f, "\\\\SRV\\Share\\x", "\\\\srv\\share\\y").unwrap(),
+        "..\\y"
+    );
+    // The verbatim and device forms are only syntax here (a server `?` or
+    // `.`); fs and process ops refuse them (api::fs::windows_problem).
+    assert!(is_fully_qualified(f, "\\\\?\\C:\\x"));
+    // Drive syntax means nothing on POSIX.
+    for p in [Linux, MacOs] {
+        assert!(!is_fully_qualified(p, "C:\\x"));
+        assert_eq!(normalize(p, "C:\\x\\..\\y"), "C:\\x\\..\\y");
+        assert_eq!(normalize(p, "//srv/share"), "/srv/share");
+    }
+}
+
+#[test]
+fn separators_and_conversion_per_platform() {
+    assert_eq!(
+        join(Windows, &s(&["C:/a", "b\\c", "d/e"])),
+        "C:\\a\\b\\c\\d\\e"
+    );
+    assert_eq!(join(Linux, &s(&["/a", "b\\c"])), "/a/b\\c");
+    assert_eq!(basename(Windows, "C:\\a\\b/c.txt", None), "c.txt");
+    assert_eq!(basename(Linux, "/a/b\\c.txt", None), "b\\c.txt");
+    assert_eq!(from_posix(Windows, "/a/b"), "\\a\\b");
+    assert_eq!(from_posix(MacOs, "/a/b"), "/a/b");
+    assert_eq!(to_posix("\\\\srv\\share\\x"), "//srv/share/x");
+    assert_eq!(
+        call(Windows, "fromPosix", &s(&["C:/x/y"])).unwrap(),
+        serde_json::json!("C:\\x\\y")
+    );
+}
+
+#[test]
+fn case_follows_the_host() {
+    // Linux compares exactly; macOS (default volumes) and Windows do not.
+    assert_eq!(relative(Linux, "/A/b", "/a/b/c").unwrap(), "../../a/b/c");
+    assert_eq!(relative(MacOs, "/A/b", "/a/b/c").unwrap(), "c");
+    assert_eq!(relative(Windows, "C:\\A\\B", "c:\\a\\b\\c").unwrap(), "c");
+    // Case is kept as written: only comparisons ignore it.
+    assert_eq!(normalize(MacOs, "/Users/Dev/./Repo"), "/Users/Dev/Repo");
+    assert_eq!(join(Windows, &s(&["C:\\Work", "Repo"])), "C:\\Work\\Repo");
+    // basename's extension is matched as written on every host, like Node.
+    assert_eq!(basename(MacOs, "/a/b.TXT", Some(".txt")), "b.TXT");
+}

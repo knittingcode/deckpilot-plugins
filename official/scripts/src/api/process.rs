@@ -19,27 +19,131 @@ use crate::bridge::ScriptFault;
 
 pub const MAX_ARGS: usize = 256;
 pub const MAX_ARG: usize = 32 * 1024;
-pub const MAX_ARGS_TOTAL: usize = 256 * 1024;
-pub const MAX_STDIN: usize = 1024 * 1024;
+/// The arguments, the stdin and a shell script are each at most 48 KiB, so
+/// one request stays under the host's 64 KiB (P6 decision D1); a larger
+/// input goes through a file the script writes. The whole request is
+/// checked against the 64 KiB as well (`bridge`), since JSON escaping and
+/// the environment add to it.
+pub const MAX_ARGS_TOTAL: usize = 48 * 1024;
+pub const MAX_STDIN: usize = 48 * 1024;
 pub const MAX_ENV: usize = 64;
 pub const MAX_ENV_VALUE: usize = 32 * 1024;
 pub const MAX_COMMAND: usize = 4096;
-pub const MAX_SHELL_SCRIPT: usize = 256 * 1024;
+pub const MAX_SHELL_SCRIPT: usize = 48 * 1024;
 pub const SHELLS: &[&str] = &["sh", "bash", "zsh", "pwsh", "powershell", "cmd"];
 
-/// Environment names a script may never set, whatever its grant (§5.3,
-/// OD-7). The agent applies the same list; the guest refuses early.
+/// Environment names a script may never set, whatever its grant, compared
+/// without case: exactly the host's `scripts::env_denied` (DeckPilot
+/// `plugins/runtime/crates/abi/src/scripts.rs`), so the guest refuses
+/// early what the agent refuses. Denied: what changes which program runs
+/// or where it finds its configuration (`PATH`, `HOME`, `XDG_*`, every
+/// `GIT_*` but the author and committer, `DOCKER_*` but BuildKit), what
+/// loads code into a program (`LD_*`, `DYLD_*`, interpreter options and
+/// paths, shell start-up files), what redirects the network or its trust
+/// (proxies, certificate bundles, `SSH_*`), and DeckPilot's own.
 pub fn env_denied(name: &str) -> bool {
-    let upper = name.to_ascii_uppercase();
     const PREFIXES: &[&str] = &[
         "LD_",
         "DYLD_",
         "DECKPILOT_",
-        "GIT_CONFIG",
-        "GIT_SSH",
+        "GIT_",
+        "SSH_",
+        "XDG_",
+        "DOCKER_",
         "PYTHON",
+        "PERL",
+        "RUBY",
+        "NPM_CONFIG_",
+        "JAVA_",
+        "_JAVA_",
+        "JDK_JAVA_",
+        "RUSTC",
+        "RUSTDOC",
+        "CARGO_",
+        "SSL_CERT_",
+        "LUA_",
+        "TCL",
+        "DOTNET_",
+        "COR_",
+        "CORECLR_",
+        "PHP",
+        "GEM_",
+        "BUNDLE_",
+        "PIP_",
+        "AWS_",
+        "ELECTRON_",
     ];
-    const EXACT: &[&str] = &["GIT_EXEC_PATH", "DOCKER_HOST", "NODE_OPTIONS", "COMSPEC"];
+    const EXACT: &[&str] = &[
+        "PATH",
+        "PATHEXT",
+        "HOME",
+        "USERPROFILE",
+        "HOMEDRIVE",
+        "HOMEPATH",
+        "APPDATA",
+        "LOCALAPPDATA",
+        "SYSTEMROOT",
+        "WINDIR",
+        "COMSPEC",
+        "PSMODULEPATH",
+        "SHELL",
+        "BASH_ENV",
+        "ENV",
+        "ZDOTDIR",
+        "IFS",
+        "PS4",
+        "PROMPT_COMMAND",
+        "CDPATH",
+        "TMPDIR",
+        "TEMP",
+        "TMP",
+        "EDITOR",
+        "VISUAL",
+        "PAGER",
+        "BROWSER",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "NO_PROXY",
+        "FTP_PROXY",
+        "CURL_CA_BUNDLE",
+        "REQUESTS_CA_BUNDLE",
+        "NODE_OPTIONS",
+        "NODE_PATH",
+        "NODE_EXTRA_CA_CERTS",
+        "NODE_TLS_REJECT_UNAUTHORIZED",
+        "NODE_REPL_EXTERNAL_MODULE",
+        "GCONV_PATH",
+        "LOCPATH",
+        "NLSPATH",
+        "MALLOC_CONF",
+        "HOSTALIASES",
+        "RES_OPTIONS",
+        "LOCALDOMAIN",
+        "OPENSSL_CONF",
+        "CLASSPATH",
+        "GOFLAGS",
+        "MAKEFLAGS",
+        "MFLAGS",
+        "LESSOPEN",
+        "LESSCLOSE",
+        "SHELLOPTS",
+        "BASHOPTS",
+        "KUBECONFIG",
+    ];
+    /// `GIT_*` names that only label a commit.
+    const GIT_ALLOWED: &[&str] = &[
+        "GIT_AUTHOR_NAME",
+        "GIT_AUTHOR_EMAIL",
+        "GIT_AUTHOR_DATE",
+        "GIT_COMMITTER_NAME",
+        "GIT_COMMITTER_EMAIL",
+        "GIT_COMMITTER_DATE",
+    ];
+    let upper = name.to_ascii_uppercase();
+    if GIT_ALLOWED.contains(&upper.as_str()) || upper == "DOCKER_BUILDKIT" {
+        return false;
+    }
     PREFIXES.iter().any(|p| upper.starts_with(p)) || EXACT.contains(&upper.as_str())
 }
 
@@ -76,21 +180,52 @@ fn check_env(env: &BTreeMap<String, String>) -> Result<(), ScriptFault> {
     Ok(())
 }
 
-/// A bare command name (`git`, `docker`, `make`) or an absolute path the
-/// user picked when granting it; never a command line.
+/// A bare command name: `^[A-Za-z0-9][A-Za-z0-9._+-]*$`, at most 255
+/// bytes, not ending in `.`, never a batch file (the host's
+/// `is_command_name`).
+pub fn is_command_name(name: &str) -> bool {
+    let b = name.as_bytes();
+    !b.is_empty()
+        && b.len() <= 255
+        && b[0].is_ascii_alphanumeric()
+        && b.iter()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'.' | b'_' | b'+' | b'-'))
+        && !name.ends_with('.')
+        && !is_batch(name)
+}
+
+/// A Windows batch file, by its extension (CVE-2024-24576): only
+/// `shell.run` with `cmd` may start one.
+pub fn is_batch(command: &str) -> bool {
+    let lower = command.trim_end_matches([' ', '.']).to_ascii_lowercase();
+    lower.ends_with(".bat") || lower.ends_with(".cmd")
+}
+
+/// A bare command name (`git`, `docker`, `make`) or an absolute path of a
+/// drive or the Unix root that the user picked when granting it (never
+/// UNC, never a batch file); never a command line.
 fn check_command(command: &str, flavor: Flavor) -> Result<(), ScriptFault> {
     if command.is_empty() || command.len() > MAX_COMMAND || command.contains('\0') {
         return Err(invalid(
             "process.run: `command` is a command name or an absolute path",
         ));
     }
+    if is_batch(command) {
+        return Err(invalid(format!(
+            "process.run: `{command}` is a batch file, which only shell.run with cmd may start"
+        )));
+    }
     if super::path::is_fully_qualified(flavor, command) {
+        let unc = command.starts_with("\\\\") || command.starts_with("//");
+        if unc || !super::fs::is_canonical_absolute(command) {
+            return Err(invalid(format!(
+                "process.run: `{command}` is not a command path the agent runs (a canonical \
+                 path of a drive or the root, never UNC)"
+            )));
+        }
         return Ok(());
     }
-    if command.contains(['/', '\\'])
-        || command.chars().any(|c| c.is_whitespace() || c.is_control())
-        || command.starts_with('-')
-    {
+    if !is_command_name(command) {
         return Err(invalid(format!(
             "process.run: `{command}` is not a command name; put arguments in `args` (there is \
              no shell)"
@@ -195,6 +330,18 @@ pub fn shell_run(args: Value, flavor: Flavor) -> Result<Value, ScriptFault> {
     timeout(a.timeout_ms)?;
     a.cwd = a.cwd.map(|c| c.checked("cwd", flavor)).transpose()?;
     to_value(&a)
+}
+
+/// A process or shell timeout never outlasts the run: `timeoutMs` becomes
+/// `min(timeoutMs, remaining)` with the remaining time the guest knows
+/// (the agent applies the same rule with its own clock). Without a
+/// `timeoutMs` the agent's default, the remaining time, applies.
+pub fn clamp_timeout(args: &mut Value, remaining_ms: Option<u64>) {
+    if let (Some(remaining), Some(t)) =
+        (remaining_ms, args.get("timeoutMs").and_then(Value::as_u64))
+    {
+        args["timeoutMs"] = Value::from(t.min(remaining.max(1)));
+    }
 }
 
 #[derive(Debug, Deserialize)]

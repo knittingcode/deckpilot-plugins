@@ -1,0 +1,1058 @@
+{
+  "about": "Every request of the Scripts host bridge (plugin API 1.13), in the canonical form the deckpilot.scripts guest sends. Shared by knittingcode/deckpilot (plugins/runtime/crates/abi) and knittingcode/deckpilot-plugins (official/scripts): both parse every `valid` request, check that it serializes back to the same JSON, and refuse every `invalid` one. Change both repositories together.",
+  "version": 1,
+  "valid": [
+    {
+      "op": "script.load",
+      "request": {
+        "op": "script.load",
+        "args": {
+          "script": "6f1c2a8e-4b1d-4c2e-9a77-0d5b1e3f9c10"
+        }
+      }
+    },
+    {
+      "op": "script.poll",
+      "request": {
+        "op": "script.poll",
+        "args": {}
+      }
+    },
+    {
+      "op": "script.log",
+      "request": {
+        "op": "script.log",
+        "args": {
+          "level": "info",
+          "message": "Updating cms"
+        }
+      }
+    },
+    {
+      "op": "script.sleep",
+      "request": {
+        "op": "script.sleep",
+        "args": {
+          "ms": 250
+        }
+      }
+    },
+    {
+      "op": "script.confirm",
+      "request": {
+        "op": "script.confirm",
+        "args": {
+          "token": "0123456789abcdef0123456789abcdef"
+        }
+      }
+    },
+    {
+      "op": "project.list",
+      "request": {
+        "op": "project.list",
+        "args": {}
+      }
+    },
+    {
+      "op": "project.repositories",
+      "request": {
+        "op": "project.repositories",
+        "args": {
+          "project": null
+        }
+      }
+    },
+    {
+      "op": "project.repositories",
+      "request": {
+        "op": "project.repositories",
+        "args": {
+          "project": "7d9e2b1c-0000-4000-8000-000000000001"
+        }
+      }
+    },
+    {
+      "op": "fs.exists",
+      "request": {
+        "op": "fs.exists",
+        "args": {
+          "path": {
+            "repository": "cms",
+            "relative": "package.json"
+          }
+        }
+      }
+    },
+    {
+      "op": "fs.stat",
+      "request": {
+        "op": "fs.stat",
+        "args": {
+          "path": {
+            "path": "/Users/me/work/cms/src"
+          }
+        }
+      }
+    },
+    {
+      "op": "fs.list",
+      "request": {
+        "op": "fs.list",
+        "args": {
+          "path": {
+            "repository": "cms",
+            "relative": ""
+          }
+        }
+      }
+    },
+    {
+      "op": "fs.mkdir",
+      "request": {
+        "op": "fs.mkdir",
+        "args": {
+          "path": {
+            "repository": "cms",
+            "relative": "build/cache"
+          },
+          "recursive": true
+        }
+      }
+    },
+    {
+      "op": "fs.readFile",
+      "request": {
+        "op": "fs.readFile",
+        "args": {
+          "path": {
+            "repository": "cms",
+            "relative": "README.md"
+          },
+          "encoding": "utf8",
+          "maxBytes": 4194304
+        }
+      }
+    },
+    {
+      "op": "fs.readFile",
+      "request": {
+        "op": "fs.readFile",
+        "args": {
+          "path": {
+            "repository": "cms",
+            "relative": "logo.png"
+          },
+          "encoding": "base64",
+          "maxBytes": 4194304,
+          "offset": 524288,
+          "length": 524288
+        }
+      }
+    },
+    {
+      "op": "fs.writeFile",
+      "request": {
+        "op": "fs.writeFile",
+        "args": {
+          "path": {
+            "repository": "cms",
+            "relative": ".env.local"
+          },
+          "content": "PORT=3000\n",
+          "encoding": "utf8",
+          "createOnly": false
+        }
+      }
+    },
+    {
+      "op": "fs.write.open",
+      "request": {
+        "op": "fs.write.open",
+        "args": {
+          "path": {
+            "repository": "cms",
+            "relative": "dist/bundle.js"
+          },
+          "createOnly": false
+        }
+      }
+    },
+    {
+      "op": "fs.write.chunk",
+      "request": {
+        "op": "fs.write.chunk",
+        "args": {
+          "handle": "fedcba9876543210fedcba9876543210",
+          "content": "aGVsbG8=",
+          "encoding": "base64"
+        }
+      }
+    },
+    {
+      "op": "fs.write.commit",
+      "request": {
+        "op": "fs.write.commit",
+        "args": {
+          "handle": "fedcba9876543210fedcba9876543210"
+        }
+      }
+    },
+    {
+      "op": "fs.write.abort",
+      "request": {
+        "op": "fs.write.abort",
+        "args": {
+          "handle": "fedcba9876543210fedcba9876543210"
+        }
+      }
+    },
+    {
+      "op": "fs.copy",
+      "request": {
+        "op": "fs.copy",
+        "args": {
+          "src": {
+            "repository": "cms",
+            "relative": "config/example.env"
+          },
+          "dst": {
+            "repository": "cms",
+            "relative": ".env"
+          },
+          "recursive": false,
+          "overwrite": false
+        }
+      }
+    },
+    {
+      "op": "fs.copy",
+      "request": {
+        "op": "fs.copy",
+        "args": {
+          "src": {
+            "repository": "cms",
+            "relative": "templates"
+          },
+          "dst": {
+            "repository": "web",
+            "relative": "templates"
+          },
+          "recursive": true,
+          "overwrite": true,
+          "confirmation": "0123456789abcdef0123456789abcdef"
+        }
+      }
+    },
+    {
+      "op": "fs.move",
+      "request": {
+        "op": "fs.move",
+        "args": {
+          "src": {
+            "repository": "cms",
+            "relative": "tmp/out"
+          },
+          "dst": {
+            "repository": "cms",
+            "relative": "out"
+          },
+          "overwrite": false
+        }
+      }
+    },
+    {
+      "op": "fs.remove",
+      "request": {
+        "op": "fs.remove",
+        "args": {
+          "path": {
+            "repository": "cms",
+            "relative": "node_modules"
+          },
+          "recursive": true,
+          "dryRun": true
+        }
+      }
+    },
+    {
+      "op": "fs.remove",
+      "request": {
+        "op": "fs.remove",
+        "args": {
+          "path": {
+            "repository": "cms",
+            "relative": "node_modules"
+          },
+          "recursive": true,
+          "dryRun": false,
+          "confirmation": "0123456789abcdef0123456789abcdef"
+        }
+      }
+    },
+    {
+      "op": "fs.removeContents",
+      "request": {
+        "op": "fs.removeContents",
+        "args": {
+          "path": {
+            "repository": "cms",
+            "relative": "var/cache"
+          },
+          "dryRun": false,
+          "keep": [".gitkeep"]
+        }
+      }
+    },
+    {
+      "op": "process.run",
+      "request": {
+        "op": "process.run",
+        "args": {
+          "command": "git",
+          "args": ["pull", "--ff-only"],
+          "cwd": {
+            "repository": "cms",
+            "relative": ""
+          },
+          "env": {},
+          "timeoutMs": 120000
+        }
+      }
+    },
+    {
+      "op": "process.run",
+      "request": {
+        "op": "process.run",
+        "args": {
+          "command": "/usr/local/bin/make",
+          "args": [],
+          "env": {
+            "CI": "1"
+          },
+          "stdin": "input\n"
+        }
+      }
+    },
+    {
+      "op": "shell.run",
+      "request": {
+        "op": "shell.run",
+        "args": {
+          "shell": "sh",
+          "script": "echo \"$HOME\"",
+          "cwd": {
+            "repository": "cms",
+            "relative": ""
+          },
+          "env": {},
+          "timeoutMs": 10000
+        }
+      }
+    },
+    {
+      "op": "shell.available",
+      "request": {
+        "op": "shell.available",
+        "args": {}
+      }
+    },
+    {
+      "op": "fs.stat",
+      "request": {
+        "op": "fs.stat",
+        "args": {
+          "path": {
+            "path": "C:\\work\\cms\\"
+          }
+        }
+      }
+    },
+    {
+      "op": "process.run",
+      "request": {
+        "op": "process.run",
+        "args": {
+          "command": "docker",
+          "args": ["compose", "up", "-d"],
+          "env": {
+            "GIT_AUTHOR_NAME": "Me",
+            "COMPOSE_PROJECT_NAME": "cms"
+          }
+        }
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "why": "a plugin field",
+      "request": {
+        "op": "script.load",
+        "args": {
+          "script": "a",
+          "plugin": "other.plugin"
+        }
+      }
+    },
+    {
+      "why": "a script id with a path",
+      "request": {
+        "op": "script.load",
+        "args": {
+          "script": "../x"
+        }
+      }
+    },
+    {
+      "why": "poll takes no arguments",
+      "request": {
+        "op": "script.poll",
+        "args": {
+          "reset": true
+        }
+      }
+    },
+    {
+      "why": "an unknown log level",
+      "request": {
+        "op": "script.log",
+        "args": {
+          "level": "trace",
+          "message": "x"
+        }
+      }
+    },
+    {
+      "why": "a sleep over 600 s",
+      "request": {
+        "op": "script.sleep",
+        "args": {
+          "ms": 600001
+        }
+      }
+    },
+    {
+      "why": "an empty token",
+      "request": {
+        "op": "script.confirm",
+        "args": {
+          "token": ""
+        }
+      }
+    },
+    {
+      "why": "a token with a space",
+      "request": {
+        "op": "script.confirm",
+        "args": {
+          "token": "a b"
+        }
+      }
+    },
+    {
+      "why": "a project id with a slash",
+      "request": {
+        "op": "project.repositories",
+        "args": {
+          "project": "a/b"
+        }
+      }
+    },
+    {
+      "why": "a path and a repository",
+      "request": {
+        "op": "fs.exists",
+        "args": {
+          "path": {
+            "path": "/tmp",
+            "repository": "cms"
+          }
+        }
+      }
+    },
+    {
+      "why": "neither a path nor a repository",
+      "request": {
+        "op": "fs.exists",
+        "args": {
+          "path": {}
+        }
+      }
+    },
+    {
+      "why": "an absolute path with a relative part",
+      "request": {
+        "op": "fs.stat",
+        "args": {
+          "path": {
+            "path": "/tmp",
+            "relative": "x"
+          }
+        }
+      }
+    },
+    {
+      "why": "a repository key that is not one",
+      "request": {
+        "op": "fs.stat",
+        "args": {
+          "path": {
+            "repository": "../cms",
+            "relative": ""
+          }
+        }
+      }
+    },
+    {
+      "why": "an absolute relative part",
+      "request": {
+        "op": "fs.list",
+        "args": {
+          "path": {
+            "repository": "cms",
+            "relative": "/etc"
+          }
+        }
+      }
+    },
+    {
+      "why": "a drive in a relative part",
+      "request": {
+        "op": "fs.list",
+        "args": {
+          "path": {
+            "repository": "cms",
+            "relative": "C:\\Windows"
+          }
+        }
+      }
+    },
+    {
+      "why": "NUL in a path",
+      "request": {
+        "op": "fs.list",
+        "args": {
+          "path": {
+            "path": "/tmp/a\u0000b"
+          }
+        }
+      }
+    },
+    {
+      "why": "an unknown fs.list option",
+      "request": {
+        "op": "fs.list",
+        "args": {
+          "path": {
+            "path": "/tmp"
+          },
+          "followLinks": true
+        }
+      }
+    },
+    {
+      "why": "maxBytes over 4 MiB",
+      "request": {
+        "op": "fs.readFile",
+        "args": {
+          "path": {
+            "path": "/tmp/a"
+          },
+          "encoding": "utf8",
+          "maxBytes": 4194305
+        }
+      }
+    },
+    {
+      "why": "a chunk over 512 KiB",
+      "request": {
+        "op": "fs.readFile",
+        "args": {
+          "path": {
+            "path": "/tmp/a"
+          },
+          "encoding": "utf8",
+          "length": 524289
+        }
+      }
+    },
+    {
+      "why": "an unknown encoding",
+      "request": {
+        "op": "fs.writeFile",
+        "args": {
+          "path": {
+            "path": "/tmp/a"
+          },
+          "content": "x",
+          "encoding": "latin1",
+          "createOnly": false
+        }
+      }
+    },
+    {
+      "why": "content that is not base64",
+      "request": {
+        "op": "fs.write.chunk",
+        "args": {
+          "handle": "h",
+          "content": "!!!",
+          "encoding": "base64"
+        }
+      }
+    },
+    {
+      "why": "a handle with a space",
+      "request": {
+        "op": "fs.write.commit",
+        "args": {
+          "handle": "a b"
+        }
+      }
+    },
+    {
+      "why": "a keep entry that is a path",
+      "request": {
+        "op": "fs.removeContents",
+        "args": {
+          "path": {
+            "path": "/tmp/a"
+          },
+          "dryRun": true,
+          "keep": ["a/b"]
+        }
+      }
+    },
+    {
+      "why": "a keep entry that is ..",
+      "request": {
+        "op": "fs.removeContents",
+        "args": {
+          "path": {
+            "path": "/tmp/a"
+          },
+          "dryRun": true,
+          "keep": [".."]
+        }
+      }
+    },
+    {
+      "why": "a command line",
+      "request": {
+        "op": "process.run",
+        "args": {
+          "command": "git pull",
+          "args": [],
+          "env": {}
+        }
+      }
+    },
+    {
+      "why": "a relative command path",
+      "request": {
+        "op": "process.run",
+        "args": {
+          "command": "./build.sh",
+          "args": [],
+          "env": {}
+        }
+      }
+    },
+    {
+      "why": "an option as the command",
+      "request": {
+        "op": "process.run",
+        "args": {
+          "command": "-c",
+          "args": [],
+          "env": {}
+        }
+      }
+    },
+    {
+      "why": "arguments as a string",
+      "request": {
+        "op": "process.run",
+        "args": {
+          "command": "git",
+          "args": "pull --ff-only",
+          "env": {}
+        }
+      }
+    },
+    {
+      "why": "a shell flag on process.run",
+      "request": {
+        "op": "process.run",
+        "args": {
+          "command": "git",
+          "args": [],
+          "env": {},
+          "shell": true
+        }
+      }
+    },
+    {
+      "why": "a denied environment name",
+      "request": {
+        "op": "process.run",
+        "args": {
+          "command": "git",
+          "args": [],
+          "env": {
+            "LD_PRELOAD": "/tmp/x.so"
+          }
+        }
+      }
+    },
+    {
+      "why": "a denied environment name in other case",
+      "request": {
+        "op": "process.run",
+        "args": {
+          "command": "git",
+          "args": [],
+          "env": {
+            "git_ssh_command": "x"
+          }
+        }
+      }
+    },
+    {
+      "why": "an environment name that is not one",
+      "request": {
+        "op": "process.run",
+        "args": {
+          "command": "git",
+          "args": [],
+          "env": {
+            "A=B": "x"
+          }
+        }
+      }
+    },
+    {
+      "why": "a zero timeout",
+      "request": {
+        "op": "process.run",
+        "args": {
+          "command": "git",
+          "args": [],
+          "env": {},
+          "timeoutMs": 0
+        }
+      }
+    },
+    {
+      "why": "an unknown shell",
+      "request": {
+        "op": "shell.run",
+        "args": {
+          "shell": "fish",
+          "script": "echo",
+          "env": {}
+        }
+      }
+    },
+    {
+      "why": "an executable for the shell",
+      "request": {
+        "op": "shell.run",
+        "args": {
+          "shell": "sh",
+          "script": "echo",
+          "env": {},
+          "executable": "/bin/sh"
+        }
+      }
+    },
+    {
+      "why": "an empty absolute path",
+      "request": {
+        "op": "fs.stat",
+        "args": {
+          "path": {
+            "path": ""
+          }
+        }
+      }
+    },
+    {
+      "why": "a relative path given as absolute",
+      "request": {
+        "op": "fs.stat",
+        "args": {
+          "path": {
+            "path": "a/b"
+          }
+        }
+      }
+    },
+    {
+      "why": "a .. in an absolute path",
+      "request": {
+        "op": "fs.stat",
+        "args": {
+          "path": {
+            "path": "/Users/me/../other"
+          }
+        }
+      }
+    },
+    {
+      "why": "a . in an absolute path",
+      "request": {
+        "op": "fs.stat",
+        "args": {
+          "path": {
+            "path": "/Users/./me"
+          }
+        }
+      }
+    },
+    {
+      "why": "an empty name in an absolute path",
+      "request": {
+        "op": "fs.stat",
+        "args": {
+          "path": {
+            "path": "/Users//me"
+          }
+        }
+      }
+    },
+    {
+      "why": "a verbatim Windows path",
+      "request": {
+        "op": "fs.stat",
+        "args": {
+          "path": {
+            "path": "\\\\?\\C:\\Windows"
+          }
+        }
+      }
+    },
+    {
+      "why": "a Windows device path",
+      "request": {
+        "op": "fs.stat",
+        "args": {
+          "path": {
+            "path": "\\\\.\\pipe\\x"
+          }
+        }
+      }
+    },
+    {
+      "why": "an alternate data stream",
+      "request": {
+        "op": "fs.stat",
+        "args": {
+          "path": {
+            "path": "C:\\work\\a.txt:secret"
+          }
+        }
+      }
+    },
+    {
+      "why": "a bidirectional override in a path",
+      "request": {
+        "op": "fs.stat",
+        "args": {
+          "path": {
+            "path": "/tmp/‮txt.exe"
+          }
+        }
+      }
+    },
+    {
+      "why": "a control character in a path",
+      "request": {
+        "op": "fs.stat",
+        "args": {
+          "path": {
+            "path": "/tmp/a\u001bb"
+          }
+        }
+      }
+    },
+    {
+      "why": "a .. in a relative part",
+      "request": {
+        "op": "fs.stat",
+        "args": {
+          "path": {
+            "repository": "cms",
+            "relative": "src/../.."
+          }
+        }
+      }
+    },
+    {
+      "why": "a . in a relative part",
+      "request": {
+        "op": "fs.stat",
+        "args": {
+          "path": {
+            "repository": "cms",
+            "relative": "./src"
+          }
+        }
+      }
+    },
+    {
+      "why": "an empty name in a relative part",
+      "request": {
+        "op": "fs.stat",
+        "args": {
+          "path": {
+            "repository": "cms",
+            "relative": "a//b"
+          }
+        }
+      }
+    },
+    {
+      "why": "a backslash in a relative part",
+      "request": {
+        "op": "fs.stat",
+        "args": {
+          "path": {
+            "repository": "cms",
+            "relative": "a\\b"
+          }
+        }
+      }
+    },
+    {
+      "why": "a batch file by name",
+      "request": {
+        "op": "process.run",
+        "args": {
+          "command": "build.bat",
+          "args": [],
+          "env": {}
+        }
+      }
+    },
+    {
+      "why": "a batch file by path",
+      "request": {
+        "op": "process.run",
+        "args": {
+          "command": "C:\\tools\\build.CMD",
+          "args": [],
+          "env": {}
+        }
+      }
+    },
+    {
+      "why": "a UNC command",
+      "request": {
+        "op": "process.run",
+        "args": {
+          "command": "\\\\host\\share\\tool.exe",
+          "args": [],
+          "env": {}
+        }
+      }
+    },
+    {
+      "why": "a drive-relative command",
+      "request": {
+        "op": "process.run",
+        "args": {
+          "command": "C:foo",
+          "args": [],
+          "env": {}
+        }
+      }
+    },
+    {
+      "why": "shell syntax in a command name",
+      "request": {
+        "op": "process.run",
+        "args": {
+          "command": "git;rm",
+          "args": [],
+          "env": {}
+        }
+      }
+    },
+    {
+      "why": "a command name ending in a dot",
+      "request": {
+        "op": "process.run",
+        "args": {
+          "command": "git.",
+          "args": [],
+          "env": {}
+        }
+      }
+    },
+    {
+      "why": "a denied PATH",
+      "request": {
+        "op": "process.run",
+        "args": {
+          "command": "git",
+          "args": [],
+          "env": {
+            "PATH": "/tmp"
+          }
+        }
+      }
+    },
+    {
+      "why": "a denied HOME",
+      "request": {
+        "op": "process.run",
+        "args": {
+          "command": "git",
+          "args": [],
+          "env": {
+            "HOME": "/tmp"
+          }
+        }
+      }
+    },
+    {
+      "why": "a denied GIT_ variable",
+      "request": {
+        "op": "process.run",
+        "args": {
+          "command": "git",
+          "args": [],
+          "env": {
+            "GIT_ASKPASS": "/tmp/x"
+          }
+        }
+      }
+    },
+    {
+      "why": "a denied proxy",
+      "request": {
+        "op": "process.run",
+        "args": {
+          "command": "git",
+          "args": [],
+          "env": {
+            "https_proxy": "http://x"
+          }
+        }
+      }
+    },
+    {
+      "why": "an offset without a length",
+      "request": {
+        "op": "fs.readFile",
+        "args": {
+          "path": {
+            "path": "/tmp/a"
+          },
+          "encoding": "utf8",
+          "offset": 0
+        }
+      }
+    }
+  ]
+}

@@ -17,6 +17,12 @@ pub struct State {
     /// Every request after `script.load`, `script.poll` excluded:
     /// `(op, args)`.
     pub requests: Vec<(String, Value)>,
+    /// Every request, `script.load` and `script.poll` included, as the
+    /// bytes the guest sent.
+    pub raw: Vec<Vec<u8>>,
+    /// The `remainingMs` and `nowUs` a poll answers.
+    pub poll_remaining_ms: u64,
+    pub poll_now_us: Option<f64>,
     pub polls: u32,
     /// `script.load`'s reply value (or, with `load_error`, its refusal).
     pub load: Value,
@@ -95,11 +101,14 @@ impl Mock {
     pub fn with(source: &str, grants: Value, handler: Handler) -> Self {
         Mock(Rc::new(RefCell::new(State {
             requests: Vec::new(),
+            raw: Vec::new(),
+            poll_remaining_ms: 30_000,
+            poll_now_us: None,
             polls: 0,
             load: json!({
                 "source": source,
                 "platform": "linux",
-                "settings": { "timeoutMs": 60000, "stopOnError": true, "memoryMiB": 64 },
+                "settings": { "timeoutMs": 60000, "stopOnError": true, "memoryMib": 64 },
                 "grants": grants,
                 "run": { "id": "run-1", "origin": "editor", "userInitiated": true },
                 "nowUs": 1_700_000_000_000_000.0_f64,
@@ -123,6 +132,7 @@ impl Mock {
 
 impl Transport for Mock {
     fn call(&mut self, request: &[u8]) -> Option<Vec<u8>> {
+        let request_bytes = request;
         let request: Value = serde_json::from_slice(request).expect("the guest sends JSON");
         let obj = request.as_object().expect("an object");
         assert_eq!(obj.len(), 2, "exactly op and args: {request}");
@@ -130,6 +140,7 @@ impl Transport for Mock {
         let args = request["args"].clone();
         assert!(args.is_object(), "args is an object: {request}");
         let mut s = self.0.borrow_mut();
+        s.raw.push(request_bytes.to_vec());
         let reply = match op.as_str() {
             "script.load" => {
                 assert!(
@@ -145,9 +156,13 @@ impl Transport for Mock {
                 let remaining = if s.timeout_at_poll.is_some_and(|t| n >= t) {
                     0
                 } else {
-                    30_000
+                    s.poll_remaining_ms
                 };
-                ok(json!({ "cancelled": cancelled, "remainingMs": remaining }))
+                let mut reply = json!({ "cancelled": cancelled, "remainingMs": remaining });
+                if let Some(us) = s.poll_now_us {
+                    reply["nowUs"] = json!(us);
+                }
+                ok(reply)
             }
             _ => {
                 s.requests.push((op.clone(), args.clone()));
