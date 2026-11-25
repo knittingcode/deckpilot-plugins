@@ -64,6 +64,7 @@ on:
       - "!deckpilot.workflows--v*"
       - "!deckpilot.workspace--v*"
       # Held ahead of the pin (tools/check-official.py AHEAD_OF_PIN).
+      - "!deckpilot.calls--v*"
       - "!deckpilot.git-providers--v*"
       - "!deckpilot.scripts--v*"
   workflow_dispatch:

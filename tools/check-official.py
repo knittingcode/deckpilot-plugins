@@ -70,6 +70,7 @@ neither cargo nor the manifest schema does:
   manifest needs a plugin API the pinned DeckPilot does not have yet, with
   the new permission kinds of that API it may declare (deckpilot.scripts:
   1.13, `scripts`; deckpilot.git-providers: 1.14, `connections`;
+  deckpilot.calls: 1.16, `calls`;
   deckpilot.projects: 1.12, none). Its plugins.json entry must be `held`
   and carry `hostApi`, exactly its AHEAD_OF_PIN level, and only while the
   pinned plugin API is lower (a pin that reaches it fails until `hostApi`
@@ -147,6 +148,10 @@ PRIVILEGED_GATE_OPEN = True
 # design-projects-scripts.md P5, design-git-providers.md). Changing this is
 # a change of this checker, reviewed as tooling.
 AHEAD_OF_PIN = {
+    # Calls (DeckPilot design-calls.md): `calls`, privileged and bundled-only
+    # in DeckPilot's own rules (calls_rules.rs, with `callOverlay` and
+    # `layoutTemplates`), which the pinned packager refuses as a whole.
+    "deckpilot.calls": {"api": "1.16", "kinds": ["calls"]},
     "deckpilot.git-providers": {"api": "1.14", "kinds": ["connections"]},
     # Released and privileged: its contract at the pin is compared, and only
     # the additions of 1.12 (AHEAD_ADDITIONS) may differ.

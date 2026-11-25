@@ -1,0 +1,35 @@
+# deckpilot.calls ("Calls" / "Rozmowy"): the state of calls and meetings on
+# Stream Deck keys, the Calls pages DeckPilot shows during a call, and
+# "Back to work" (DeckPilot design-calls.md, docs/calls.md). Plugin API 1.16
+# (`calls`, `callOverlay`, `layoutTemplates`), which no DeckPilot provides
+# yet: held ahead of the pin (plugins.json `hostApi`), never packaged,
+# signed or released until then.
+#
+# Microsoft Teams is detection only: Microsoft retired the local API for
+# devices on 2026-06-30, so no control is claimed for it.
+#
+# A member of the official/ workspace, built for wasm32-unknown-unknown; the
+# rlib crate type lets its native unit tests run with plain `cargo test`.
+# The Calls operations (`call.state`, `call.control`) go through the raw
+# host call of guest ABI 1 (deckpilot-plugin-guest), so the SDK pin does not
+# move.
+[package]
+name = "deckpilot-calls"
+description = "DeckPilot's first-party Calls plugin: the state of your calls on your devices, and their controls where the call app allows them"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+deckpilot-plugin-sdk.workspace = true
+deckpilot-plugin-guest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

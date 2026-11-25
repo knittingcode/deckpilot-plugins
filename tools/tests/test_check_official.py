@@ -309,10 +309,14 @@ def then(*changes):
 
 
 GP = dict(pid="deckpilot.git-providers", path="git-providers", api="1.14", kinds=("connections",))
+CALLS = dict(pid="deckpilot.calls", path="calls", api="1.16", kinds=("calls",))
 case("held ahead of the pin: checked, no contract at the pin", ahead_member(), True,
      r"(?s)(?=.*official/scripts: held ahead of the pin \(plugin API 1\.13\))(?=.*held: deckpilot\.scripts 0\.1\.0: "
      + re.escape(AHEAD_REASON) + ")", deckpilot=lambda dp: None)
 case("held ahead of the pin: deckpilot.git-providers at 1.14", ahead_member(**GP), True, r"held: deckpilot\.git-providers")
+case("held ahead of the pin: deckpilot.calls at 1.16", ahead_member(**CALLS), True, r"held: deckpilot\.calls")
+case("deckpilot.calls at another level", ahead_member(**dict(CALLS, host_api="1.15")), False, "`hostApi` is only")
+case("a pin that reaches 1.16", ahead_member(**CALLS), False, "remove `hostApi`", extra=["--plugin-api", "1.16"])
 case("--ahead lists them", then(ahead_member(), ahead_member(**GP)), True,
      r"(?sm)(?=.*^deckpilot\.scripts 1\.13$)(?=.*^deckpilot\.git-providers 1\.14$)", extra=["--ahead"])
 case("--list marks it held", ahead_member(), True, r"(?m)^scripts deckpilot\.scripts 0\.1\.0 deckpilot-scripts held$",
@@ -346,6 +350,12 @@ case("its kinds on any other plugin",
           policy(lambda d: d["fixtures"][0]["permissions"].append("scripts"))), False, "kinds only their own plugin")
 case("another ahead plugin's kind", ahead_member(**{**GP, "kinds": ("connections", "scripts")}), False,
      r"declares \['scripts'\], kinds only their own plugin")
+case("the calls kind on any other plugin",
+     then(manifest(lambda m: m["permissions"].append({"kind": "calls", "control": True, "justification": "x"})),
+          policy(lambda d: d["fixtures"][0]["permissions"].append("calls"))), False,
+     r"declares \['calls'\], kinds only their own plugin")
+case("the calls kind on another ahead plugin", ahead_member(**{**GP, "kinds": ("connections", "calls")}), False,
+     r"declares \['calls'\], kinds only their own plugin")
 case("ahead of the pin: a contract at the pin is compared", ahead_member(), False, "differs from DeckPilot's",
      deckpilot=lambda dp: (shutil.copytree(ROOT / "official" / FIXTURE, dp / "plugins/first-party/contracts/deckpilot.scripts"),
                            edit_json(dp / "plugins/first-party/contracts/deckpilot.scripts/manifest.json",

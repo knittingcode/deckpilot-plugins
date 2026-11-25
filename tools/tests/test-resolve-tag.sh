@@ -23,7 +23,7 @@ done
 # Held ahead of the pin (tools/check-official.py AHEAD_OF_PIN): DeckPilot
 # will bundle them (deckpilot.projects it bundles already); never a registry
 # publication either.
-for id in git-providers projects scripts; do
+for id in calls git-providers projects scripts; do
   expect_fail "deckpilot.$id--v0.1.0" "is a plugin DeckPilot bundles"
 done
 # publish.yml's tag filter leaves out every one of them (resolve-tag.sh
