@@ -673,6 +673,16 @@ fn link_headers_are_split_outside_targets_and_quotes() {
         link_entries(r#"<a,b>; t="x,y", <c>"#),
         [r#"<a,b>; t="x,y""#, " <c>"]
     );
+    // A quoted parameter holding `;rel=next` is one parameter: not next.
+    let tricky =
+        r#"<https://code.example.com:8443/gitlab/api/v4/u>; title="x;rel=next"; rel="prev""#;
+    assert_eq!(reply(tricky).link("next"), None);
+    assert!(!reply(tricky).mentions_link("next"));
+    assert!(reply(tricky).mentions_link("prev"));
+    // A target followed by anything but parameters is not readable, but
+    // names its relation.
+    assert_eq!(reply(r#"<u>x; rel="next""#).link("next"), None);
+    assert!(reply(r#"<u>x; rel="next""#).mentions_link("next"));
 
     // A next page named but unreadable: invalid-response, not the end.
     let c = connection(
