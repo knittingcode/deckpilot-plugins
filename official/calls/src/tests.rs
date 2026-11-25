@@ -107,11 +107,28 @@ fn a_refusal_keeps_its_code_and_reason() {
             "calls-provider-offline: Calls is not running",
             codes::PROVIDER_OFFLINE,
         ),
-        // The broker's own refusals carry no Calls code.
+        // The broker's own refusals carry no Calls code: a missing grant is
+        // the consent, a run the user did not start says so.
         (
             "not-permitted",
-            "this runs only in an action the user started",
+            "the plugin was not granted this",
             codes::CONSENT,
+        ),
+        (
+            "not-permitted",
+            "this runs only in an action the user started (a key, a gesture or the app)",
+            codes::NOT_USER_STARTED,
+        ),
+        // The host's own words for both, even under its consent code.
+        (
+            "not-permitted",
+            "calls-consent: this runs only in an action the user started",
+            codes::NOT_USER_STARTED,
+        ),
+        (
+            "not-permitted",
+            "calls-consent: at most 2 call actions per run",
+            codes::THROTTLED,
         ),
         // An agent without plugin API 1.16.
         (
@@ -125,11 +142,36 @@ fn a_refusal_keeps_its_code_and_reason() {
         assert_eq!(got, want, "{message}");
         assert_eq!(text, message);
     }
-    // Throttled by the broker: worth trying again.
+    // Throttled by the broker: worth trying again; a run that used its
+    // controls is not (a new press is a new run).
     test_host::set(|_| error("throttled", "rate limited"));
     let value = serde_json::to_value(invoke("end", json!({}))).unwrap();
-    assert_eq!(value["code"], codes::UNCONFIRMED);
+    assert_eq!(value["code"], codes::THROTTLED);
     assert_eq!(value["retryable"], true);
+    test_host::set(|_| {
+        error(
+            "not-permitted",
+            "calls-consent: at most 2 call actions per run",
+        )
+    });
+    let value = serde_json::to_value(invoke("end", json!({}))).unwrap();
+    assert_eq!(value["code"], codes::THROTTLED);
+    assert_eq!(value["retryable"], false);
+}
+
+/// A host message is kept to 256 bytes, cut at a character boundary.
+#[test]
+fn a_long_host_message_is_cut() {
+    let long = format!("calls-unsupported: {}", "ł".repeat(300));
+    test_host::set(move |_| error("failed", &long));
+    let (code, message) = failure(&invoke("end", json!({})));
+    assert_eq!(code, codes::UNSUPPORTED);
+    assert!(
+        message.len() <= crate::host::MAX_MESSAGE,
+        "{}",
+        message.len()
+    );
+    assert!(message.len() >= crate::host::MAX_MESSAGE - 1);
 }
 
 #[test]
@@ -188,25 +230,38 @@ fn no_call_shows_nothing() {
 }
 
 /// Teams: a call, the microphone held (mute unknown) and every control
-/// refused: the keys show a cross, never a microphone state.
+/// refused, as the host reports it (each control unsupported) or with no
+/// controls listed at all: every control key shows a cross, never a state
+/// or any text of the call.
 #[test]
 fn an_unsupported_control_shows_a_cross_and_no_state() {
-    let teams = json!({
-        "state": "active",
-        "provider": "os-signals",
-        "connected": true,
-        "controls": {
-            "mic-toggle": {"supported": false, "reason": "provider-has-no-api"},
-            "end": {"supported": false, "reason": "provider-has-no-api"},
-        },
-        "title": "never shown",
-    });
-    for id in ["mic-toggle", "end", "camera-off"] {
-        let shown = face(id, teams.clone());
-        assert_eq!(shown.glyph, Some(Glyph::Cross), "{id}");
-        assert_eq!(shown.toggle, None, "{id}");
-        assert_eq!(shown.label, None, "{id}: no text of the call");
-        assert_eq!(shown.detail, None, "{id}");
+    let unsupported: serde_json::Map<String, Value> = CONTROL_ACTIONS
+        .iter()
+        .map(|(id, _)| {
+            (
+                (*id).to_owned(),
+                json!({"supported": false, "reason": "provider-has-no-api"}),
+            )
+        })
+        .collect();
+    for controls in [Value::Object(unsupported), json!({})] {
+        let teams = json!({
+            "state": "active",
+            "provider": "os-signals",
+            "connected": true,
+            "micMuted": false,
+            "cameraOn": true,
+            "controls": controls,
+            "title": "never shown",
+        });
+        for (id, _) in CONTROL_ACTIONS {
+            let shown = face(id, teams.clone());
+            assert_eq!(shown.glyph, Some(Glyph::Cross), "{id}");
+            assert_eq!(shown.toggle, None, "{id}");
+            assert_eq!(shown.label, None, "{id}: no text of the call");
+            assert_eq!(shown.detail, None, "{id}");
+            assert_eq!(shown.badge, None, "{id}");
+        }
     }
 }
 

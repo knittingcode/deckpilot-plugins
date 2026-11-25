@@ -350,6 +350,12 @@ case("its kinds on any other plugin",
           policy(lambda d: d["fixtures"][0]["permissions"].append("scripts"))), False, "kinds only their own plugin")
 case("another ahead plugin's kind", ahead_member(**{**GP, "kinds": ("connections", "scripts")}), False,
      r"declares \['scripts'\], kinds only their own plugin")
+case("the calls kind on any other plugin",
+     then(manifest(lambda m: m["permissions"].append({"kind": "calls", "control": True, "justification": "x"})),
+          policy(lambda d: d["fixtures"][0]["permissions"].append("calls"))), False,
+     r"declares \['calls'\], kinds only their own plugin")
+case("the calls kind on another ahead plugin", ahead_member(**{**GP, "kinds": ("connections", "calls")}), False,
+     r"declares \['calls'\], kinds only their own plugin")
 case("ahead of the pin: a contract at the pin is compared", ahead_member(), False, "differs from DeckPilot's",
      deckpilot=lambda dp: (shutil.copytree(ROOT / "official" / FIXTURE, dp / "plugins/first-party/contracts/deckpilot.scripts"),
                            edit_json(dp / "plugins/first-party/contracts/deckpilot.scripts/manifest.json",

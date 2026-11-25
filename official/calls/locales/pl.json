@@ -91,6 +91,8 @@
     "calls-provider-offline": "Żadna aplikacja do rozmów nie jest połączona.",
     "calls-consent": "Nie pozwolono DeckPilotowi sterować rozmowami.",
     "calls-locked": "DeckPilot jest zablokowany.",
-    "calls-pages-only": "„Wróć do pracy” działa na stronach Rozmów, w trakcie rozmowy."
+    "calls-pages-only": "„Wróć do pracy” działa na stronach Rozmów, w trakcie rozmowy.",
+    "calls-not-user-started": "Rozmowami można sterować tylko z akcji, którą uruchamiasz: klawiszem, gestem lub w aplikacji, nie z harmonogramu ani zdarzenia.",
+    "calls-throttled": "Za dużo akcji rozmowy naraz. Naciśnij ponownie za chwilę."
   }
 }

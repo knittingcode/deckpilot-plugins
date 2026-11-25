@@ -623,7 +623,9 @@
       "calls-provider-offline": "t:errors.calls-provider-offline",
       "calls-consent": "t:errors.calls-consent",
       "calls-locked": "t:errors.calls-locked",
-      "calls-pages-only": "t:errors.calls-pages-only"
+      "calls-pages-only": "t:errors.calls-pages-only",
+      "calls-not-user-started": "t:errors.calls-not-user-started",
+      "calls-throttled": "t:errors.calls-throttled"
     }
   }
 }

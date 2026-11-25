@@ -91,6 +91,8 @@
     "calls-provider-offline": "No call app is connected.",
     "calls-consent": "You have not allowed DeckPilot to control calls.",
     "calls-locked": "DeckPilot is locked.",
-    "calls-pages-only": "Back to work works on the Calls pages, during a call."
+    "calls-pages-only": "Back to work works on the Calls pages, during a call.",
+    "calls-not-user-started": "Calls are controlled only from an action you start: a key, a gesture or the app, not a schedule or an event.",
+    "calls-throttled": "Too many call actions at once. Press again in a moment."
   }
 }

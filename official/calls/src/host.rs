@@ -27,6 +27,12 @@ pub mod codes {
     pub const LOCKED: &str = "calls-locked";
     /// The plugin's own: "Back to work" on a key outside the Calls pages.
     pub const PAGES_ONLY: &str = "calls-pages-only";
+    /// The plugin's own reading of the broker's refusal: a control in a run
+    /// the user did not start (a schedule, an event, the agent's start).
+    pub const NOT_USER_STARTED: &str = "calls-not-user-started";
+    /// The plugin's own reading of the broker's (or the host's) limit: too
+    /// many call actions, at once or in one run.
+    pub const THROTTLED: &str = "calls-throttled";
 
     /// Every code the host may start a refusal with.
     pub const HOST: [&str; 6] = [
@@ -39,7 +45,7 @@ pub mod codes {
     ];
 
     /// Every code the module returns.
-    pub const ALL: [&str; 7] = [
+    pub const ALL: [&str; 9] = [
         NOT_IN_CALL,
         UNSUPPORTED,
         UNCONFIRMED,
@@ -47,6 +53,8 @@ pub mod codes {
         CONSENT,
         LOCKED,
         PAGES_ONLY,
+        NOT_USER_STARTED,
+        THROTTLED,
     ];
 }
 
@@ -229,27 +237,63 @@ fn send(bytes: &[u8]) -> Option<Vec<u8>> {
     test_host::answer(bytes)
 }
 
-/// The host's refusal as one of [`codes`]: the code it starts its message
-/// with (`calls-unsupported: provider-has-no-api`), else by the ABI code.
+/// The longest host message kept, in bytes (cut at a character boundary).
+pub const MAX_MESSAGE: usize = 256;
+
+/// What the broker says when a control comes from a run the user did not
+/// start (DeckPilot `DenyReason::PrivilegedNotUserInitiated`), and what the
+/// host says when a run asked for too many controls (`executor/calls.rs`).
+const NOT_USER_STARTED_TEXT: &str = "only in an action the user started";
+const PER_RUN_TEXT: &str = "call actions per run";
+
+/// The host's refusal as one of [`codes`]:
+/// - a run the user did not start, and a run that asked too often, by
+///   their words (the broker's refusals carry no Calls code, and the host
+///   names them `calls-consent`, which is not what the user should read);
+/// - else the code the host starts its message with
+///   (`calls-unsupported: provider-has-no-api`);
+/// - else by the ABI code: `throttled` is [`codes::THROTTLED`] (worth trying
+///   again), `not-permitted` is the missing consent, anything else (an
+///   agent without Calls, `unavailable`) nothing to talk to.
 pub fn refusal(code: &str, message: String) -> Refusal {
+    let message = cut(message);
     let head = message.trim_start();
     let named = codes::HOST.into_iter().find(|c| {
         head.strip_prefix(c)
             .is_some_and(|rest| rest.is_empty() || rest.starts_with(':'))
     });
-    let code = match (named, code) {
-        (Some(named), _) => named,
-        (None, "not-permitted") => codes::CONSENT,
-        (None, "throttled") => codes::UNCONFIRMED,
-        // `unsupported-op` (an agent without Calls), `unavailable` and
-        // anything else: nothing to talk to.
-        _ => codes::PROVIDER_OFFLINE,
+    let code = if head.contains(NOT_USER_STARTED_TEXT) {
+        codes::NOT_USER_STARTED
+    } else if head.contains(PER_RUN_TEXT) {
+        codes::THROTTLED
+    } else {
+        match (named, code) {
+            (Some(named), _) => named,
+            (None, "throttled") => codes::THROTTLED,
+            (None, "not-permitted") => codes::CONSENT,
+            _ => codes::PROVIDER_OFFLINE,
+        }
     };
+    // A throttled call is worth trying again; a run that used its controls
+    // is not (a new press is a new run).
+    let retryable = code == codes::THROTTLED && !head.contains(PER_RUN_TEXT);
     Refusal {
         code,
-        retryable: matches!(code, codes::UNCONFIRMED) && named.is_none(),
+        retryable,
         message,
     }
+}
+
+/// `message` cut to [`MAX_MESSAGE`] bytes at a character boundary.
+fn cut(mut message: String) -> String {
+    if message.len() > MAX_MESSAGE {
+        let mut end = MAX_MESSAGE;
+        while !message.is_char_boundary(end) {
+            end -= 1;
+        }
+        message.truncate(end);
+    }
+    message
 }
 
 /// Unit tests only: what the host answers, instead of the host (which a

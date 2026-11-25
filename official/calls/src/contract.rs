@@ -310,17 +310,47 @@ fn nothing_claims_a_teams_control() {
             "{id}: {pl}"
         );
     }
-    let teams = README
-        .lines()
-        .find(|l| l.starts_with("| Microsoft Teams"))
-        .expect("the README's Teams row");
-    for cell in teams
-        .split('|')
-        .skip(3)
-        .filter(|c| !c.trim().is_empty())
-        .take(5)
-    {
-        assert!(cell.contains("unsupported"), "{teams}");
+    // The capability table: every control action's column (by the
+    // header), and in the Teams row each one says unsupported.
+    let cells = |line: &str| -> Vec<String> {
+        line.trim()
+            .trim_matches('|')
+            .split('|')
+            .map(|c| c.trim().to_owned())
+            .collect()
+    };
+    let header = cells(
+        README
+            .lines()
+            .find(|l| l.starts_with("| Call app"))
+            .expect("the README's capability table"),
+    );
+    let teams = cells(
+        README
+            .lines()
+            .find(|l| l.starts_with("| Microsoft Teams"))
+            .expect("the README's Teams row"),
+    );
+    assert_eq!(header.len(), teams.len(), "{teams:?}");
+    let column = |id: &str| match id {
+        "answer" => "Answer",
+        "reject" => "Reject",
+        "cancel-outgoing" => "Cancel",
+        "end" => "Leave",
+        "mic-toggle" | "mic-mute" | "mic-unmute" => "Mute",
+        "camera-toggle" | "camera-on" | "camera-off" => "Camera",
+        other => panic!("no column for {other}"),
+    };
+    for (id, _) in CONTROL_ACTIONS {
+        let at = header
+            .iter()
+            .position(|h| h == column(id))
+            .unwrap_or_else(|| panic!("{id}: no `{}` column", column(id)));
+        assert!(
+            teams[at].starts_with("unsupported"),
+            "{id}: the Teams cell is `{}`",
+            teams[at]
+        );
     }
     assert!(README.contains("2026-06-30"));
 }

@@ -37,10 +37,10 @@ disabled, with the reason.
 
 ## What works with which call app
 
-| Call app | Detect a call | Answer | Reject | Leave | Mute | Camera | Microphone state | Camera state |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Microsoft Teams | inferred on macOS and Windows (Teams holds the microphone); Linux: not attributed (Teams is a browser tab there) | unsupported: Microsoft retired the device API (2026-06-30) | unsupported: Microsoft retired the device API | unsupported: Microsoft retired the device API | unsupported: Microsoft retired the device API | unsupported: Microsoft retired the device API | unknown: Teams may hold the microphone while muted | macOS: a camera is in use (not attributed to an app); Windows: unsupported |
-| A provider with an API (later: Zoom, Meet) | as the app reports it | where the app allows it | where the app allows it | where the app allows it | where the app allows it | where the app allows it | as the app reports it | as the app reports it |
+| Call app | Detect a call | Answer | Reject | Cancel | Leave | Mute | Camera | Microphone state | Camera state |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Microsoft Teams | inferred on macOS and Windows (Teams holds the microphone); Linux: not attributed (Teams is a browser tab there) | unsupported: Microsoft retired the device API (2026-06-30) | unsupported: Microsoft retired the device API | unsupported: Microsoft retired the device API | unsupported: Microsoft retired the device API | unsupported: Microsoft retired the device API | unsupported: Microsoft retired the device API | unknown: Teams may hold the microphone while muted | macOS: a camera is in use (not attributed to an app); Windows: unsupported |
+| A provider with an API (later: Zoom, Meet) | as the app reports it | where the app allows it | where the app allows it | where the app allows it | where the app allows it | where the app allows it | where the app allows it | as the app reports it | as the app reports it |
 
 An incoming call is never shown for Teams, because no supported signal
 rings. A provider that can control a call plugs into the same contract
@@ -72,6 +72,9 @@ may use the Calls operations at all.
 A control answers only once the call app **confirmed** it. Otherwise it
 fails: `calls-unconfirmed` when there is no confirmation in time, and
 `calls-unsupported` with the reason when the app does not allow it.
+A control from a run you did not start (a schedule, an event) is
+`calls-not-user-started`, and too many at once or in one run is
+`calls-throttled`.
 Nothing shows as done before it is done. The keys show states only (a
 toggle, a mark, a colour), never the meeting title, a name or a number.
 
