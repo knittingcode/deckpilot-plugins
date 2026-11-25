@@ -273,6 +273,10 @@ fn links_in_answers_off_the_web_origin_are_never_kept_or_opened() {
         "https://user:pw@code.example.com:8443/gitlab/team/app",
         "javascript:alert(1)",
         "//evil.example.com/x",
+        "https://code.example.com:8443/gitlab/..\\other/app",
+        "https://code.example.com:8443/gitlab\\..\\other",
+        "https://code.example.com:8443/gitlab/team%2F..%2F..%2Fother",
+        "https://code.example.com:8443/gitlab/team%5capp",
     ] {
         let mut t = MockTransport::new().on(
             Method::Get,
@@ -353,6 +357,14 @@ fn next_pages_off_the_origin_or_the_prefix_are_refused() {
         "https://code.example.com:8443/gitlab/api/v4/../../admin?page=2",
         "https://code.example.com:8443/gitlab/api/v4/%2e%2e/admin?page=2",
         "http://code.example.com:8443/gitlab/api/v4/projects?page=2",
+        // Separators a URL parser reads otherwise than the prefix check.
+        "https://code.example.com:8443/gitlab/api/v4/..\\..\\..\\other/x",
+        "https://code.example.com:8443/gitlab/api/v4\\..\\..\\admin",
+        "https://code.example.com:8443/gitlab/api/v4/projects\\x?page=2",
+        "https://code.example.com:8443/gitlab/api/v4/%2e%2e%2f%2e%2e%2fadmin",
+        "https://code.example.com:8443/gitlab/api/v4/..%2F..%2Fadmin",
+        "https://code.example.com:8443/gitlab/api/v4/..%5c..%5Cadmin",
+        "https://code.example.com:8443/gitlab/api/v4/projects%2F4711?page=2",
         "https://user@code.example.com:8443/gitlab/api/v4/projects?page=2",
     ] {
         let url = format!(

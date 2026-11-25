@@ -45,15 +45,17 @@ own word in `providerStatus` (`completed/success` on GitHub).
   (`changeRequest`, which wins over `ref`), of a branch, tag or commit
   (`ref`), or of the default branch when neither is given. With none,
   `state` is `none`. A key bound to it shows the last run's state (green,
-  red, a running mark) with the branch or `#number` as its second line;
-  the key reads what the last press or workflow node stored, and nothing
-  polls the server in the background.
+  red, a running mark) with the branch or `#number` as its second line.
+  Only a press of the key (or its gesture) stores what it shows, never a
+  workflow node or the app, and a failure is stored as its code only; the
+  key reads that back, and nothing polls the server in the background.
 - **`trigger-pipeline`** starts one. On GitLab it can pass `variables`
   (names `[A-Z_][A-Z0-9_]{0,63}`, not `CI_*` or `GITLAB_*`, values of at
   most 1 KiB without control characters or anything that looks like a
   token, at most 50). On GitHub it dispatches a workflow file
   (`workflow`, picked from `list-workflows`) with optional `inputs`;
-  `variables` are refused there. Everything that would refuse a trigger is
+  `variables` are refused there. The confirmation names the workflow file
+  or the variables' names (never their values). Everything that would refuse a trigger is
   refused before you are asked and before any request. It is never
   retried, by the engine or by the plugin.
   - GitHub answers a dispatch without the run it started. The plugin then
@@ -65,7 +67,8 @@ own word in `providerStatus` (`completed/success` on GitHub).
     `pipelineId` and `url` the workflow's page of runs.
 - **`wait-pipeline`** reads the pipeline every `pollSeconds` (10 to 120,
   default 15) in sleeps of at most 30 s, and ends at once when it has
-  ended or is waiting for a manual step. Cancelling the run ends it at once
+  ended or is waiting for a manual step. Its reads count toward the time
+  (by the agent's clock, or two seconds each without one). Cancelling the run ends it at once
   with `cancelled`. After 540 s it ends with `timedOut: true` and the
   last `state` it read (`running`), as a success, so a Condition on
   `state` or a Loop around the node goes on; the node's own limit is
@@ -98,7 +101,9 @@ with the web address you know, on any port and under any path prefix:
   plugin opens are built on the server, never taken from an answer. A
   next-page link outside the API base (another host or port, a sibling
   path, a dot segment, `http`) fails with `invalid-response` and is never
-  followed.
+  followed. So does a link or page whose path has a backslash or an
+  encoded slash or backslash (`%2f`, `%5c`), which a URL parser or the
+  server may read as another path than the prefix check did.
 - A redirect is never followed: the host refuses one off the connection
   with `redirect-refused`, and a redirect answer that reaches the plugin
   fails the same way. Nothing is retried somewhere else.

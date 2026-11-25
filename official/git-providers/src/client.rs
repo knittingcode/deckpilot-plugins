@@ -103,6 +103,9 @@ impl Api {
     /// A page on the web origin: `https`, the same host and port, under
     /// the web base; `None` for anything else.
     pub fn page(&self, text: &str) -> Option<String> {
+        if has_ambiguous_separator(text) {
+            return None;
+        }
         self.web.page(text).map(|page| page.url)
     }
 
@@ -144,7 +147,13 @@ impl Api {
             })?
         };
         let next = match raw.link("next") {
-            Some(link) if self.api.contains(&link) && !has_dot_segment(&link) => Some(link),
+            Some(link)
+                if self.api.contains(&link)
+                    && !has_dot_segment(&link)
+                    && !has_ambiguous_separator(&link) =>
+            {
+                Some(link)
+            }
             Some(_) => {
                 return Err(fail(
                     codes::INVALID_RESPONSE,
@@ -368,10 +377,23 @@ fn token_scope_refusal(body: &str) -> bool {
 /// depth: the API base check comes first).
 fn has_dot_segment(link: &str) -> bool {
     let path = link.split(['?', '#']).next().unwrap_or_default();
-    path.split('/').any(|segment| {
+    // A WHATWG parser takes `\` for `/`: both separate segments here.
+    path.split(['/', '\\']).any(|segment| {
         let s = segment.to_ascii_lowercase().replace("%2e", ".");
         s == "." || s == ".."
     })
+}
+
+/// Whether a link's path has a separator that a URL parser may read
+/// otherwise than the prefix check did (threat T1): a backslash, which a
+/// WHATWG parser takes for `/`, or an encoded slash or backslash (`%2f`,
+/// `%5c`, any case), which a server may decode into one. Such a link could
+/// leave the connection's path prefix, so it is refused, never followed
+/// or opened.
+pub fn has_ambiguous_separator(link: &str) -> bool {
+    let path = link.split(['?', '#']).next().unwrap_or_default();
+    let lower = path.to_ascii_lowercase();
+    path.contains('\\') || lower.contains("%2f") || lower.contains("%5c")
 }
 
 /// A branch, tag or commit name (git's rules, as the old plugins check).

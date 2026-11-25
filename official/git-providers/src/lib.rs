@@ -478,7 +478,7 @@ fn open_issue(ctx: &mut Context<'_>, args: &Args<'_>) -> ActionResult {
 /// `pipeline-status`, and what its keys show next (`state.rs`).
 fn pipeline_status(ctx: &mut Context<'_>, args: &Args<'_>) -> ActionResult {
     let result = read_pipeline_status(args);
-    state::remember(ctx, &state::KeyParams::read(args), &result);
+    state::remember_for_key(ctx, &state::KeyParams::read(args), &result);
     result
 }
 

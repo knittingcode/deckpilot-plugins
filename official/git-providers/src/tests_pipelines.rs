@@ -619,12 +619,24 @@ fn at_the_deadline_wait_ends_with_the_state_it_read() {
             "{spent}"
         );
     }
-    // Without a clock the sleeps alone count: still bounded.
-    let mut t = gl_wait(&["running"]);
-    t.no_clock = true;
-    let out = ops::wait_pipeline(&g, &mut t, &gl_repo(), "555", 30).unwrap();
-    assert!(boolean(&out, "timedOut"));
-    assert!(t.slept.iter().sum::<u32>() <= ops::WAIT_BUDGET_SECONDS * 1_000);
+    // Without a clock the sleeps and the reads count (a fixed time per
+    // read): the total, reads included, stays within the budget, for any
+    // poll interval, even when each request really took its time.
+    for poll in [10, 15, 30, 120] {
+        let mut t = gl_wait(&["running"]);
+        t.no_clock = true;
+        t.request_ms = 1_000;
+        let out = ops::wait_pipeline(&g, &mut t, &gl_repo(), "555", poll).unwrap();
+        assert!(boolean(&out, "timedOut"));
+        let reads = u32::try_from(t.requests.len()).unwrap();
+        let slept = t.slept.iter().sum::<u32>() / 1_000;
+        assert!(
+            slept + reads * ops::READ_SECONDS_WITHOUT_CLOCK <= ops::WAIT_BUDGET_SECONDS,
+            "{poll}: {slept} s asleep, {reads} reads"
+        );
+        // The mock's clock (unread here) saw every request: under 600 s.
+        assert!(t.clock < 600_000, "{poll}: {}", t.clock);
+    }
     const { assert!(ops::WAIT_BUDGET_SECONDS + 2 * ops::REQUEST_SECONDS < 600) };
 }
 
@@ -886,4 +898,65 @@ fn a_status_report_carries_a_code_never_the_servers_text() {
             "{detail}"
         );
     }
+}
+
+#[test]
+fn the_trigger_question_names_the_workflow_and_the_variable_names_only() {
+    use crate::changes::{MAX_QUESTION, trigger_question};
+    // GitHub: the workflow file.
+    let q = trigger_question(&ci(), "octo/site", "github.com");
+    assert_eq!(
+        q,
+        "Start a pipeline on main in octo/site (github.com) with the workflow ci.yml?"
+    );
+    // GitLab: the names, never the values.
+    let t = gl_trigger(vec![
+        ("DEPLOY", "staging-secret-value".into()),
+        ("DRY_RUN", "1".into()),
+    ]);
+    let q = trigger_question(&t, "team/app", "gitlab.com");
+    assert!(q.contains("DEPLOY, DRY_RUN"), "{q}");
+    assert!(
+        !q.contains("staging-secret-value") && !q.contains("=1"),
+        "{q}"
+    );
+    // Many long names: bounded, the rest counted.
+    let many: Vec<(&str, String)> = (0..50)
+        .map(|i| {
+            (
+                format!("VARIABLE_WITH_A_LONG_NAME_{i:02}").leak() as &str,
+                "x".into(),
+            )
+        })
+        .collect();
+    let q = trigger_question(&gl_trigger(many), "team/app", "gitlab.com");
+    assert!(q.chars().count() <= MAX_QUESTION, "{}", q.chars().count());
+    assert!(q.contains(" more?"), "{q}");
+    assert!(!q.contains("=x"));
+    // The dialog the user sees asks exactly that (from a key).
+    let (c, g) = gitlab(true);
+    let mut host = mock_host(key(), declined());
+    let mut tr = gl_trigger_transport();
+    let trigger = gl_trigger(vec![("DEPLOY", "hidden-value".into())]);
+    let _ = crate::changes::trigger_pipeline(
+        &mut host.context(),
+        &g,
+        &mut tr,
+        &c,
+        &gl_repo(),
+        true,
+        &trigger,
+    );
+    let dialog = host
+        .requests()
+        .iter()
+        .find_map(|r| match r {
+            CapabilityRequest::DialogOpen(d) => Some(serde_json::to_string(d).unwrap()),
+            _ => None,
+        })
+        .unwrap();
+    assert!(
+        dialog.contains("DEPLOY") && !dialog.contains("hidden-value"),
+        "{dialog}"
+    );
 }

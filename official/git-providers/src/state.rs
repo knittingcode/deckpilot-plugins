@@ -11,9 +11,14 @@
 //! `pipeline-status` stores the state in the plugin's storage under its
 //! parameters (connection, repository, ref, change request), and the
 //! state call only reads it back, every 5 s. A key that has not run yet
-//! shows its own design. Nothing stored is a secret or a server's text:
-//! a closed-set state word, the code of a failure and the action's own
-//! message.
+//! shows its own design.
+//!
+//! **Only key runs store.** A run from a key or a gesture stores its key's
+//! state; a workflow node, the app or a script stores nothing, so dynamic
+//! refs in workflows never grow the storage. **Nothing stored is a secret
+//! or a server's text:** a closed-set state word and indicator, the key's
+//! own ref or change request number, and a failure's code (the key shows
+//! a message the plugin writes for it).
 
 use deckpilot_plugin_sdk::ParamValue;
 use deckpilot_plugin_sdk::prelude::*;
@@ -24,7 +29,11 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "camelCase")]
 pub enum Stored {
     State(KeyState),
-    Failed { code: String, message: String },
+    /// The failure's code only, never its message (which can hold the
+    /// server's text).
+    Failed {
+        code: String,
+    },
 }
 
 /// The parameters that make a key: the same ones give the same key state.
@@ -105,7 +114,20 @@ pub fn state_of(state: &str, detail: Option<String>) -> KeyState {
     }
 }
 
-/// After a `pipeline-status` run: what its keys show.
+/// Whether a run is a key's (a key or a gesture), whose state is kept.
+pub fn is_key_run(ctx: &mut Context<'_>) -> bool {
+    ctx.run_context()
+        .is_ok_and(|run| matches!(run.trigger, RunTrigger::Key | RunTrigger::Gesture))
+}
+
+/// After a `pipeline-status` run: what its keys show, for a key's run only.
+pub fn remember_for_key(ctx: &mut Context<'_>, params: &KeyParams, result: &ActionResult) {
+    if is_key_run(ctx) {
+        remember(ctx, params, result);
+    }
+}
+
+/// Stores what the keys with `params` show.
 pub fn remember(ctx: &mut Context<'_>, params: &KeyParams, result: &ActionResult) {
     let stored = match result {
         Ok(output) => {
@@ -117,7 +139,6 @@ pub fn remember(ctx: &mut Context<'_>, params: &KeyParams, result: &ActionResult
         }
         Err(e) => Stored::Failed {
             code: e.code().to_owned(),
-            message: e.message().chars().take(200).collect(),
         },
     };
     if let Err(e) = ctx.storage_set(params.storage_key(), &stored) {
@@ -134,7 +155,10 @@ pub fn pipeline_status(ctx: &mut Context<'_>, args: &Args<'_>) -> Result<KeyStat
     match ctx.storage_get_as::<Stored>(params.storage_key())? {
         None => Ok(KeyState::new()),
         Some(Stored::State(state)) => Ok(state),
-        Some(Stored::Failed { code, message }) => Err(PluginError::new(code, message)),
+        Some(Stored::Failed { code }) => Err(PluginError::new(
+            code.clone(),
+            format!("the last pipeline status failed ({code}); press the key to try again"),
+        )),
     }
 }
 
@@ -255,17 +279,56 @@ mod tests {
         assert!(long.storage_key().len() <= 128);
         assert_ne!(long.storage_key(), params(Some("a"), None).storage_key());
 
-        // A failed run: the key shows the failure.
-        let (mut host, _) = storage_host();
+        // A failed run: the key shows the failure's code with the
+        // plugin's own message; the server's text is never stored.
+        let (mut host, storage) = storage_host();
         remember(
             &mut host.context(),
             &params(Some("main"), None),
-            &Err(PluginError::new("unauthorized", "reconnect it")),
+            &Err(PluginError::new(
+                "unauthorized",
+                "the server said: secret-ish text",
+            )),
         );
+        let kept = serde_json::to_string(&*storage.borrow()).unwrap();
+        assert!(!kept.contains("secret-ish"), "{kept}");
         assert!(matches!(
             host.key_state(&plugin, "pipeline-status", args(Some("main"), None)),
-            StateOutcome::Error(f) if f.code == "unauthorized"
+            StateOutcome::Error(f) if f.code == "unauthorized" && !f.message.contains("secret-ish")
         ));
+    }
+
+    #[test]
+    fn only_a_key_or_gesture_run_stores_a_key_state() {
+        let ok = Ok(Output::message("x").with("state", "success"));
+        for (run, stores) in [
+            (json!({"trigger": "key"}), true),
+            (json!({"trigger": "gesture"}), true),
+            (json!({"trigger": "workflow", "cause": "user"}), false),
+            (json!({"trigger": "workflow", "cause": "schedule"}), false),
+            (json!({"trigger": "app"}), false),
+            (json!({"trigger": "test"}), false),
+            (json!({"trigger": "something-new"}), false),
+        ] {
+            let storage = Rc::new(RefCell::new(BTreeMap::new()));
+            let kept = Rc::clone(&storage);
+            let answer = run.clone();
+            let mut host = MockHost::new(move |req| match req {
+                CapabilityRequest::RunContext(_) => CallResult::Ok(answer.clone()),
+                CapabilityRequest::StorageSet(s) => {
+                    kept.borrow_mut().insert(s.key.clone(), s.value.clone());
+                    CallResult::Ok(Value::Null)
+                }
+                _ => CallResult::Ok(Value::Null),
+            });
+            // Many dynamic refs from a workflow: nothing grows.
+            for n in 0..20 {
+                let reference = format!("feature-{n}");
+                remember_for_key(&mut host.context(), &params(Some(&reference), None), &ok);
+            }
+            let count = storage.borrow().len();
+            assert_eq!(count, if stores { 20 } else { 0 }, "{run}");
+        }
     }
 
     #[test]

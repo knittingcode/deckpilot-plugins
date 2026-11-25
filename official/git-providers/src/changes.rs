@@ -124,15 +124,54 @@ pub fn trigger_pipeline(
     p.check_trigger(trigger)?;
     let host = Api::new(connection)?.host;
     let path = p.get_repository(t, r)?.path;
-    confirmed(
-        ctx,
-        confirm,
-        &format!(
-            "Start a pipeline on {} in {path} ({host})?",
-            trigger.reference
-        ),
-    )?;
+    confirmed(ctx, confirm, &trigger_question(trigger, &path, &host))?;
     Ok(ops::trigger_pipeline(p, t, connection, r, trigger)?)
+}
+
+/// Longest confirmation question (the dialog's message bound).
+pub const MAX_QUESTION: usize = 400;
+
+/// What starting the pipeline does, as the confirmation asks it: the ref,
+/// the repository and server, the GitHub workflow file, and the names of
+/// the GitLab variables (never their values). At most [`MAX_QUESTION`]
+/// characters: names that do not fit are counted.
+pub fn trigger_question(trigger: &PipelineTrigger, path: &str, host: &str) -> String {
+    let mut question = format!(
+        "Start a pipeline on {} in {path} ({host})",
+        crate::errors::clean(&trigger.reference, 80)
+    );
+    if let Some(workflow) = &trigger.workflow {
+        question.push_str(&format!(
+            " with the workflow {}",
+            crate::errors::clean(workflow, 100)
+        ));
+    }
+    if !trigger.variables.is_empty() {
+        question.push_str(" with the variables ");
+        // Room for the names, the ", and N more" and the question mark.
+        let room = MAX_QUESTION.saturating_sub(question.chars().count() + 20);
+        let mut names = String::new();
+        let mut shown = 0;
+        for (name, _) in &trigger.variables {
+            let next = if shown == 0 {
+                name.clone()
+            } else {
+                format!(", {name}")
+            };
+            if names.chars().count() + next.chars().count() > room {
+                break;
+            }
+            names.push_str(&next);
+            shown += 1;
+        }
+        question.push_str(&names);
+        let more = trigger.variables.len() - shown;
+        if more > 0 {
+            question.push_str(&format!(" and {more} more"));
+        }
+    }
+    question.push('?');
+    question.chars().take(MAX_QUESTION).collect()
 }
 
 #[cfg(test)]

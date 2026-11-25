@@ -28,6 +28,10 @@ pub const POLL_SECONDS: (u32, u32) = (10, 120);
 pub const WAIT_BUDGET_SECONDS: u32 = 540;
 /// The host's time limit of one request, in seconds.
 pub const REQUEST_SECONDS: u32 = 15;
+/// What one read of the pipeline counts toward the budget when there is
+/// no clock: a second per request, two requests (GitHub reads the
+/// repository and the run).
+pub const READ_SECONDS_WITHOUT_CLOCK: u32 = 2;
 
 fn n(value: usize) -> i64 {
     i64::try_from(value).unwrap_or(i64::MAX)
@@ -417,11 +421,20 @@ pub fn wait_pipeline(
             return Ok(pipeline_output(Output::message(message), &record).with("timedOut", false));
         }
         // The requests count too: the clock when there is one, else the
-        // sleeps alone.
-        if let (Some(start), Some(now)) = (started, t.now_ms()) {
-            waited = u32::try_from(now.saturating_sub(start) / 1_000).unwrap_or(u32::MAX);
-        }
-        if waited.saturating_add(poll) > WAIT_BUDGET_SECONDS {
+        // sleeps and a fixed time per read.
+        // Without a clock the next read is counted ahead too, so the total
+        // with every read stays within the budget.
+        let next_read = match (started, t.now_ms()) {
+            (Some(start), Some(now)) => {
+                waited = u32::try_from(now.saturating_sub(start) / 1_000).unwrap_or(u32::MAX);
+                0
+            }
+            _ => {
+                waited = waited.saturating_add(READ_SECONDS_WITHOUT_CLOCK);
+                READ_SECONDS_WITHOUT_CLOCK
+            }
+        };
+        if waited.saturating_add(poll).saturating_add(next_read) > WAIT_BUDGET_SECONDS {
             let message = format!(
                 "timed out: pipeline {} is still {} after {waited} s; wait again in a Loop",
                 record.id,
