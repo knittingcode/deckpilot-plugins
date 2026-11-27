@@ -1,9 +1,9 @@
 {
   "seq": 4,
-  "signed_at": "2026-11-26T14:05:33.676594898Z",
-  "expires": "2026-12-03T14:05:33.676594898Z",
-  "timestamp_sha256": "07544b5e1cc98d91160fc393407ac094fe091ef4192ddc97ae765361135cc848",
+  "signed_at": "2026-11-27T14:05:44.711603007Z",
+  "expires": "2026-12-04T14:05:44.711603007Z",
+  "timestamp_sha256": "d509b5f2dedddc75e04b23800cf6bc912cebf2c6f90a18e1f464ee20886b989b",
   "storefront_sha256": null,
-  "run": 45834360337,
+  "run": 46011535779,
   "attempt": 1
 }
